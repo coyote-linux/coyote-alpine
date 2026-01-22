@@ -1,5 +1,0 @@
-#!/bin/sh
-#
-# This script is executed at the end of a system boot up and after
-# the system configuration file has been processed and applied
-#

@@ -1,9 +1,0 @@
-#!/bin/sh
-
-. /usr/config/functions
-. /etc/config/hwconfig
-
-mount_flash_rw
-restore_backup $1
-mount_flash_ro
-
