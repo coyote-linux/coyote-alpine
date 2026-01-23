@@ -1,0 +1,184 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Coyote Linux CLI - Main command-line interface
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+use Coyote\Config\ConfigManager;
+use Coyote\Addon\AddonManager;
+
+/**
+ * Display usage information
+ */
+function showUsage(): void
+{
+    echo "Coyote Linux CLI\n";
+    echo "\n";
+    echo "Usage: coyote-cli <command> [options]\n";
+    echo "\n";
+    echo "Commands:\n";
+    echo "  config load          Load configuration from persistent storage\n";
+    echo "  config save          Save running configuration to persistent storage\n";
+    echo "  config show          Display current running configuration\n";
+    echo "  config validate      Validate current configuration\n";
+    echo "\n";
+    echo "  addon list           List installed add-ons\n";
+    echo "  addon init-all       Initialize all add-ons\n";
+    echo "\n";
+    echo "  status               Show system status\n";
+    echo "  version              Show version information\n";
+    echo "\n";
+}
+
+/**
+ * Show system status
+ */
+function showStatus(): void
+{
+    $hardware = new \Coyote\System\Hardware();
+
+    echo "Coyote Linux System Status\n";
+    echo "==========================\n\n";
+
+    // CPU
+    $cpu = $hardware->getCpuInfo();
+    echo "CPU: {$cpu['model']} ({$cpu['cores']} cores)\n";
+
+    // Memory
+    $mem = $hardware->getMemoryInfo();
+    $totalMB = round($mem['total'] / 1024 / 1024);
+    $availMB = round($mem['available'] / 1024 / 1024);
+    echo "Memory: {$availMB}MB available / {$totalMB}MB total\n";
+
+    // Network interfaces
+    echo "\nNetwork Interfaces:\n";
+    $interfaces = $hardware->detectNetworkInterfaces();
+    foreach ($interfaces as $name => $info) {
+        $state = $info['state'] ?? 'unknown';
+        $mac = $info['mac'] ?? 'unknown';
+        echo "  {$name}: {$state} ({$mac})\n";
+    }
+
+    echo "\n";
+}
+
+/**
+ * Show version information
+ */
+function showVersion(): void
+{
+    echo "Coyote Linux 4.0.0\n";
+    echo "Built on Alpine Linux\n";
+}
+
+// Main
+$args = array_slice($argv, 1);
+
+if (empty($args)) {
+    showUsage();
+    exit(0);
+}
+
+$command = $args[0];
+$subcommand = $args[1] ?? '';
+
+switch ($command) {
+    case 'config':
+        $configManager = new ConfigManager();
+
+        switch ($subcommand) {
+            case 'load':
+                try {
+                    $configManager->load();
+                    echo "Configuration loaded.\n";
+                } catch (\Exception $e) {
+                    echo "Error loading configuration: " . $e->getMessage() . "\n";
+                    exit(1);
+                }
+                break;
+
+            case 'save':
+                if ($configManager->save()) {
+                    echo "Configuration saved.\n";
+                } else {
+                    echo "Error saving configuration.\n";
+                    exit(1);
+                }
+                break;
+
+            case 'show':
+                $configManager->load();
+                $config = $configManager->getRunningConfig();
+                echo json_encode($config->toArray(), JSON_PRETTY_PRINT) . "\n";
+                break;
+
+            case 'validate':
+                $configManager->load();
+                $errors = $configManager->validate();
+                if (empty($errors)) {
+                    echo "Configuration is valid.\n";
+                } else {
+                    echo "Validation errors:\n";
+                    foreach ($errors as $error) {
+                        echo "  - {$error}\n";
+                    }
+                    exit(1);
+                }
+                break;
+
+            default:
+                echo "Unknown config command: {$subcommand}\n";
+                exit(1);
+        }
+        break;
+
+    case 'addon':
+        $addonManager = new AddonManager();
+
+        switch ($subcommand) {
+            case 'list':
+                $addonManager->discoverAddons();
+                $addons = $addonManager->getAddons();
+                if (empty($addons)) {
+                    echo "No add-ons installed.\n";
+                } else {
+                    echo "Installed add-ons:\n";
+                    foreach ($addons as $addon) {
+                        echo "  - {$addon->getName()} ({$addon->getVersion()})\n";
+                    }
+                }
+                break;
+
+            case 'init-all':
+                $addonManager->discoverAddons();
+                $addonManager->initializeAll();
+                echo "Add-ons initialized.\n";
+                break;
+
+            default:
+                echo "Unknown addon command: {$subcommand}\n";
+                exit(1);
+        }
+        break;
+
+    case 'status':
+        showStatus();
+        break;
+
+    case 'version':
+        showVersion();
+        break;
+
+    case 'help':
+    case '--help':
+    case '-h':
+        showUsage();
+        break;
+
+    default:
+        echo "Unknown command: {$command}\n";
+        showUsage();
+        exit(1);
+}

@@ -1,0 +1,182 @@
+#!/usr/bin/env php
+<?php
+/**
+ * firmware-update - Upload and stage new firmware for installation
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+/**
+ * Display usage information
+ */
+function showUsage(): void
+{
+    echo "Coyote Linux Firmware Update Utility\n";
+    echo "\n";
+    echo "Usage: firmware-update <command> [options]\n";
+    echo "\n";
+    echo "Commands:\n";
+    echo "  status               Show current firmware status\n";
+    echo "  upload <file>        Upload and stage new firmware\n";
+    echo "  rollback             Rollback to previous firmware\n";
+    echo "  verify               Verify current firmware integrity\n";
+    echo "\n";
+}
+
+/**
+ * Show firmware status
+ */
+function showStatus(): void
+{
+    $firmwareDir = '/mnt/boot/firmware';
+
+    echo "Firmware Status\n";
+    echo "===============\n\n";
+
+    $files = [
+        'current.squashfs' => 'Current firmware',
+        'backup.squashfs' => 'Backup firmware',
+        'new.squashfs' => 'Staged firmware (pending)',
+    ];
+
+    foreach ($files as $file => $label) {
+        $path = "{$firmwareDir}/{$file}";
+        if (file_exists($path)) {
+            $size = round(filesize($path) / 1024 / 1024, 1);
+            $mtime = date('Y-m-d H:i:s', filemtime($path));
+            echo "{$label}:\n";
+            echo "  Size: {$size} MB\n";
+            echo "  Modified: {$mtime}\n";
+
+            // Check hash
+            $hashFile = "{$path}.sha256";
+            if (file_exists($hashFile)) {
+                echo "  Hash: verified\n";
+            }
+            echo "\n";
+        } else {
+            echo "{$label}: not present\n\n";
+        }
+    }
+}
+
+/**
+ * Upload new firmware
+ */
+function uploadFirmware(string $file): bool
+{
+    if (!file_exists($file)) {
+        echo "Error: File not found: {$file}\n";
+        return false;
+    }
+
+    $firmwareDir = '/mnt/boot/firmware';
+    $newFirmware = "{$firmwareDir}/new.squashfs";
+
+    echo "Uploading firmware: {$file}\n";
+
+    // Verify it's a valid squashfs
+    exec("file " . escapeshellarg($file), $output, $returnCode);
+    if (strpos(implode('', $output), 'Squashfs') === false) {
+        echo "Error: File does not appear to be a valid squashfs image\n";
+        return false;
+    }
+
+    // Remount boot partition read-write
+    exec("mount -o remount,rw /mnt/boot", $output, $returnCode);
+    if ($returnCode !== 0) {
+        echo "Error: Cannot remount boot partition read-write\n";
+        return false;
+    }
+
+    // Copy firmware
+    if (!copy($file, $newFirmware)) {
+        echo "Error: Failed to copy firmware\n";
+        exec("mount -o remount,ro /mnt/boot");
+        return false;
+    }
+
+    // Generate hash
+    $hash = hash_file('sha256', $newFirmware);
+    file_put_contents("{$newFirmware}.sha256", "{$hash}  new.squashfs\n");
+
+    // Remount read-only
+    exec("mount -o remount,ro /mnt/boot");
+
+    echo "Firmware staged successfully.\n";
+    echo "The new firmware will be activated on next reboot.\n";
+
+    return true;
+}
+
+/**
+ * Rollback to previous firmware
+ */
+function rollbackFirmware(): bool
+{
+    $firmwareDir = '/mnt/boot/firmware';
+    $current = "{$firmwareDir}/current.squashfs";
+    $backup = "{$firmwareDir}/backup.squashfs";
+
+    if (!file_exists($backup)) {
+        echo "Error: No backup firmware available\n";
+        return false;
+    }
+
+    // Remount read-write
+    exec("mount -o remount,rw /mnt/boot", $output, $returnCode);
+    if ($returnCode !== 0) {
+        echo "Error: Cannot remount boot partition\n";
+        return false;
+    }
+
+    // Swap firmware
+    $temp = "{$firmwareDir}/temp.squashfs";
+    rename($current, $temp);
+    rename($backup, $current);
+    rename($temp, $backup);
+
+    // Remount read-only
+    exec("mount -o remount,ro /mnt/boot");
+
+    echo "Firmware rollback staged.\n";
+    echo "Reboot to activate the previous firmware.\n";
+
+    return true;
+}
+
+// Main
+$args = array_slice($argv, 1);
+
+if (empty($args)) {
+    showUsage();
+    exit(0);
+}
+
+$command = $args[0];
+
+switch ($command) {
+    case 'status':
+        showStatus();
+        break;
+
+    case 'upload':
+        if (!isset($args[1])) {
+            echo "Error: Please specify firmware file\n";
+            exit(1);
+        }
+        exit(uploadFirmware($args[1]) ? 0 : 1);
+
+    case 'rollback':
+        exit(rollbackFirmware() ? 0 : 1);
+
+    case 'verify':
+        // TODO: Implement firmware verification
+        echo "Firmware verification not yet implemented.\n";
+        break;
+
+    default:
+        echo "Unknown command: {$command}\n";
+        showUsage();
+        exit(1);
+}

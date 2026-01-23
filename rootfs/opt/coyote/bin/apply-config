@@ -1,0 +1,115 @@
+#!/usr/bin/env php
+<?php
+/**
+ * apply-config - Apply system configuration
+ *
+ * This script reads the running configuration and applies it to the system.
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+use Coyote\Config\ConfigManager;
+use Coyote\System\Network;
+use Coyote\System\Services;
+use Coyote\Addon\AddonManager;
+
+/**
+ * Apply system configuration
+ */
+function applyConfig(): bool
+{
+    $configManager = new ConfigManager();
+    $network = new Network();
+    $services = new Services();
+    $addonManager = new AddonManager();
+
+    // Load configuration
+    try {
+        $runningConfig = $configManager->load();
+    } catch (\Exception $e) {
+        echo "Error loading configuration: " . $e->getMessage() . "\n";
+        return false;
+    }
+
+    $config = $runningConfig->toArray();
+    $errors = [];
+
+    // Apply hostname
+    if (isset($config['system']['hostname'])) {
+        $hostname = $config['system']['hostname'];
+        if (file_put_contents('/etc/hostname', $hostname . "\n") === false) {
+            $errors[] = "Failed to set hostname";
+        }
+        exec("hostname " . escapeshellarg($hostname));
+        echo "Hostname set to: {$hostname}\n";
+    }
+
+    // Apply timezone
+    if (isset($config['system']['timezone'])) {
+        $tz = $config['system']['timezone'];
+        $tzFile = "/usr/share/zoneinfo/{$tz}";
+        if (file_exists($tzFile)) {
+            @unlink('/etc/localtime');
+            symlink($tzFile, '/etc/localtime');
+            echo "Timezone set to: {$tz}\n";
+        }
+    }
+
+    // Apply network configuration
+    if (isset($config['network']['interfaces'])) {
+        foreach ($config['network']['interfaces'] as $name => $ifaceConfig) {
+            echo "Configuring interface: {$name}\n";
+            if (!$network->configureInterface($name, $ifaceConfig)) {
+                $errors[] = "Failed to configure interface: {$name}";
+            }
+        }
+    }
+
+    // Apply routes
+    if (isset($config['network']['routes'])) {
+        foreach ($config['network']['routes'] as $route) {
+            if (!$network->addRoute($route)) {
+                $dest = $route['destination'] ?? 'default';
+                $errors[] = "Failed to add route: {$dest}";
+            }
+        }
+    }
+
+    // Enable IP forwarding if needed
+    if (($config['network']['forwarding']['ipv4'] ?? false) ||
+        ($config['network']['forwarding']['ipv6'] ?? false)) {
+        $network->enableForwarding(
+            $config['network']['forwarding']['ipv4'] ?? false,
+            $config['network']['forwarding']['ipv6'] ?? false
+        );
+        echo "IP forwarding enabled\n";
+    }
+
+    // Apply add-on configurations
+    $addonManager->discoverAddons();
+    foreach ($addonManager->getAddons() as $addon) {
+        $addonId = $addon->getId();
+        if (isset($config['addons'][$addonId])) {
+            echo "Applying configuration for add-on: {$addon->getName()}\n";
+            if (!$addon->applyConfig($config['addons'][$addonId])) {
+                $errors[] = "Failed to apply configuration for add-on: {$addonId}";
+            }
+        }
+    }
+
+    // Report results
+    if (!empty($errors)) {
+        echo "\nConfiguration applied with errors:\n";
+        foreach ($errors as $error) {
+            echo "  - {$error}\n";
+        }
+        return false;
+    }
+
+    echo "\nConfiguration applied successfully.\n";
+    return true;
+}
+
+// Main
+$success = applyConfig();
+exit($success ? 0 : 1);

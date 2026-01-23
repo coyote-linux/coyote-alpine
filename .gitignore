@@ -402,6 +402,9 @@ apk-build/cpiso.sh
 # Coyote Linux specific
 # ===================
 
+# Don't ignore Coyote bin directory
+!rootfs/opt/coyote/bin/
+
 # Build outputs
 output/
 *.squashfs

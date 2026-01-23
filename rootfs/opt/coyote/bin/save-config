@@ -1,0 +1,44 @@
+#!/usr/bin/env php
+<?php
+/**
+ * save-config - Save running configuration to persistent storage
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+use Coyote\Config\ConfigManager;
+
+$configManager = new ConfigManager();
+
+// Load current running config
+try {
+    $configManager->load();
+} catch (\Exception $e) {
+    echo "Error: Cannot load running configuration: " . $e->getMessage() . "\n";
+    exit(1);
+}
+
+// Validate before saving
+$errors = $configManager->validate();
+if (!empty($errors)) {
+    echo "Configuration validation failed:\n";
+    foreach ($errors as $error) {
+        echo "  - {$error}\n";
+    }
+    exit(1);
+}
+
+// Create backup before saving
+$backupName = 'pre-save-' . date('Y-m-d-His');
+if ($configManager->backup($backupName)) {
+    echo "Backup created: {$backupName}\n";
+}
+
+// Save configuration
+if ($configManager->save()) {
+    echo "Configuration saved to persistent storage.\n";
+    exit(0);
+} else {
+    echo "Error: Failed to save configuration.\n";
+    exit(1);
+}
