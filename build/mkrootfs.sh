@@ -201,6 +201,58 @@ install_packages() {
 }
 
 #
+# Create busybox symlinks that --no-scripts skipped
+#
+create_busybox_symlinks() {
+    echo "Creating busybox symlinks..."
+
+    local busybox="${ROOTFS_DIR}/bin/busybox"
+    if [ ! -x "$busybox" ]; then
+        echo "Warning: busybox not found, skipping symlinks"
+        return
+    fi
+
+    # Get list of applets from busybox itself
+    # Run busybox --list to get all supported applets
+    local applets
+    applets=$("$busybox" --list 2>/dev/null) || {
+        echo "Warning: Could not get busybox applet list"
+        # Fallback to essential applets
+        applets="[ [[ ar ash awk base64 basename cat chgrp chmod chown chroot clear cmp cp cut date dd df dirname dmesg du echo ed egrep env expr false fgrep find free grep gunzip gzip head hostname id install kill killall less ln ls md5sum mkdir mknod mktemp more mount mv nproc od passwd ping ping6 printf ps pwd readlink realpath rm rmdir sed seq sh sha256sum sha512sum sleep sort stat strings stty su sync tail tar tee test time touch tr true truncate tty uname uniq unlink usleep vi wc wget which xargs yes zcat"
+    }
+
+    # Create /bin symlinks
+    local count=0
+    for applet in $applets; do
+        if [ ! -e "${ROOTFS_DIR}/bin/${applet}" ] && [ ! -e "${ROOTFS_DIR}/sbin/${applet}" ] && [ ! -e "${ROOTFS_DIR}/usr/bin/${applet}" ] && [ ! -e "${ROOTFS_DIR}/usr/sbin/${applet}" ]; then
+            ln -sf busybox "${ROOTFS_DIR}/bin/${applet}"
+            count=$((count + 1))
+        fi
+    done
+
+    # Create essential /sbin symlinks
+    local sbin_applets="init halt poweroff reboot hwclock ifconfig ifup ifdown route sysctl modprobe insmod lsmod rmmod depmod fsck getty sulogin"
+    for applet in $sbin_applets; do
+        if [ ! -e "${ROOTFS_DIR}/sbin/${applet}" ]; then
+            ln -sf /bin/busybox "${ROOTFS_DIR}/sbin/${applet}"
+            count=$((count + 1))
+        fi
+    done
+
+    # Force-create symlinks for busybox-suid commands that don't work in rootless build
+    # These commands (login, su, passwd) normally need setuid but we can't set that up
+    # as non-root. Force symlink to regular busybox - functionality may be limited.
+    local suid_applets="login su passwd"
+    for applet in $suid_applets; do
+        rm -f "${ROOTFS_DIR}/bin/${applet}" 2>/dev/null || true
+        ln -sf busybox "${ROOTFS_DIR}/bin/${applet}"
+        count=$((count + 1))
+    done
+
+    echo "Created $count busybox symlinks"
+}
+
+#
 # Apply Coyote-specific overlay
 #
 apply_coyote_overlay() {
@@ -229,6 +281,37 @@ apply_coyote_overlay() {
     # but having them in the image doesn't hurt)
     # Note: mknod requires root, so we skip this for now
     # The initramfs will mount devtmpfs which provides these
+
+    # Install installer scripts
+    local installer_dir="${SCRIPT_DIR}/../installer"
+    if [ -d "$installer_dir" ]; then
+        echo "Installing installer scripts..."
+        mkdir -p "${ROOTFS_DIR}/usr/bin"
+        cp "${installer_dir}/install.sh" "${ROOTFS_DIR}/usr/bin/installer.sh"
+        cp "${installer_dir}/tty1-handler.sh" "${ROOTFS_DIR}/usr/bin/tty1-handler.sh"
+        chmod +x "${ROOTFS_DIR}/usr/bin/installer.sh"
+        chmod +x "${ROOTFS_DIR}/usr/bin/tty1-handler.sh"
+    fi
+
+    # Create /etc/inittab with tty1-handler for installer mode support
+    cat > "${ROOTFS_DIR}/etc/inittab" << 'INITTAB'
+# /etc/inittab - Coyote Linux
+
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+
+# tty1 uses handler that detects installer mode
+tty1::respawn:/usr/bin/tty1-handler.sh
+tty2::respawn:/sbin/getty 38400 tty2
+tty3::respawn:/sbin/getty 38400 tty3
+
+# Serial console
+ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100
+
+::shutdown:/sbin/openrc shutdown
+::ctrlaltdel:/sbin/reboot
+INITTAB
 
     # Create /etc/hostname
     echo "coyote" > "${ROOTFS_DIR}/etc/hostname"
@@ -296,7 +379,172 @@ cleanup_rootfs() {
     rm -rf "${ROOTFS_DIR}/usr/share/doc"
     rm -rf "${ROOTFS_DIR}/usr/share/info"
 
-    # Calculate size
+    # Remove unnecessary firmware - keep only what's needed for a network appliance
+    # This dramatically reduces image size (from ~900MB to ~100MB)
+    echo "Removing unnecessary firmware..."
+    local fw_dir="${ROOTFS_DIR}/lib/firmware"
+    if [ -d "$fw_dir" ]; then
+        local before_size=$(du -sm "$fw_dir" | cut -f1)
+
+        # GPU firmware - not needed for headless firewall
+        rm -rf "${fw_dir}/amdgpu"
+        rm -rf "${fw_dir}/radeon"
+        rm -rf "${fw_dir}/nvidia"
+        rm -rf "${fw_dir}/i915"
+        rm -rf "${fw_dir}/xe"
+        rm -rf "${fw_dir}/matrox"
+        rm -rf "${fw_dir}/r128"
+
+        # WiFi firmware - typically not needed for wired firewall
+        rm -rf "${fw_dir}/ath9k_htc"
+        rm -rf "${fw_dir}/ath10k"
+        rm -rf "${fw_dir}/ath11k"
+        rm -rf "${fw_dir}/ath12k"
+        rm -rf "${fw_dir}/ath6k"
+        rm -rf "${fw_dir}/iwlwifi"*
+        rm -rf "${fw_dir}/rtlwifi"
+        rm -rf "${fw_dir}/rtw88"
+        rm -rf "${fw_dir}/rtw89"
+        rm -rf "${fw_dir}/brcm"
+        rm -rf "${fw_dir}/mwlwifi"
+        rm -rf "${fw_dir}/mwl8k"
+        rm -rf "${fw_dir}/mrvl"
+        rm -rf "${fw_dir}/libertas"
+        rm -rf "${fw_dir}/ti-connectivity"
+        rm -rf "${fw_dir}/mediatek"
+        rm -rf "${fw_dir}/qca"
+        rm -rf "${fw_dir}/ar3k"
+        rm -rf "${fw_dir}/rsi"
+        rm -rf "${fw_dir}/wfx"
+        rm -rf "${fw_dir}/cypress"
+        rm -rf "${fw_dir}/nxp"
+        rm -rf "${fw_dir}/airoha"
+
+        # Bluetooth firmware - not needed
+        rm -rf "${fw_dir}/intel/ibt-"*
+        rm -rf "${fw_dir}/rtl_bt"
+        rm -rf "${fw_dir}/qcom"
+
+        # Sound/media firmware - not needed
+        rm -rf "${fw_dir}/yamaha"
+        rm -rf "${fw_dir}/korg"
+        rm -rf "${fw_dir}/ess"
+        rm -rf "${fw_dir}/sb16"
+        rm -rf "${fw_dir}/dsp56k"
+        rm -rf "${fw_dir}/cpia2"
+        rm -rf "${fw_dir}/go7007"
+        rm -rf "${fw_dir}/s5p-mfc"
+        rm -rf "${fw_dir}/av7110"
+        rm -rf "${fw_dir}/ttusb-budget"
+        rm -rf "${fw_dir}/vicam"
+        rm -rf "${fw_dir}/dabusb"
+        rm -rf "${fw_dir}/v4l-"*
+
+        # Mobile/embedded platform firmware - not needed for x86 firewall
+        rm -rf "${fw_dir}/qcom"
+        rm -rf "${fw_dir}/arm"
+        rm -rf "${fw_dir}/rockchip"
+        rm -rf "${fw_dir}/meson"
+        rm -rf "${fw_dir}/amlogic"
+        rm -rf "${fw_dir}/imx"
+        rm -rf "${fw_dir}/amphion"
+        rm -rf "${fw_dir}/cadence"
+        rm -rf "${fw_dir}/cnm"
+        rm -rf "${fw_dir}/powervr"
+        rm -rf "${fw_dir}/cirrus"
+        rm -rf "${fw_dir}/dpaa2"
+        rm -rf "${fw_dir}/ti"
+        rm -rf "${fw_dir}/ti-keystone"
+
+        # Other unnecessary firmware
+        rm -rf "${fw_dir}/amd-ucode"  # CPU microcode loaded by bootloader
+        rm -rf "${fw_dir}/intel-ucode"  # CPU microcode loaded by bootloader
+        rm -rf "${fw_dir}/amdtee"
+        rm -rf "${fw_dir}/amdnpu"
+        rm -rf "${fw_dir}/cis"
+        rm -rf "${fw_dir}/ositech"
+        rm -rf "${fw_dir}/yam"
+        rm -rf "${fw_dir}/3com"
+        rm -rf "${fw_dir}/adaptec"
+        rm -rf "${fw_dir}/advansys"
+        rm -rf "${fw_dir}/atusb"
+        rm -rf "${fw_dir}/keyspan"*
+        rm -rf "${fw_dir}/edgeport"
+        rm -rf "${fw_dir}/emi26"
+        rm -rf "${fw_dir}/emi62"
+        rm -rf "${fw_dir}/kaweth"
+        rm -rf "${fw_dir}/moxa"
+        rm -rf "${fw_dir}/microchip"
+        rm -rf "${fw_dir}/ueagle-atm"
+        rm -rf "${fw_dir}/sun"
+        rm -rf "${fw_dir}/inside-secure"
+
+        # Large unnecessary driver firmware
+        rm -rf "${fw_dir}/liquidio"
+        rm -rf "${fw_dir}/netronome"
+        rm -rf "${fw_dir}/mellanox"
+        rm -rf "${fw_dir}/qed"
+        rm -rf "${fw_dir}/myricom"
+        rm -rf "${fw_dir}/cxgb3"
+        rm -rf "${fw_dir}/cxgb4"
+        rm -rf "${fw_dir}/bnx2x"  # Keep bnx2 but remove bnx2x (10GbE)
+
+        local after_size=$(du -sm "$fw_dir" | cut -f1)
+        echo "  Firmware reduced: ${before_size}MB -> ${after_size}MB"
+    fi
+
+    # Remove kernel source/build files if present
+    rm -rf "${ROOTFS_DIR}/usr/src"
+
+    # Remove unnecessary kernel modules (keep networking, storage, filesystems)
+    echo "Cleaning up kernel modules..."
+    local mod_dir="${ROOTFS_DIR}/lib/modules"
+    if [ -d "$mod_dir" ]; then
+        local kver=$(ls "$mod_dir" | head -1)
+        if [ -n "$kver" ] && [ -d "${mod_dir}/${kver}/kernel" ]; then
+            local km="${mod_dir}/${kver}/kernel"
+            local before_size=$(du -sm "$mod_dir" | cut -f1)
+
+            # Remove sound modules
+            rm -rf "${km}/sound"
+
+            # Remove GPU/DRM modules (keep basic framebuffer)
+            rm -rf "${km}/drivers/gpu/drm/amd"
+            rm -rf "${km}/drivers/gpu/drm/nouveau"
+            rm -rf "${km}/drivers/gpu/drm/radeon"
+            rm -rf "${km}/drivers/gpu/drm/i915"
+            rm -rf "${km}/drivers/gpu/drm/xe"
+
+            # Remove media/video capture modules
+            rm -rf "${km}/drivers/media"
+
+            # Remove staging drivers
+            rm -rf "${km}/drivers/staging"
+
+            # Remove wireless modules
+            rm -rf "${km}/drivers/net/wireless"
+            rm -rf "${km}/net/wireless"
+            rm -rf "${km}/net/mac80211"
+
+            # Remove Bluetooth
+            rm -rf "${km}/drivers/bluetooth"
+            rm -rf "${km}/net/bluetooth"
+
+            # Remove IIO (industrial I/O)
+            rm -rf "${km}/drivers/iio"
+
+            # Remove misc unnecessary modules
+            rm -rf "${km}/drivers/isdn"
+            rm -rf "${km}/drivers/infiniband"
+            rm -rf "${km}/drivers/thunderbolt"
+            rm -rf "${km}/drivers/android"
+
+            local after_size=$(du -sm "$mod_dir" | cut -f1)
+            echo "  Modules reduced: ${before_size}MB -> ${after_size}MB"
+        fi
+    fi
+
+    # Calculate final size
     local size=$(du -sh "$ROOTFS_DIR" | cut -f1)
     echo "Rootfs size: $size"
 }
@@ -315,6 +563,7 @@ main() {
     setup_alpine_keys
     init_rootfs
     install_packages
+    create_busybox_symlinks
     apply_coyote_overlay
     cleanup_rootfs
 

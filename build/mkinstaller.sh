@@ -28,7 +28,8 @@ for tool in parted mformat mcopy mmd syslinux; do
 done
 
 INSTALLER_IMG="${BUILD_DIR}/coyote-installer.img"
-INSTALLER_SIZE="512M"
+# Size must accommodate: kernel (~10MB) + initramfs (~11MB) + firmware (~220MB) + syslinux
+INSTALLER_SIZE="300M"
 PARTITION_START=1048576      # 1MiB in bytes
 PARTITION_START_SECTORS=2048 # 1MiB in 512-byte sectors
 
@@ -138,13 +139,13 @@ LABEL install
     MENU LABEL Install Coyote Linux
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND quiet installer
+    APPEND console=ttyS0,115200 console=tty0 installer
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND quiet rescue
+    APPEND console=ttyS0,115200 console=tty0 rescue
 EOF
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${BUILD_DIR}/syslinux.cfg" ::/boot/syslinux/
 rm -f "${BUILD_DIR}/syslinux.cfg"

@@ -141,7 +141,7 @@ build_initramfs() {
     chmod +x "${INITRAMFS_BUILD}/bin/busybox"
 
     # Create busybox symlinks
-    local applets="sh ash basename cat cp dd df dirname dmesg echo env find grep gzip gunzip kill ln ls mkdir mknod modprobe mount mv ping ps pwd rm rmdir sed sh sleep switch_root sync tar touch umount uname vi blkid"
+    local applets="sh ash basename cat chmod chown cp cut dd df dirname dmesg echo env expr find grep gzip gunzip head kill ln ls mkdir mknod modprobe mount mv ping ps pwd rm rmdir sed sh sleep sort switch_root sync tail tar touch tr umount uname vi wc xargs blkid"
     for applet in $applets; do
         ln -sf busybox "${INITRAMFS_BUILD}/bin/${applet}"
     done
@@ -176,7 +176,8 @@ build_initramfs() {
             mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers"
 
             # Copy essential modules for VMware/QEMU boot
-            local module_dirs="ata scsi block virtio fs/squashfs fs/ext4 fs/fat fs/nls"
+            # Include: storage (ata, scsi, block, virtio), cdrom, message (mpt drivers)
+            local module_dirs="ata scsi block virtio cdrom"
             for mdir in $module_dirs; do
                 src="${CACHE_DIR}/modules/${kver}/kernel/drivers/${mdir}"
                 if [ -d "$src" ]; then
@@ -185,12 +186,22 @@ build_initramfs() {
                 fi
             done
 
-            # Copy squashfs module specifically (it's under fs/)
-            src="${CACHE_DIR}/modules/${kver}/kernel/fs/squashfs"
+            # Copy MPT Fusion drivers (used by VMware)
+            src="${CACHE_DIR}/modules/${kver}/kernel/drivers/message/fusion"
             if [ -d "$src" ]; then
-                mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/squashfs"
-                cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/squashfs/" 2>/dev/null || true
+                mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/message/fusion"
+                cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/message/fusion/" 2>/dev/null || true
             fi
+
+            # Copy filesystem modules (squashfs, isofs for CD-ROM, fat, ext4)
+            local fs_modules="squashfs isofs fat ext4 nls"
+            for fsmod in $fs_modules; do
+                src="${CACHE_DIR}/modules/${kver}/kernel/fs/${fsmod}"
+                if [ -d "$src" ]; then
+                    mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}"
+                    cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}/" 2>/dev/null || true
+                fi
+            done
 
             # Copy modules.dep and related files
             for f in modules.dep modules.alias modules.symbols modules.builtin; do

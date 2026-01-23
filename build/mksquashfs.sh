@@ -26,8 +26,11 @@ echo "Output: $OUTPUT_FILE"
 rm -f "$OUTPUT_FILE"
 
 # Create squashfs image
+# -all-root: Make all files owned by root:root (UID 0, GID 0)
+#            This is needed since we build as non-root user
 # shellcheck disable=SC2086
 mksquashfs "$ROOTFS_DIR" "$OUTPUT_FILE" $SQUASHFS_OPTS \
+    -all-root \
     -e '.git' \
     -e '.gitignore' \
     -e '*.md' \

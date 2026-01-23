@@ -1,257 +1,424 @@
 #!/bin/sh
 #
-# Coyote Linux Installer - Main installation script
+# Coyote Linux Installer
 #
-
-set -e
-
-# Configuration
-INSTALLER_MEDIA=""
-TARGET_DISK=""
-FIRMWARE_FILE=""
+# This script guides the user through installing Coyote Linux to a target disk.
+#
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
 NC='\033[0m'
 
-log() {
-    echo -e "${GREEN}[INSTALL]${NC} $1"
+# Installation paths
+BOOT_MEDIA="${BOOT_MEDIA:-/mnt/boot}"
+FIRMWARE_SRC="${BOOT_MEDIA}/firmware/current.squashfs"
+
+# Clear screen and show header
+clear_screen() {
+    printf '\033[2J\033[H'
 }
 
-warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+print_header() {
+    clear_screen
+    printf "${CYAN}${BOLD}"
+    printf "============================================================\n"
+    printf "         Coyote Linux 4 - Installation Wizard\n"
+    printf "============================================================${NC}\n\n"
 }
 
-error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+print_error() {
+    printf "${RED}Error: %s${NC}\n" "$1"
 }
 
-# Detect available disks
-detect_disks() {
-    log "Detecting available disks..."
+print_success() {
+    printf "${GREEN}%s${NC}\n" "$1"
+}
 
-    for disk in /sys/block/sd* /sys/block/nvme* /sys/block/vd*; do
-        [ -d "$disk" ] || continue
+print_warn() {
+    printf "${YELLOW}%s${NC}\n" "$1"
+}
 
-        name=$(basename "$disk")
+# Get list of available disks (excluding the boot media)
+get_available_disks() {
+    local boot_disk=""
 
-        # Skip the installer USB (check for COYOTE_INSTALLER marker)
-        mount -o ro "/dev/${name}1" /mnt 2>/dev/null || continue
-        if [ -f /mnt/coyote.marker ] && grep -q "COYOTE_INSTALLER" /mnt/coyote.marker 2>/dev/null; then
-            INSTALLER_MEDIA="/dev/${name}"
-            log "Installer media detected: ${INSTALLER_MEDIA}"
-            FIRMWARE_FILE="/mnt/firmware/current.squashfs"
-            # Keep mounted for firmware access
-            continue
-        fi
-        umount /mnt 2>/dev/null
+    # Find boot media's parent disk
+    if [ -n "$BOOT_MEDIA_DEV" ]; then
+        boot_disk=$(echo "$BOOT_MEDIA_DEV" | sed 's/[0-9]*$//')
+    fi
+
+    # List block devices that are disks (not partitions, not CD-ROMs)
+    for disk in /dev/sd? /dev/nvme?n? /dev/vd?; do
+        [ -b "$disk" ] || continue
+
+        # Skip the boot media disk
+        [ "$disk" = "$boot_disk" ] && continue
+
+        # Skip if it's the CD-ROM
+        case "$disk" in
+            /dev/sr*) continue ;;
+        esac
 
         # Get disk size
-        size_sectors=$(cat "/sys/block/${name}/size")
-        size_gb=$((size_sectors * 512 / 1024 / 1024 / 1024))
-
-        # Get model if available
-        model=""
-        [ -f "/sys/block/${name}/device/model" ] && model=$(cat "/sys/block/${name}/device/model" | tr -d ' ')
-
-        echo "  /dev/${name} - ${size_gb}GB ${model}"
+        local size_sectors=$(cat /sys/block/$(basename $disk)/size 2>/dev/null)
+        if [ -n "$size_sectors" ] && [ "$size_sectors" -gt 0 ]; then
+            local size_gb=$((size_sectors * 512 / 1024 / 1024 / 1024))
+            printf "%s %dGB\n" "$disk" "$size_gb"
+        fi
     done
 }
 
-# Partition the target disk
-partition_disk() {
-    local disk="$1"
+# Select target disk
+select_disk() {
+    print_header
+    printf "Select the target disk for installation:\n\n"
 
-    log "Partitioning ${disk}..."
+    local disks=$(get_available_disks)
 
-    # Create GPT partition table
-    parted -s "$disk" mklabel gpt
+    if [ -z "$disks" ]; then
+        print_error "No suitable disks found for installation."
+        printf "\nMake sure you have a disk attached (other than the installer media).\n"
+        printf "\nPress Enter to return..."
+        read dummy
+        return 1
+    fi
 
-    # Partition 1: Boot/Firmware (512MB)
-    parted -s "$disk" mkpart primary fat32 1MiB 513MiB
-    parted -s "$disk" set 1 boot on
+    local i=1
+    echo "$disks" > /tmp/available_disks
 
-    # Partition 2: Config (64MB)
-    parted -s "$disk" mkpart primary ext4 513MiB 577MiB
+    printf "  ${BOLD}#  Device          Size${NC}\n"
+    printf "  -------------------------\n"
 
-    # Wait for partition devices
-    sleep 2
+    while IFS=' ' read -r disk size; do
+        printf "  %d) %-14s %s\n" "$i" "$disk" "$size"
+        i=$((i + 1))
+    done < /tmp/available_disks
 
-    # Format partitions
-    log "Formatting partitions..."
+    printf "\n  0) Cancel installation\n"
+    printf "\n"
 
-    case "$disk" in
-        /dev/nvme*)
-            mkfs.vfat -F 32 -n COYOTE "${disk}p1"
-            mkfs.ext4 -L CONFIG "${disk}p2"
-            ;;
-        *)
-            mkfs.vfat -F 32 -n COYOTE "${disk}1"
-            mkfs.ext4 -L CONFIG "${disk}2"
-            ;;
-    esac
+    local count=$(wc -l < /tmp/available_disks)
+
+    while true; do
+        printf "Enter selection [1-%d]: " "$count"
+        read selection
+
+        if [ "$selection" = "0" ]; then
+            return 1
+        fi
+
+        if [ "$selection" -ge 1 ] 2>/dev/null && [ "$selection" -le "$count" ]; then
+            TARGET_DISK=$(sed -n "${selection}p" /tmp/available_disks | cut -d' ' -f1)
+            TARGET_SIZE=$(sed -n "${selection}p" /tmp/available_disks | cut -d' ' -f2)
+            return 0
+        fi
+
+        print_error "Invalid selection"
+    done
 }
 
-# Install the system
-install_system() {
-    local disk="$1"
+# Confirm installation
+confirm_install() {
+    print_header
+    printf "${YELLOW}${BOLD}WARNING: All data on ${TARGET_DISK} will be destroyed!${NC}\n\n"
+    printf "Target disk: ${BOLD}${TARGET_DISK}${NC} (${TARGET_SIZE})\n\n"
+    printf "The installer will:\n"
+    printf "  1. Create a new partition table\n"
+    printf "  2. Create a boot partition (2GB, FAT32)\n"
+    printf "  3. Create a config partition (remaining space, ext4)\n"
+    printf "  4. Install the Coyote Linux bootloader and firmware\n"
+    printf "\n"
 
-    log "Installing Coyote Linux to ${disk}..."
+    printf "Type ${BOLD}YES${NC} to continue, or anything else to cancel: "
+    read confirm
 
-    # Determine partition names
-    local boot_part config_part
-    case "$disk" in
+    [ "$confirm" = "YES" ]
+}
+
+# Partition the disk
+partition_disk() {
+    print_header
+    printf "Partitioning ${TARGET_DISK}...\n\n"
+
+    # Unmount any existing partitions
+    umount ${TARGET_DISK}* 2>/dev/null || true
+
+    # Create new partition table
+    printf "  Creating partition table...\n"
+    parted -s "$TARGET_DISK" mklabel msdos || {
+        print_error "Failed to create partition table"
+        return 1
+    }
+
+    # Create boot partition (2GB - needs space for kernel, initramfs, firmware)
+    printf "  Creating boot partition (2GB)...\n"
+    parted -s "$TARGET_DISK" mkpart primary fat32 1MiB 2049MiB || {
+        print_error "Failed to create boot partition"
+        return 1
+    }
+    parted -s "$TARGET_DISK" set 1 boot on
+
+    # Create config partition (rest of disk)
+    printf "  Creating config partition...\n"
+    parted -s "$TARGET_DISK" mkpart primary ext4 2049MiB 100% || {
+        print_error "Failed to create config partition"
+        return 1
+    }
+
+    # Determine partition naming
+    case "$TARGET_DISK" in
         /dev/nvme*)
-            boot_part="${disk}p1"
-            config_part="${disk}p2"
+            BOOT_PART="${TARGET_DISK}p1"
+            CONFIG_PART="${TARGET_DISK}p2"
             ;;
         *)
-            boot_part="${disk}1"
-            config_part="${disk}2"
+            BOOT_PART="${TARGET_DISK}1"
+            CONFIG_PART="${TARGET_DISK}2"
             ;;
     esac
 
-    # Mount target partitions
-    mkdir -p /target/boot /target/config
-    mount "$boot_part" /target/boot
-    mount "$config_part" /target/config
+    # Force kernel to re-read partition table
+    printf "  Re-reading partition table...\n"
+    partprobe "$TARGET_DISK" 2>/dev/null || \
+        blockdev --rereadpt "$TARGET_DISK" 2>/dev/null || \
+        true
 
-    # Copy firmware
-    log "Copying firmware..."
-    mkdir -p /target/boot/firmware
-    cp "$FIRMWARE_FILE" /target/boot/firmware/current.squashfs
-    sha256sum /target/boot/firmware/current.squashfs > /target/boot/firmware/current.squashfs.sha256
+    # Wait for partitions to appear
+    printf "  Waiting for partition devices...\n"
+    local tries=0
+    while [ ! -b "$BOOT_PART" ] && [ $tries -lt 10 ]; do
+        sleep 1
+        tries=$((tries + 1))
+    done
+
+    if [ ! -b "$BOOT_PART" ]; then
+        print_error "Partition device $BOOT_PART did not appear"
+        printf "  Available devices:\n"
+        ls -la ${TARGET_DISK}* 2>/dev/null || true
+        return 1
+    fi
+
+    print_success "  Partitioning complete"
+    return 0
+}
+
+# Format partitions
+format_partitions() {
+    printf "\nFormatting partitions...\n\n"
+
+    # Format boot partition as FAT32
+    printf "  Formatting boot partition (FAT32)...\n"
+    mkfs.vfat -F 32 -n COYOTE "$BOOT_PART" || {
+        print_error "Failed to format boot partition"
+        return 1
+    }
+
+    # Format config partition as ext4
+    printf "  Formatting config partition (ext4)...\n"
+    mkfs.ext4 -L COYOTE_CFG -q "$CONFIG_PART" || {
+        print_error "Failed to format config partition"
+        return 1
+    }
+
+    print_success "  Formatting complete"
+    return 0
+}
+
+# Install bootloader and firmware
+install_system() {
+    printf "\nInstalling Coyote Linux...\n\n"
+
+    local target_boot="/tmp/target_boot"
+    local target_config="/tmp/target_config"
+
+    mkdir -p "$target_boot" "$target_config"
+
+    # Load filesystem modules if needed
+    modprobe -q vfat 2>/dev/null || true
+    modprobe -q fat 2>/dev/null || true
+    modprobe -q nls_cp437 2>/dev/null || true
+    modprobe -q nls_iso8859-1 2>/dev/null || true
+
+    # Mount target partitions
+    printf "  Mounting target partitions...\n"
+    mount -t vfat "$BOOT_PART" "$target_boot" || {
+        print_error "Failed to mount boot partition"
+        return 1
+    }
+    mount -t ext4 "$CONFIG_PART" "$target_config" || {
+        print_error "Failed to mount config partition"
+        umount "$target_boot"
+        return 1
+    }
+
+    # Create directory structure
+    printf "  Creating directory structure...\n"
+    mkdir -p "$target_boot/boot/syslinux"
+    mkdir -p "$target_boot/firmware"
+    mkdir -p "$target_config/system"
 
     # Copy kernel and initramfs
-    log "Copying boot files..."
-    mkdir -p /target/boot/boot
-    cp /mnt/boot/vmlinuz /target/boot/boot/
-    cp /mnt/boot/initramfs.gz /target/boot/boot/
+    printf "  Copying kernel...\n"
+    cp "${BOOT_MEDIA}/boot/vmlinuz" "$target_boot/boot/" || {
+        print_error "Failed to copy kernel"
+        return 1
+    }
+
+    printf "  Copying initramfs...\n"
+    cp "${BOOT_MEDIA}/boot/initramfs.gz" "$target_boot/boot/" || {
+        print_error "Failed to copy initramfs"
+        return 1
+    }
+
+    # Copy firmware
+    printf "  Copying firmware image...\n"
+    cp "$FIRMWARE_SRC" "$target_boot/firmware/current.squashfs" || {
+        print_error "Failed to copy firmware"
+        return 1
+    }
+    if [ -f "${FIRMWARE_SRC}.sha256" ]; then
+        cp "${FIRMWARE_SRC}.sha256" "$target_boot/firmware/current.squashfs.sha256"
+    fi
 
     # Create boot marker
-    echo "COYOTE_BOOT" > /target/boot/coyote.marker
+    echo "COYOTE_BOOT" > "$target_boot/coyote.marker"
 
-    # Install bootloader
-    log "Installing bootloader..."
-    install_bootloader "$disk" "$boot_part"
+    # Install syslinux files
+    printf "  Installing bootloader...\n"
 
-    # Create default configuration
-    log "Creating default configuration..."
-    cat > /target/config/system.json << 'EOF'
+    # Copy syslinux modules from isolinux on install media
+    cp "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" "$target_boot/boot/syslinux/" 2>/dev/null || true
+    cp "${BOOT_MEDIA}/boot/isolinux/menu.c32" "$target_boot/boot/syslinux/" 2>/dev/null || true
+    cp "${BOOT_MEDIA}/boot/isolinux/libutil.c32" "$target_boot/boot/syslinux/" 2>/dev/null || true
+    cp "${BOOT_MEDIA}/boot/isolinux/libcom32.c32" "$target_boot/boot/syslinux/" 2>/dev/null || true
+
+    # Create syslinux.cfg
+    cat > "$target_boot/boot/syslinux/syslinux.cfg" << 'SYSLINUX_CFG'
+DEFAULT menu.c32
+PROMPT 0
+TIMEOUT 30
+
+MENU TITLE Coyote Linux 4
+
+LABEL coyote
+    MENU LABEL Coyote Linux
+    MENU DEFAULT
+    LINUX /boot/vmlinuz
+    INITRD /boot/initramfs.gz
+    APPEND console=ttyS0,115200 console=tty0 quiet
+
+LABEL rescue
+    MENU LABEL Rescue Mode
+    LINUX /boot/vmlinuz
+    INITRD /boot/initramfs.gz
+    APPEND console=ttyS0,115200 console=tty0 rescue
+SYSLINUX_CFG
+
+    # Unmount boot partition for syslinux install
+    umount "$target_boot"
+
+    # Install syslinux bootloader
+    syslinux --install "$BOOT_PART" || {
+        print_error "Failed to install syslinux"
+        return 1
+    }
+
+    # Install MBR
+    dd if=/usr/share/syslinux/mbr.bin of="$TARGET_DISK" bs=440 count=1 conv=notrunc 2>/dev/null || \
+    dd if=/usr/lib/syslinux/bios/mbr.bin of="$TARGET_DISK" bs=440 count=1 conv=notrunc 2>/dev/null || \
+        print_warn "  Warning: Could not install MBR"
+
+    # Create default config
+    printf "  Creating default configuration...\n"
+    cat > "$target_config/system/config.json" << 'CONFIG_JSON'
 {
     "system": {
         "hostname": "coyote",
         "timezone": "UTC"
     },
     "network": {
-        "interfaces": {},
-        "routes": []
-    },
-    "services": {},
-    "addons": {}
+        "interfaces": []
+    }
 }
-EOF
+CONFIG_JSON
 
     # Cleanup
-    umount /target/config
-    umount /target/boot
+    umount "$target_config" 2>/dev/null
 
-    log "Installation complete!"
-}
-
-# Install bootloader (syslinux)
-install_bootloader() {
-    local disk="$1"
-    local boot_part="$2"
-
-    mkdir -p /target/boot/boot/syslinux
-    cp /usr/share/syslinux/ldlinux.c32 /target/boot/boot/syslinux/
-    cp /usr/share/syslinux/menu.c32 /target/boot/boot/syslinux/
-    cp /usr/share/syslinux/libutil.c32 /target/boot/boot/syslinux/
-
-    cat > /target/boot/boot/syslinux/syslinux.cfg << 'EOF'
-DEFAULT menu.c32
-PROMPT 0
-TIMEOUT 30
-
-MENU TITLE Coyote Linux
-
-LABEL coyote
-    MENU LABEL Coyote Linux
-    LINUX /boot/vmlinuz
-    INITRD /boot/initramfs.gz
-    APPEND quiet
-
-LABEL recovery
-    MENU LABEL Recovery Mode
-    LINUX /boot/vmlinuz
-    INITRD /boot/initramfs.gz
-    APPEND quiet recovery
-EOF
-
-    syslinux --install "$boot_part"
+    print_success "  Installation complete!"
+    return 0
 }
 
 # Main installation flow
 main() {
-    clear
-    echo ""
-    echo "========================================"
-    echo "   Coyote Linux 4 - Installation"
-    echo "========================================"
-    echo ""
+    print_header
+    printf "Welcome to the Coyote Linux installer.\n\n"
+    printf "This wizard will guide you through installing Coyote Linux\n"
+    printf "to your system.\n\n"
+    printf "Press ${BOLD}Enter${NC} to continue or ${BOLD}Ctrl+C${NC} to cancel..."
+    read dummy
 
-    # Detect disks
-    echo "Available disks:"
-    detect_disks
-    echo ""
-
-    if [ -z "$FIRMWARE_FILE" ] || [ ! -f "$FIRMWARE_FILE" ]; then
-        error "Firmware not found on installer media!"
-        exit 1
+    # Check for required files
+    if [ ! -f "$FIRMWARE_SRC" ]; then
+        print_error "Firmware not found at $FIRMWARE_SRC"
+        print_error "Boot media may not be mounted correctly"
+        printf "\nBOOT_MEDIA=$BOOT_MEDIA\n"
+        printf "\nPress Enter to drop to shell for debugging..."
+        read dummy
+        exec /bin/sh
     fi
 
     # Select target disk
-    echo -n "Enter target disk (e.g., /dev/sda): "
-    read TARGET_DISK
-
-    if [ -z "$TARGET_DISK" ] || [ ! -b "$TARGET_DISK" ]; then
-        error "Invalid disk selection"
-        exit 1
+    if ! select_disk; then
+        printf "\nInstallation cancelled.\n"
+        printf "Press Enter for shell or Ctrl+Alt+Del to reboot..."
+        read dummy
+        exec /bin/sh
     fi
 
-    if [ "$TARGET_DISK" = "$INSTALLER_MEDIA" ]; then
-        error "Cannot install to the installer media!"
-        exit 1
-    fi
-
-    echo ""
-    warn "WARNING: All data on ${TARGET_DISK} will be destroyed!"
-    echo -n "Continue? [y/N]: "
-    read confirm
-
-    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-        echo "Installation cancelled."
-        exit 0
+    # Confirm installation
+    if ! confirm_install; then
+        printf "\nInstallation cancelled.\n"
+        printf "Press Enter for shell or Ctrl+Alt+Del to reboot..."
+        read dummy
+        exec /bin/sh
     fi
 
     # Perform installation
-    partition_disk "$TARGET_DISK"
-    install_system "$TARGET_DISK"
+    if ! partition_disk; then
+        printf "\nPress Enter for shell..."
+        read dummy
+        exec /bin/sh
+    fi
 
-    echo ""
-    log "========================================"
-    log "   Installation Complete!"
-    log "========================================"
-    echo ""
-    echo "Remove the installer USB and reboot."
-    echo ""
-    echo -n "Press Enter to reboot..."
+    if ! format_partitions; then
+        printf "\nPress Enter for shell..."
+        read dummy
+        exec /bin/sh
+    fi
+
+    if ! install_system; then
+        printf "\nPress Enter for shell..."
+        read dummy
+        exec /bin/sh
+    fi
+
+    # Done
+    print_header
+    print_success "Installation completed successfully!"
+    printf "\n"
+    printf "Coyote Linux has been installed to ${BOLD}${TARGET_DISK}${NC}\n\n"
+    printf "You can now:\n"
+    printf "  1. Remove the installation media\n"
+    printf "  2. Reboot the system\n"
+    printf "\n"
+    printf "Press ${BOLD}Enter${NC} to reboot..."
     read dummy
 
-    umount /mnt 2>/dev/null
     reboot -f
 }
 
