@@ -9,7 +9,7 @@ CACHE_DIR := ../.cache
 
 SQUASHFS_OPTS := -comp xz -Xdict-size 100%
 
-.PHONY: all clean firmware installer initramfs rootfs distclean help
+.PHONY: all clean firmware installer iso initramfs kernel rootfs distclean help
 
 all: firmware
 
@@ -19,8 +19,10 @@ help:
 	@echo "Targets:"
 	@echo "  rootfs      - Download Alpine and build rootfs"
 	@echo "  firmware    - Build firmware squashfs image (requires rootfs)"
-	@echo "  initramfs   - Build initramfs"
+	@echo "  kernel      - Download Alpine kernel"
+	@echo "  initramfs   - Build initramfs with kernel and busybox"
 	@echo "  installer   - Build USB installer image"
+	@echo "  iso         - Build ISO installer image (for CD/VM boot)"
 	@echo "  clean       - Remove build outputs"
 	@echo "  distclean   - Remove build outputs and cached downloads"
 	@echo ""
@@ -46,20 +48,34 @@ $(BUILD_DIR)/firmware-$(VERSION).squashfs: $(ROOTFS_BUILD)/.stamp
 	sha256sum $@ > $@.sha256
 	@echo "Firmware image created: $@"
 
-# Build the initramfs
-initramfs: $(BUILD_DIR)/initramfs.cpio.gz
+# Build the kernel and initramfs (mkinitramfs.sh creates both)
+kernel: $(BUILD_DIR)/.initramfs-stamp
 
-$(BUILD_DIR)/initramfs.cpio.gz: $(INITRAMFS_DIR)
-	@echo "Building initramfs..."
+initramfs: $(BUILD_DIR)/.initramfs-stamp
+
+$(BUILD_DIR)/.initramfs-stamp: mkinitramfs.sh $(INITRAMFS_DIR)/init $(wildcard $(INITRAMFS_DIR)/init.d/*.sh) $(wildcard $(INITRAMFS_DIR)/recovery/*.sh)
+	@echo "Building kernel and initramfs..."
 	@mkdir -p $(BUILD_DIR)
-	cd $(INITRAMFS_DIR) && find . | cpio -o -H newc | gzip > $(abspath $(BUILD_DIR))/initramfs.cpio.gz
-	@echo "Initramfs created: $@"
+	./mkinitramfs.sh
+	@touch $@
+	@echo "Kernel: $(BUILD_DIR)/vmlinuz"
+	@echo "Initramfs: $(BUILD_DIR)/initramfs.cpio.gz"
+
+# Convenience targets for the actual files
+$(BUILD_DIR)/vmlinuz: $(BUILD_DIR)/.initramfs-stamp
+$(BUILD_DIR)/initramfs.cpio.gz: $(BUILD_DIR)/.initramfs-stamp
 
 # Build the USB installer
-installer: firmware initramfs
+installer: firmware kernel
 	@echo "Building installer image..."
 	./mkinstaller.sh $(BUILD_DIR)
 	@echo "Installer created"
+
+# Build the ISO installer
+iso: firmware kernel
+	@echo "Building ISO image..."
+	./mkiso.sh
+	@echo "ISO created"
 
 # Clean build outputs but keep cache
 clean:
@@ -74,7 +90,7 @@ distclean: clean
 # Development helpers
 .PHONY: test-boot lint shell
 
-test-boot: firmware initramfs
+test-boot: firmware kernel
 	@echo "Testing boot with QEMU..."
 	qemu-system-x86_64 \
 		-kernel $(BUILD_DIR)/vmlinuz \
@@ -88,7 +104,7 @@ lint:
 	shellcheck $(INITRAMFS_DIR)/init || true
 	shellcheck $(INITRAMFS_DIR)/init.d/*.sh || true
 	shellcheck $(INITRAMFS_DIR)/recovery/*.sh || true
-	shellcheck mkrootfs.sh mkinstaller.sh mksquashfs.sh || true
+	shellcheck mkrootfs.sh mkinstaller.sh mksquashfs.sh mkinitramfs.sh mkiso.sh || true
 	@echo "Checking PHP files..."
 	find $(ROOTFS_SRC) -name "*.php" -exec php -l {} \; || true
 
