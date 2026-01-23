@@ -34,14 +34,32 @@ coyote-alpine/
 └── tests/                 # Unit and integration tests
 ```
 
+## Build Prerequisites
+
+### Fedora
+
+```bash
+dnf install mtools syslinux parted squashfs-tools
+```
+
+### Other distributions
+
+- `mtools` - FAT filesystem manipulation without root
+- `syslinux` - Bootloader and MBR installation
+- `parted` - Disk partitioning
+- `squashfs-tools` - Creating squashfs firmware images
+
 ## Building
 
 ```bash
 cd build
 make firmware     # Build firmware squashfs image
-make installer    # Build USB installer image
+make installer    # Build USB installer image (no root required)
 make clean        # Clean build outputs
 ```
+
+The build process does not require root privileges. The installer image is created
+using mtools for FAT filesystem manipulation and syslinux with offset addressing.
 
 ## Boot Sequence
 
