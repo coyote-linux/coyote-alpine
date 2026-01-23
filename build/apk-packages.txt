@@ -16,7 +16,7 @@ less
 # Privilege management
 doas
 
-# PHP runtime
+# PHP runtime (core configuration system)
 php83
 php83-cli
 php83-posix
@@ -24,6 +24,10 @@ php83-xml
 php83-json
 php83-openssl
 php83-session
+
+# Lua runtime (lightweight utilities)
+lua5.4
+lua5.4-cjson
 
 # Networking core
 iproute2
@@ -49,7 +53,8 @@ conntrack-tools
 
 # VPN (coyote-firewall addon)
 strongswan
-strongswan-swanctl
+openvpn
+wireguard-tools
 
 # Load balancer (coyote-loadbalancer addon)
 haproxy
