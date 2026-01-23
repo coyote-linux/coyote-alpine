@@ -1,0 +1,29 @@
+#!/sbin/openrc-run
+#
+# Coyote Linux initialization service
+#
+
+description="Coyote Linux system initialization"
+
+depend() {
+    need localmount
+    before network
+}
+
+start() {
+    ebegin "Initializing Coyote Linux"
+
+    # Load configuration
+    /opt/coyote/bin/coyote-cli config load
+
+    # Initialize add-ons
+    /opt/coyote/bin/coyote-cli addon init-all
+
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping Coyote Linux services"
+    # Cleanup tasks if needed
+    eend 0
+}

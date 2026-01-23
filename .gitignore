@@ -397,3 +397,33 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 apk-build/cpiso.sh
+
+# ===================
+# Coyote Linux specific
+# ===================
+
+# Build outputs
+output/
+*.squashfs
+*.squashfs.sha256
+*.cpio
+*.cpio.gz
+*.img
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# IDE
+.idea/
+*.iml
+
+# PHP
+vendor/
+composer.lock
+
+# Runtime
+*.pid
+*.sock

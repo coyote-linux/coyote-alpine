@@ -1,0 +1,77 @@
+# Coyote Linux 4 - Required APK Packages
+#
+# Core system packages required for the base firmware image
+#
+
+# Base system
+alpine-base
+busybox
+openrc
+
+# Shell and utilities
+bash
+nano
+less
+
+# Privilege management
+doas
+
+# PHP runtime
+php83
+php83-cli
+php83-posix
+php83-xml
+php83-json
+php83-openssl
+php83-session
+
+# Networking core
+iproute2
+iproute2-qos
+iputils
+bridge-utils
+ethtool
+
+# DHCP
+dhcpcd
+
+# DNS and DHCP server
+dnsmasq
+
+# PPP/PPPoE
+ppp
+ppp-pppoe
+
+# Firewall (coyote-firewall addon)
+iptables
+ip6tables
+conntrack-tools
+
+# VPN (coyote-firewall addon)
+strongswan
+strongswan-swanctl
+
+# Load balancer (coyote-loadbalancer addon)
+haproxy
+
+# Web server (coyote-webadmin addon)
+lighttpd
+php83-cgi
+
+# UPnP
+miniupnpd
+
+# Monitoring
+mrtg
+net-snmp
+net-snmp-tools
+
+# System utilities
+logrotate
+ca-certificates
+tzdata
+
+# Filesystem tools
+squashfs-tools
+e2fsprogs
+dosfstools

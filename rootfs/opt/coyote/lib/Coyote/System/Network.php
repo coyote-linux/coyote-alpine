@@ -1,0 +1,240 @@
+<?php
+
+namespace Coyote\System;
+
+/**
+ * Network configuration and management.
+ */
+class Network
+{
+    /**
+     * Configure an interface with the given settings.
+     *
+     * @param string $interface Interface name
+     * @param array $config Interface configuration
+     * @return bool True if successful
+     */
+    public function configureInterface(string $interface, array $config): bool
+    {
+        // Bring interface down first
+        $this->setInterfaceState($interface, false);
+
+        // Configure IPv4 if specified
+        if (isset($config['ipv4'])) {
+            $this->configureIPv4($interface, $config['ipv4']);
+        }
+
+        // Configure IPv6 if specified
+        if (isset($config['ipv6'])) {
+            $this->configureIPv6($interface, $config['ipv6']);
+        }
+
+        // Bring interface up
+        $this->setInterfaceState($interface, true);
+
+        return true;
+    }
+
+    /**
+     * Configure IPv4 for an interface.
+     *
+     * @param string $interface Interface name
+     * @param array $config IPv4 configuration
+     * @return bool True if successful
+     */
+    private function configureIPv4(string $interface, array $config): bool
+    {
+        if (isset($config['method']) && $config['method'] === 'dhcp') {
+            // Start DHCP client
+            exec("dhcpcd -b {$interface} 2>&1", $output, $returnCode);
+            return $returnCode === 0;
+        }
+
+        if (isset($config['address']) && isset($config['netmask'])) {
+            $address = $config['address'];
+            $netmask = $config['netmask'];
+
+            // Calculate prefix length from netmask
+            $prefix = $this->netmaskToPrefix($netmask);
+
+            exec("ip addr add {$address}/{$prefix} dev {$interface} 2>&1", $output, $returnCode);
+            return $returnCode === 0;
+        }
+
+        return false;
+    }
+
+    /**
+     * Configure IPv6 for an interface.
+     *
+     * @param string $interface Interface name
+     * @param array $config IPv6 configuration
+     * @return bool True if successful
+     */
+    private function configureIPv6(string $interface, array $config): bool
+    {
+        if (isset($config['method']) && $config['method'] === 'auto') {
+            // Enable SLAAC
+            exec("sysctl -w net.ipv6.conf.{$interface}.autoconf=1 2>&1");
+            exec("sysctl -w net.ipv6.conf.{$interface}.accept_ra=1 2>&1");
+            return true;
+        }
+
+        if (isset($config['address']) && isset($config['prefix'])) {
+            $address = $config['address'];
+            $prefix = $config['prefix'];
+
+            exec("ip -6 addr add {$address}/{$prefix} dev {$interface} 2>&1", $output, $returnCode);
+            return $returnCode === 0;
+        }
+
+        return false;
+    }
+
+    /**
+     * Set interface administrative state.
+     *
+     * @param string $interface Interface name
+     * @param bool $up True to bring up, false to bring down
+     * @return bool True if successful
+     */
+    public function setInterfaceState(string $interface, bool $up): bool
+    {
+        $state = $up ? 'up' : 'down';
+        exec("ip link set {$interface} {$state} 2>&1", $output, $returnCode);
+        return $returnCode === 0;
+    }
+
+    /**
+     * Add a static route.
+     *
+     * @param array $route Route configuration
+     * @return bool True if successful
+     */
+    public function addRoute(array $route): bool
+    {
+        $cmd = 'ip route add';
+
+        $destination = $route['destination'] ?? 'default';
+        $cmd .= " {$destination}";
+
+        if (isset($route['gateway'])) {
+            $cmd .= " via {$route['gateway']}";
+        }
+
+        if (isset($route['interface'])) {
+            $cmd .= " dev {$route['interface']}";
+        }
+
+        if (isset($route['metric'])) {
+            $cmd .= " metric {$route['metric']}";
+        }
+
+        exec($cmd . ' 2>&1', $output, $returnCode);
+        return $returnCode === 0;
+    }
+
+    /**
+     * Remove a route.
+     *
+     * @param array $route Route configuration
+     * @return bool True if successful
+     */
+    public function removeRoute(array $route): bool
+    {
+        $destination = $route['destination'] ?? 'default';
+        exec("ip route del {$destination} 2>&1", $output, $returnCode);
+        return $returnCode === 0;
+    }
+
+    /**
+     * Get current routing table.
+     *
+     * @return array List of routes
+     */
+    public function getRoutes(): array
+    {
+        $routes = [];
+        exec('ip route show 2>&1', $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            return $routes;
+        }
+
+        foreach ($output as $line) {
+            if (preg_match('/^(\S+)\s+(?:via\s+(\S+)\s+)?dev\s+(\S+)/', $line, $m)) {
+                $routes[] = [
+                    'destination' => $m[1],
+                    'gateway' => $m[2] ?? null,
+                    'interface' => $m[3],
+                ];
+            }
+        }
+
+        return $routes;
+    }
+
+    /**
+     * Get current IP addresses for all interfaces.
+     *
+     * @return array Interface addresses indexed by interface name
+     */
+    public function getAddresses(): array
+    {
+        $addresses = [];
+        exec('ip addr show 2>&1', $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            return $addresses;
+        }
+
+        $currentIface = null;
+        foreach ($output as $line) {
+            if (preg_match('/^\d+:\s+(\S+):/', $line, $m)) {
+                $currentIface = $m[1];
+                $addresses[$currentIface] = ['ipv4' => [], 'ipv6' => []];
+            } elseif ($currentIface && preg_match('/inet\s+(\S+)/', $line, $m)) {
+                $addresses[$currentIface]['ipv4'][] = $m[1];
+            } elseif ($currentIface && preg_match('/inet6\s+(\S+)/', $line, $m)) {
+                $addresses[$currentIface]['ipv6'][] = $m[1];
+            }
+        }
+
+        return $addresses;
+    }
+
+    /**
+     * Convert netmask to CIDR prefix length.
+     *
+     * @param string $netmask Dotted decimal netmask
+     * @return int CIDR prefix length
+     */
+    private function netmaskToPrefix(string $netmask): int
+    {
+        return strlen(preg_replace('/0/', '', decbin(ip2long($netmask))));
+    }
+
+    /**
+     * Enable IP forwarding.
+     *
+     * @param bool $ipv4 Enable IPv4 forwarding
+     * @param bool $ipv6 Enable IPv6 forwarding
+     * @return bool True if successful
+     */
+    public function enableForwarding(bool $ipv4 = true, bool $ipv6 = true): bool
+    {
+        $success = true;
+
+        if ($ipv4) {
+            exec('sysctl -w net.ipv4.ip_forward=1 2>&1', $output, $returnCode);
+            $success = $success && ($returnCode === 0);
+        }
+
+        if ($ipv6) {
+            exec('sysctl -w net.ipv6.conf.all.forwarding=1 2>&1', $output, $returnCode);
+            $success = $success && ($returnCode === 0);
+        }
+
+        return $success;
+    }
+}

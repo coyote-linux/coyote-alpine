@@ -1,0 +1,24 @@
+{
+    "system": {
+        "hostname": "coyote",
+        "timezone": "UTC"
+    },
+    "network": {
+        "interfaces": {},
+        "routes": [],
+        "forwarding": {
+            "ipv4": false,
+            "ipv6": false
+        }
+    },
+    "services": {
+        "dhcpd": {
+            "enabled": false
+        },
+        "dns": {
+            "enabled": false,
+            "forwarders": []
+        }
+    },
+    "addons": {}
+}

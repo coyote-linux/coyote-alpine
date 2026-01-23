@@ -1,0 +1,15 @@
+# Coyote Linux 4 System Configuration
+#
+# This file documents the configuration partition layout.
+# The actual configuration is stored in JSON format.
+#
+# Configuration Partition Structure:
+# ----------------------------------
+# /mnt/config/
+# ├── system.json           # Main system configuration
+# ├── webadmin-users.json   # Web admin user credentials
+# └── backups/              # Configuration backups
+#     └── *.json
+#
+# The configuration partition is mounted read-only during normal
+# operation and only briefly mounted read-write when saving changes.

@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# Coyote Linux Installer - Initramfs init
+#
+
+set -e
+
+# Mount basic filesystems
+mount -t proc none /proc
+mount -t sysfs none /sys
+mount -t devtmpfs none /dev
+
+echo ""
+echo "========================================"
+echo "   Coyote Linux 4 - Installer"
+echo "========================================"
+echo ""
+
+# Detect if running in installer or rescue mode
+CMDLINE=$(cat /proc/cmdline)
+case "$CMDLINE" in
+    *rescue*)
+        echo "Starting rescue shell..."
+        exec /bin/sh
+        ;;
+    *)
+        echo "Starting installer..."
+        /install.sh
+        ;;
+esac
