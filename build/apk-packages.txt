@@ -37,6 +37,9 @@ iputils
 bridge-utils
 ethtool
 
+# SSH server
+dropbear
+
 # DHCP
 dhcpcd
 
@@ -71,6 +74,7 @@ miniupnpd
 mrtg
 net-snmp
 net-snmp-tools
+iptraf-ng
 
 # System utilities
 logrotate
