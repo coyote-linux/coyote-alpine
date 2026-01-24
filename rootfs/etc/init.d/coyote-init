@@ -13,11 +13,12 @@ depend() {
 start() {
     ebegin "Initializing Coyote Linux"
 
-    # Load configuration
-    /opt/coyote/bin/coyote-cli config load
+    # Create runtime directories
+    mkdir -p /tmp/coyote
+    mkdir -p /var/log/coyote
 
-    # Initialize add-ons
-    /opt/coyote/bin/coyote-cli addon init-all
+    # Load configuration into running config
+    /opt/coyote/bin/coyote-cli config load
 
     eend $?
 }

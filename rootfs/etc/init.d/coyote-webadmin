@@ -13,20 +13,29 @@ depend() {
 }
 
 start_pre() {
+    # Ensure lighttpd user exists (created by Alpine lighttpd package)
+    if ! id -u lighttpd >/dev/null 2>&1; then
+        addgroup -S lighttpd 2>/dev/null
+        adduser -S -D -H -h /var/www -s /sbin/nologin -G lighttpd lighttpd 2>/dev/null
+    fi
+
     # Ensure log directory exists
-    checkpath --directory --owner lighttpd:lighttpd /var/log/lighttpd
+    checkpath --directory --owner lighttpd:lighttpd --mode 0755 /var/log/lighttpd
 
     # Ensure socket directory exists
-    checkpath --directory --owner lighttpd:lighttpd /var/run/lighttpd
+    checkpath --directory --owner lighttpd:lighttpd --mode 0755 /var/run/lighttpd
+
+    # Ensure SSL directory exists
+    mkdir -p /etc/lighttpd/ssl
 
     # Ensure SSL certificate exists
     if [ ! -f /etc/lighttpd/ssl/server.pem ]; then
         einfo "Generating self-signed SSL certificate..."
-        mkdir -p /etc/lighttpd/ssl
-        openssl req -new -x509 -days 365 -nodes \
+        openssl req -new -x509 -days 3650 -nodes \
             -out /etc/lighttpd/ssl/server.pem \
             -keyout /etc/lighttpd/ssl/server.pem \
             -subj "/CN=$(hostname)/O=Coyote Linux/C=US" 2>/dev/null
+        chown lighttpd:lighttpd /etc/lighttpd/ssl/server.pem
         chmod 600 /etc/lighttpd/ssl/server.pem
     fi
 }

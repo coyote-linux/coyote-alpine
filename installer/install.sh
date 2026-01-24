@@ -235,8 +235,9 @@ configure_network() {
 
     print_header
     printf "Network Configuration for ${BOLD}${NET_INTERFACE}${NC}\n\n"
+    printf "Press Enter to accept the default value shown in brackets.\n\n"
 
-    # Get IP address in CIDR notation
+    # Get IP address in CIDR notation (required, no default)
     while true; do
         printf "IP Address (CIDR notation, e.g., 192.168.1.1/24): "
         read NET_IP_CIDR
@@ -247,10 +248,14 @@ configure_network() {
         print_error "Invalid IP address. Please use CIDR notation (e.g., 192.168.1.1/24)"
     done
 
-    # Get default gateway
+    # Get default gateway (optional)
     while true; do
-        printf "Default Gateway (e.g., 192.168.1.254): "
+        printf "Default Gateway (optional, press Enter to skip): "
         read NET_GATEWAY
+
+        if [ -z "$NET_GATEWAY" ]; then
+            break
+        fi
 
         if validate_ip "$NET_GATEWAY"; then
             break
@@ -258,10 +263,19 @@ configure_network() {
         print_error "Invalid gateway IP address"
     done
 
+    # Generate default DNS based on IP if no gateway specified
+    # Use common public DNS as fallback default
+    local default_dns="1.1.1.1"
+
     # Get primary DNS server
     while true; do
-        printf "Primary DNS Server: "
+        printf "Primary DNS Server [${default_dns}]: "
         read NET_DNS1
+
+        if [ -z "$NET_DNS1" ]; then
+            NET_DNS1="$default_dns"
+            break
+        fi
 
         if validate_ip "$NET_DNS1"; then
             break
@@ -285,9 +299,15 @@ configure_network() {
     done
 
     # Get hostname
+    local default_hostname="coyote"
     while true; do
-        printf "Hostname (e.g., coyote): "
+        printf "Hostname [${default_hostname}]: "
         read NET_HOSTNAME
+
+        if [ -z "$NET_HOSTNAME" ]; then
+            NET_HOSTNAME="$default_hostname"
+            break
+        fi
 
         if validate_hostname "$NET_HOSTNAME"; then
             break
@@ -296,9 +316,15 @@ configure_network() {
     done
 
     # Get search domain
+    local default_domain="local.lan"
     while true; do
-        printf "Search Domain (e.g., example.com): "
+        printf "Search Domain [${default_domain}]: "
         read NET_DOMAIN
+
+        if [ -z "$NET_DOMAIN" ]; then
+            NET_DOMAIN="$default_domain"
+            break
+        fi
 
         if validate_domain "$NET_DOMAIN"; then
             break
@@ -312,7 +338,11 @@ configure_network() {
     printf "=============================\n\n"
     printf "  Interface:      ${BOLD}%s${NC} (%s)\n" "$NET_INTERFACE" "$NET_MAC"
     printf "  IP Address:     ${BOLD}%s${NC}\n" "$NET_IP_CIDR"
-    printf "  Gateway:        ${BOLD}%s${NC}\n" "$NET_GATEWAY"
+    if [ -n "$NET_GATEWAY" ]; then
+        printf "  Gateway:        ${BOLD}%s${NC}\n" "$NET_GATEWAY"
+    else
+        printf "  Gateway:        ${BOLD}(none)${NC}\n"
+    fi
     printf "  DNS Servers:    ${BOLD}%s${NC}" "$NET_DNS1"
     [ -n "$NET_DNS2" ] && printf ", ${BOLD}%s${NC}" "$NET_DNS2"
     printf "\n"
@@ -629,6 +659,29 @@ SYSLINUX_CFG
     local dns_servers="\"$NET_DNS1\""
     [ -n "$NET_DNS2" ] && dns_servers="$dns_servers, \"$NET_DNS2\""
 
+    # Build interface JSON with optional gateway
+    local interface_json
+    if [ -n "$NET_GATEWAY" ]; then
+        interface_json=$(cat << IFACE
+            {
+                "name": "$NET_INTERFACE",
+                "mac": "$NET_MAC",
+                "address": "$NET_IP_CIDR",
+                "gateway": "$NET_GATEWAY"
+            }
+IFACE
+)
+    else
+        interface_json=$(cat << IFACE
+            {
+                "name": "$NET_INTERFACE",
+                "mac": "$NET_MAC",
+                "address": "$NET_IP_CIDR"
+            }
+IFACE
+)
+    fi
+
     cat > "$target_config/system/config.json" << EOF
 {
     "system": {
@@ -640,12 +693,7 @@ SYSLINUX_CFG
         "dns": [$dns_servers],
         "search": ["$NET_DOMAIN"],
         "interfaces": [
-            {
-                "name": "$NET_INTERFACE",
-                "mac": "$NET_MAC",
-                "address": "$NET_IP_CIDR",
-                "gateway": "$NET_GATEWAY"
-            }
+$interface_json
         ]
     }
 }

@@ -19,12 +19,27 @@ class Auth
     private int $timeout = 3600;
 
     /**
+     * Check if authentication is bypassed (development/initial setup mode).
+     *
+     * @return bool True if auth is bypassed
+     */
+    public function isBypassed(): bool
+    {
+        return defined('COYOTE_AUTH_BYPASS') && COYOTE_AUTH_BYPASS === true;
+    }
+
+    /**
      * Check if the current session is authenticated.
      *
      * @return bool True if authenticated
      */
     public function isAuthenticated(): bool
     {
+        // Check for auth bypass mode
+        if ($this->isBypassed()) {
+            return true;
+        }
+
         if (session_status() !== PHP_SESSION_ACTIVE) {
             return false;
         }
@@ -109,6 +124,11 @@ class Auth
      */
     public function getCurrentUser(): ?string
     {
+        // Return 'admin' when auth is bypassed
+        if ($this->isBypassed()) {
+            return 'admin';
+        }
+
         if (!$this->isAuthenticated()) {
             return null;
         }

@@ -39,3 +39,7 @@ define('COYOTE_VERSION', '4.0.0');
 define('COYOTE_CONFIG_PATH', '/mnt/config');
 define('COYOTE_RUNNING_CONFIG', '/tmp/running-config');
 define('COYOTE_WEBADMIN_ROOT', dirname(__DIR__));
+
+// Authentication bypass - set to true to skip login during development/initial setup
+// TODO: Implement proper authentication system and set this to false
+define('COYOTE_AUTH_BYPASS', true);
