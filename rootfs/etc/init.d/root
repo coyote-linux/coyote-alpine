@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+#
+# Coyote Linux root filesystem handler
+#
+# This replaces the default Alpine root script which attempts to remount
+# the root filesystem as read-write. Coyote uses a read-only squashfs
+# root filesystem by design, so no remount is needed or possible.
+#
+
+description="Coyote Linux root filesystem (read-only squashfs)"
+
+depend() {
+    need localmount
+}
+
+start() {
+    ebegin "Root filesystem is read-only squashfs (by design)"
+    eend 0
+}
+
+stop() {
+    return 0
+}

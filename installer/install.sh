@@ -237,10 +237,16 @@ configure_network() {
     printf "Network Configuration for ${BOLD}${NET_INTERFACE}${NC}\n\n"
     printf "Press Enter to accept the default value shown in brackets.\n\n"
 
-    # Get IP address in CIDR notation (required, no default)
+    # Get IP address in CIDR notation
+    local default_ip="192.168.0.1/24"
     while true; do
-        printf "IP Address (CIDR notation, e.g., 192.168.1.1/24): "
+        printf "IP Address [${default_ip}]: "
         read NET_IP_CIDR
+
+        if [ -z "$NET_IP_CIDR" ]; then
+            NET_IP_CIDR="$default_ip"
+            break
+        fi
 
         if validate_cidr "$NET_IP_CIDR"; then
             break
