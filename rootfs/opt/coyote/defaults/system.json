@@ -1,24 +1,72 @@
 {
+    "version": "4.0.0",
     "system": {
         "hostname": "coyote",
-        "timezone": "UTC"
+        "domainname": "local",
+        "timezone": "America/New_York",
+        "timeserver": "pool.ntp.org"
     },
+    "users": [],
     "network": {
-        "interfaces": {},
+        "interfaces": [],
         "routes": [],
-        "forwarding": {
-            "ipv4": false,
-            "ipv6": false
+        "dns": {
+            "nameservers": []
         }
     },
     "services": {
+        "ssh": {
+            "enabled": true,
+            "port": 22
+        },
         "dhcpd": {
-            "enabled": false
+            "enabled": false,
+            "interface": "lan",
+            "range_start": "192.168.1.100",
+            "range_end": "192.168.1.200",
+            "lease_time": 86400
         },
         "dns": {
             "enabled": false,
-            "forwarders": []
+            "forwarders": [
+                "8.8.8.8",
+                "8.8.4.4"
+            ]
+        },
+        "snmp": {
+            "enabled": false,
+            "community": "public",
+            "location": "",
+            "contact": ""
         }
     },
-    "addons": {}
+    "firewall": {
+        "enabled": true,
+        "default_policy": "drop",
+        "nat": [],
+        "rules": [],
+        "port_forwards": []
+    },
+    "vpn": {
+        "ipsec": {
+            "enabled": false,
+            "tunnels": []
+        }
+    },
+    "loadbalancer": {
+        "enabled": false,
+        "stats": {
+            "enabled": true,
+            "port": 8404,
+            "uri": "/stats"
+        },
+        "defaults": {
+            "mode": "http",
+            "timeout_connect": "5s",
+            "timeout_client": "50s",
+            "timeout_server": "50s"
+        },
+        "frontends": [],
+        "backends": []
+    }
 }

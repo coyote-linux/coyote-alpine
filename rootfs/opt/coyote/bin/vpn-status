@@ -1,0 +1,70 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Coyote Linux - VPN Status
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+use Coyote\Vpn\VpnManager;
+
+$manager = new VpnManager();
+
+echo "Coyote VPN Status\n";
+echo "=================\n\n";
+
+$status = $manager->getStatus();
+
+echo "StrongSwan Running: " . ($status['ipsec']['running'] ? "Yes" : "No") . "\n\n";
+
+echo "IPSec Tunnels:\n";
+echo str_repeat('-', 70) . "\n";
+printf("%-20s %-20s %-15s %s\n", "Name", "Remote", "Status", "Traffic");
+echo str_repeat('-', 70) . "\n";
+
+$tunnels = $manager->getTunnelStatus();
+
+if (empty($tunnels)) {
+    echo "No tunnels configured.\n";
+} else {
+    foreach ($tunnels as $name => $tunnel) {
+        $statusColor = $tunnel['connected'] ? "\033[32m" : "\033[31m";
+        $statusText = $tunnel['status'];
+
+        $traffic = '';
+        if ($tunnel['bytes_in'] > 0 || $tunnel['bytes_out'] > 0) {
+            $traffic = formatBytes($tunnel['bytes_in']) . " in / " . formatBytes($tunnel['bytes_out']) . " out";
+        }
+
+        printf("%-20s %-20s %s%-15s\033[0m %s\n",
+            $name,
+            $tunnel['remote'],
+            $statusColor,
+            $statusText,
+            $traffic
+        );
+    }
+}
+
+if (in_array('--verbose', $argv) || in_array('-v', $argv)) {
+    echo "\n\n=== Connection Details ===\n\n";
+    $strongswan = $manager->getStrongSwanService();
+    $connections = $strongswan->listConnections();
+    foreach ($connections as $line) {
+        echo $line . "\n";
+    }
+}
+
+/**
+ * Format bytes into human-readable string.
+ */
+function formatBytes(int $bytes): string
+{
+    $units = ['B', 'KB', 'MB', 'GB'];
+    $unit = 0;
+    while ($bytes >= 1024 && $unit < count($units) - 1) {
+        $bytes /= 1024;
+        $unit++;
+    }
+    return round($bytes, 1) . ' ' . $units[$unit];
+}

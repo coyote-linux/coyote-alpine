@@ -1,0 +1,50 @@
+#!/sbin/openrc-run
+#
+# Coyote Linux Web Administration Interface
+#
+
+description="Coyote Web Administration Interface"
+name="coyote-webadmin"
+
+depend() {
+    need net
+    need coyote-config
+    after firewall
+}
+
+start_pre() {
+    # Ensure log directory exists
+    checkpath --directory --owner lighttpd:lighttpd /var/log/lighttpd
+
+    # Ensure socket directory exists
+    checkpath --directory --owner lighttpd:lighttpd /var/run/lighttpd
+
+    # Ensure SSL certificate exists
+    if [ ! -f /etc/lighttpd/ssl/server.pem ]; then
+        einfo "Generating self-signed SSL certificate..."
+        mkdir -p /etc/lighttpd/ssl
+        openssl req -new -x509 -days 365 -nodes \
+            -out /etc/lighttpd/ssl/server.pem \
+            -keyout /etc/lighttpd/ssl/server.pem \
+            -subj "/CN=$(hostname)/O=Coyote Linux/C=US" 2>/dev/null
+        chmod 600 /etc/lighttpd/ssl/server.pem
+    fi
+}
+
+start() {
+    ebegin "Starting Coyote Web Admin"
+    start-stop-daemon --start --exec /usr/sbin/lighttpd -- -f /etc/lighttpd/lighttpd.conf
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping Coyote Web Admin"
+    start-stop-daemon --stop --exec /usr/sbin/lighttpd
+    eend $?
+}
+
+reload() {
+    ebegin "Reloading Coyote Web Admin"
+    start-stop-daemon --stop --signal HUP --exec /usr/sbin/lighttpd
+    eend $?
+}

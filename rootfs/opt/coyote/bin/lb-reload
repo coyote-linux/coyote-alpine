@@ -1,0 +1,21 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Coyote Linux - Reload HAProxy configuration
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+use Coyote\LoadBalancer\LoadBalancerManager;
+
+$manager = new LoadBalancerManager();
+
+echo "Reloading HAProxy configuration...\n";
+
+if ($manager->reload()) {
+    echo "HAProxy configuration reloaded successfully.\n";
+    exit(0);
+} else {
+    echo "Failed to reload HAProxy configuration.\n";
+    exit(1);
+}

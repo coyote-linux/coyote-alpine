@@ -1,0 +1,18 @@
+# /etc/inittab - Coyote Linux Installer Mode
+
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+
+# Run installer on tty1 instead of getty
+tty1::respawn:/usr/bin/installer.sh
+
+# Keep other ttys available for debugging
+tty2::respawn:/sbin/getty 38400 tty2
+tty3::respawn:/sbin/getty 38400 tty3
+
+# Serial console
+ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100
+
+::shutdown:/sbin/openrc shutdown
+::ctrlaltdel:/sbin/reboot

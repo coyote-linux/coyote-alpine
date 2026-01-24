@@ -1,44 +1,37 @@
 <?php
 /**
- * Coyote Linux 4 PSR-4 Autoloader
+ * Coyote Linux PSR-4 Autoloader
  *
- * This autoloader handles class loading for the Coyote namespace
- * and any installed add-ons.
+ * Handles automatic class loading for all Coyote namespaces.
+ * Classes are loaded from /opt/coyote/lib/ following PSR-4 conventions.
+ *
+ * Supported namespaces:
+ *   - Coyote\Config\       Configuration management
+ *   - Coyote\System\       System operations (hardware, network, services)
+ *   - Coyote\Firewall\     Firewall and ACL management
+ *   - Coyote\Vpn\          VPN/IPSec management
+ *   - Coyote\LoadBalancer\ HAProxy load balancer
+ *   - Coyote\Util\         Utility classes
  */
 
-spl_autoload_register(function ($class) {
-    // Base directories for namespace prefixes
-    $prefixes = [
-        'Coyote\\' => __DIR__ . '/Coyote/',
-    ];
+spl_autoload_register(function (string $class): void {
+    // Base directory for Coyote namespace
+    $baseDir = __DIR__ . '/Coyote/';
+    $prefix = 'Coyote\\';
+    $len = strlen($prefix);
 
-    // Check add-on directories
-    $addonDir = '/opt/coyote/addons/';
-    if (is_dir($addonDir)) {
-        foreach (scandir($addonDir) as $addon) {
-            if ($addon === '.' || $addon === '..') {
-                continue;
-            }
-            $addonSrc = $addonDir . $addon . '/src/';
-            if (is_dir($addonSrc)) {
-                $prefixes['Coyote\\' . ucfirst($addon) . '\\'] = $addonSrc . 'Coyote/' . ucfirst($addon) . '/';
-            }
-        }
+    // Only handle Coyote namespace
+    if (strncmp($prefix, $class, $len) !== 0) {
+        return;
     }
 
-    // Check each namespace prefix
-    foreach ($prefixes as $prefix => $baseDir) {
-        $len = strlen($prefix);
-        if (strncmp($prefix, $class, $len) !== 0) {
-            continue;
-        }
+    // Get the relative class name
+    $relativeClass = substr($class, $len);
 
-        $relativeClass = substr($class, $len);
-        $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
+    // Replace namespace separators with directory separators
+    $file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
 
-        if (file_exists($file)) {
-            require $file;
-            return;
-        }
+    if (file_exists($file)) {
+        require $file;
     }
 });

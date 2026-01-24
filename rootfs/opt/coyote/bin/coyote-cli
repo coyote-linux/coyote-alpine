@@ -7,7 +7,9 @@
 require_once '/opt/coyote/lib/autoload.php';
 
 use Coyote\Config\ConfigManager;
-use Coyote\Addon\AddonManager;
+use Coyote\Firewall\FirewallManager;
+use Coyote\Vpn\VpnManager;
+use Coyote\LoadBalancer\LoadBalancerManager;
 
 /**
  * Display usage information
@@ -24,8 +26,9 @@ function showUsage(): void
     echo "  config show          Display current running configuration\n";
     echo "  config validate      Validate current configuration\n";
     echo "\n";
-    echo "  addon list           List installed add-ons\n";
-    echo "  addon init-all       Initialize all add-ons\n";
+    echo "  firewall status      Show firewall status\n";
+    echo "  vpn status           Show VPN tunnel status\n";
+    echo "  lb status            Show load balancer status\n";
     echo "\n";
     echo "  status               Show system status\n";
     echo "  version              Show version information\n";
@@ -134,31 +137,49 @@ switch ($command) {
         }
         break;
 
-    case 'addon':
-        $addonManager = new AddonManager();
-
+    case 'firewall':
+        $fwManager = new FirewallManager();
         switch ($subcommand) {
-            case 'list':
-                $addonManager->discoverAddons();
-                $addons = $addonManager->getAddons();
-                if (empty($addons)) {
-                    echo "No add-ons installed.\n";
-                } else {
-                    echo "Installed add-ons:\n";
-                    foreach ($addons as $addon) {
-                        echo "  - {$addon->getName()} ({$addon->getVersion()})\n";
-                    }
-                }
+            case 'status':
+                $status = $fwManager->getStatus();
+                echo "Firewall Status\n";
+                echo "===============\n";
+                echo "Enabled: " . ($status['enabled'] ? "Yes" : "No") . "\n";
+                echo "Active Connections: " . ($status['connections']['count'] ?? 0) . "\n";
                 break;
-
-            case 'init-all':
-                $addonManager->discoverAddons();
-                $addonManager->initializeAll();
-                echo "Add-ons initialized.\n";
-                break;
-
             default:
-                echo "Unknown addon command: {$subcommand}\n";
+                echo "Unknown firewall command: {$subcommand}\n";
+                exit(1);
+        }
+        break;
+
+    case 'vpn':
+        $vpnManager = new VpnManager();
+        switch ($subcommand) {
+            case 'status':
+                $status = $vpnManager->getStatus();
+                echo "VPN Status\n";
+                echo "==========\n";
+                echo "StrongSwan Running: " . ($status['ipsec']['running'] ? "Yes" : "No") . "\n";
+                break;
+            default:
+                echo "Unknown vpn command: {$subcommand}\n";
+                exit(1);
+        }
+        break;
+
+    case 'lb':
+        $lbManager = new LoadBalancerManager();
+        switch ($subcommand) {
+            case 'status':
+                $status = $lbManager->getStatus();
+                echo "Load Balancer Status\n";
+                echo "====================\n";
+                echo "Enabled: " . ($status['enabled'] ? "Yes" : "No") . "\n";
+                echo "HAProxy Running: " . ($status['running'] ? "Yes" : "No") . "\n";
+                break;
+            default:
+                echo "Unknown lb command: {$subcommand}\n";
                 exit(1);
         }
         break;

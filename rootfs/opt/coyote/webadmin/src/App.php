@@ -1,0 +1,204 @@
+<?php
+
+namespace Coyote\WebAdmin;
+
+/**
+ * Main web administration application class.
+ */
+class App
+{
+    /** @var Router */
+    private Router $router;
+
+    /** @var Auth */
+    private Auth $auth;
+
+    /** @var array Application configuration */
+    private array $config;
+
+    /**
+     * Create a new App instance.
+     *
+     * @param array $config Application configuration
+     */
+    public function __construct(array $config = [])
+    {
+        $this->config = array_merge($this->getDefaultConfig(), $config);
+        $this->router = new Router();
+        $this->auth = new Auth();
+    }
+
+    /**
+     * Run the application.
+     *
+     * @return void
+     */
+    public function run(): void
+    {
+        // Start session if not API-only mode
+        if (!($this->config['api_only'] ?? false)) {
+            session_start();
+        }
+
+        // Get request info
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        $uri = $_SERVER['REQUEST_URI'] ?? '/';
+        $uri = parse_url($uri, PHP_URL_PATH);
+
+        // Check authentication for non-public routes
+        if (!$this->isPublicRoute($uri) && !$this->auth->isAuthenticated()) {
+            if ($this->config['api_only'] ?? false) {
+                http_response_code(401);
+                echo json_encode(['error' => 'Unauthorized']);
+                return;
+            }
+            $this->redirect('/login');
+            return;
+        }
+
+        // Dispatch the request
+        $this->router->dispatch($method, $uri);
+    }
+
+    /**
+     * Register web UI routes.
+     *
+     * @return void
+     */
+    public function registerRoutes(): void
+    {
+        // Dashboard
+        $this->router->get('/', [Controller\DashboardController::class, 'index']);
+        $this->router->get('/dashboard', [Controller\DashboardController::class, 'index']);
+
+        // Authentication
+        $this->router->get('/login', [Controller\AuthController::class, 'showLogin']);
+        $this->router->post('/login', [Controller\AuthController::class, 'login']);
+        $this->router->get('/logout', [Controller\AuthController::class, 'logout']);
+
+        // Network
+        $this->router->get('/network', [Controller\NetworkController::class, 'index']);
+        $this->router->get('/network/interfaces', [Controller\NetworkController::class, 'interfaces']);
+        $this->router->post('/network/interfaces', [Controller\NetworkController::class, 'saveInterfaces']);
+
+        // Firewall
+        $this->router->get('/firewall', [Controller\FirewallController::class, 'index']);
+        $this->router->get('/firewall/rules', [Controller\FirewallController::class, 'rules']);
+        $this->router->post('/firewall/rules', [Controller\FirewallController::class, 'saveRules']);
+
+        // NAT
+        $this->router->get('/nat', [Controller\NatController::class, 'index']);
+        $this->router->post('/nat/forwards', [Controller\NatController::class, 'saveForwards']);
+
+        // VPN
+        $this->router->get('/vpn', [Controller\VpnController::class, 'index']);
+        $this->router->get('/vpn/tunnels', [Controller\VpnController::class, 'tunnels']);
+        $this->router->post('/vpn/tunnels', [Controller\VpnController::class, 'saveTunnels']);
+
+        // Load Balancer
+        $this->router->get('/loadbalancer', [Controller\LoadBalancerController::class, 'index']);
+        $this->router->get('/loadbalancer/stats', [Controller\LoadBalancerController::class, 'stats']);
+
+        // Services
+        $this->router->get('/services', [Controller\ServicesController::class, 'index']);
+        $this->router->post('/services/{service}/start', [Controller\ServicesController::class, 'start']);
+        $this->router->post('/services/{service}/stop', [Controller\ServicesController::class, 'stop']);
+
+        // System
+        $this->router->get('/system', [Controller\SystemController::class, 'index']);
+        $this->router->post('/system/apply', [Controller\SystemController::class, 'apply']);
+        $this->router->post('/system/confirm', [Controller\SystemController::class, 'confirm']);
+
+        // Firmware
+        $this->router->get('/firmware', [Controller\FirmwareController::class, 'index']);
+        $this->router->post('/firmware/upload', [Controller\FirmwareController::class, 'upload']);
+    }
+
+    /**
+     * Register API routes.
+     *
+     * @return void
+     */
+    public function registerApiRoutes(): void
+    {
+        // Status
+        $this->router->get('/api/status', [Api\StatusApi::class, 'index']);
+        $this->router->get('/api/status/system', [Api\StatusApi::class, 'system']);
+        $this->router->get('/api/status/network', [Api\StatusApi::class, 'network']);
+
+        // Config
+        $this->router->get('/api/config', [Api\ConfigApi::class, 'get']);
+        $this->router->post('/api/config', [Api\ConfigApi::class, 'update']);
+        $this->router->post('/api/config/apply', [Api\ConfigApi::class, 'apply']);
+        $this->router->post('/api/config/confirm', [Api\ConfigApi::class, 'confirm']);
+        $this->router->post('/api/config/rollback', [Api\ConfigApi::class, 'rollback']);
+
+        // Firewall
+        $this->router->get('/api/firewall/status', [Api\FirewallApi::class, 'status']);
+        $this->router->get('/api/firewall/rules', [Api\FirewallApi::class, 'rules']);
+        $this->router->post('/api/firewall/rules', [Api\FirewallApi::class, 'saveRules']);
+
+        // Load Balancer
+        $this->router->get('/api/loadbalancer/status', [Api\LoadBalancerApi::class, 'status']);
+        $this->router->get('/api/loadbalancer/stats', [Api\LoadBalancerApi::class, 'stats']);
+    }
+
+    /**
+     * Check if a route is public (no auth required).
+     *
+     * @param string $uri Request URI
+     * @return bool True if public
+     */
+    private function isPublicRoute(string $uri): bool
+    {
+        $publicRoutes = ['/login', '/api/status'];
+        return in_array($uri, $publicRoutes, true);
+    }
+
+    /**
+     * Redirect to a URI.
+     *
+     * @param string $uri Target URI
+     * @return void
+     */
+    private function redirect(string $uri): void
+    {
+        header('Location: ' . $uri);
+        exit;
+    }
+
+    /**
+     * Get default configuration.
+     *
+     * @return array Default config values
+     */
+    private function getDefaultConfig(): array
+    {
+        return [
+            'debug' => false,
+            'api_only' => false,
+            'session_timeout' => 3600,
+            'templates_path' => COYOTE_WEBADMIN_ROOT . '/templates',
+        ];
+    }
+
+    /**
+     * Get the router instance.
+     *
+     * @return Router
+     */
+    public function getRouter(): Router
+    {
+        return $this->router;
+    }
+
+    /**
+     * Get the auth instance.
+     *
+     * @return Auth
+     */
+    public function getAuth(): Auth
+    {
+        return $this->auth;
+    }
+}

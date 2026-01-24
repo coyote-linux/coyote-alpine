@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+
+description="Coyote Linux Installer"
+
+depend() {
+    need localmount
+    after bootmisc
+}
+
+start() {
+    # Only run if in installer mode
+    if grep -q "installer" /proc/cmdline; then
+        ebegin "Starting Coyote Linux Installer"
+        
+        # Export boot media location for installer
+        export BOOT_MEDIA="/mnt/boot"
+        
+        # Clear any getty on tty1 and run installer
+        /usr/bin/installer.sh
+        
+        eend $?
+    fi
+}

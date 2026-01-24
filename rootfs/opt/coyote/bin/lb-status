@@ -1,0 +1,90 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Coyote Linux - Load Balancer Status
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+use Coyote\LoadBalancer\LoadBalancerManager;
+
+$manager = new LoadBalancerManager();
+
+echo "Coyote Load Balancer Status\n";
+echo "============================\n\n";
+
+$status = $manager->getStatus();
+
+echo "Enabled: " . ($status['enabled'] ? "Yes" : "No") . "\n";
+echo "HAProxy Running: " . ($status['running'] ? "Yes" : "No") . "\n\n";
+
+if (!$status['running']) {
+    echo "Load balancer is not running.\n";
+    exit(1);
+}
+
+// Frontends
+echo "Frontends:\n";
+echo str_repeat('-', 60) . "\n";
+printf("%-20s %-20s %-10s %s\n", "Name", "Bind", "Status", "Sessions");
+echo str_repeat('-', 60) . "\n";
+
+foreach ($status['frontends'] as $name => $frontend) {
+    $statusColor = $frontend['status'] === 'OPEN' ? "\033[32m" : "\033[31m";
+    printf("%-20s %-20s %s%-10s\033[0m %d\n",
+        $name,
+        $frontend['bind'],
+        $statusColor,
+        $frontend['status'],
+        $frontend['sessions']
+    );
+}
+
+echo "\n";
+
+// Backends
+echo "Backends:\n";
+echo str_repeat('-', 70) . "\n";
+printf("%-20s %-15s %-10s %s\n", "Name", "Mode", "Balance", "Servers");
+echo str_repeat('-', 70) . "\n";
+
+foreach ($status['backends'] as $name => $backend) {
+    $serverCount = count($backend['servers']);
+    $upCount = 0;
+    foreach ($backend['servers'] as $server) {
+        if ($server['status'] === 'UP') {
+            $upCount++;
+        }
+    }
+
+    printf("%-20s %-15s %-10s %d/%d up\n",
+        $name,
+        $backend['mode'],
+        $backend['balance'],
+        $upCount,
+        $serverCount
+    );
+
+    // Show servers if verbose
+    if (in_array('--verbose', $argv) || in_array('-v', $argv)) {
+        foreach ($backend['servers'] as $server) {
+            $statusColor = $server['status'] === 'UP' ? "\033[32m" : "\033[31m";
+            printf("    - %-20s %s%-10s\033[0m weight=%d\n",
+                $server['name'],
+                $statusColor,
+                $server['status'],
+                $server['weight']
+            );
+        }
+    }
+}
+
+// Summary stats
+echo "\n";
+$summary = $status['stats'];
+echo "Summary:\n";
+echo "  Total Frontends: {$summary['frontends']}\n";
+echo "  Total Backends: {$summary['backends']}\n";
+echo "  Servers: {$summary['servers_up']}/{$summary['servers']} up\n";
+echo "  Current Sessions: {$summary['current_sessions']}\n";
+echo "  Total Sessions: {$summary['total_sessions']}\n";

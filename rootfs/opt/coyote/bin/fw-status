@@ -1,0 +1,39 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Coyote Linux - Firewall Status
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+use Coyote\Firewall\FirewallManager;
+
+$manager = new FirewallManager();
+
+echo "Coyote Firewall Status\n";
+echo "======================\n\n";
+
+$status = $manager->getStatus();
+
+echo "Firewall Enabled: " . ($status['enabled'] ? "Yes" : "No") . "\n";
+echo "Active Connections: " . ($status['connections']['count'] ?? 0) . "\n\n";
+
+$iptables = $manager->getIptablesService();
+$counts = $iptables->getRuleCounts();
+
+echo "Rules by Chain:\n";
+foreach ($counts as $chain => $count) {
+    echo "  {$chain}: {$count}\n";
+}
+
+echo "\nNAT Rules:\n";
+$nat = $manager->getNatService();
+echo "IP Forwarding: " . ($nat->isForwardingEnabled() ? "Enabled" : "Disabled") . "\n";
+
+if (in_array('--verbose', $argv) || in_array('-v', $argv)) {
+    echo "\n\n=== Full Rule List ===\n\n";
+    $rules = $iptables->listRules();
+    foreach ($rules as $line) {
+        echo $line . "\n";
+    }
+}
