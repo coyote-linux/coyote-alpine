@@ -1,3 +1,0 @@
-# Run MRTG every 5 minutes, then generate graphs
-LANG=C
-*/5 * * * * root /usr/bin/env LANG=C /usr/bin/mrtg /etc/mrtg/mrtg.cfg --logging /var/log/mrtg.log 2>&1 && /opt/coyote/bin/mrtg-graphs >/dev/null 2>&1
