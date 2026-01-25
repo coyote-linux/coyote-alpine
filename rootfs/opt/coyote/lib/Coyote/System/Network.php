@@ -204,6 +204,115 @@ class Network
     }
 
     /**
+     * Get all network interfaces with their status.
+     *
+     * @return array List of interfaces with status info
+     */
+    public function getInterfaces(): array
+    {
+        $interfaces = [];
+        $sysNetDir = '/sys/class/net';
+
+        if (!is_dir($sysNetDir)) {
+            return $interfaces;
+        }
+
+        // Get addresses for all interfaces
+        $addresses = $this->getAddresses();
+
+        foreach (scandir($sysNetDir) as $iface) {
+            if ($iface === '.' || $iface === '..') {
+                continue;
+            }
+
+            $interfaces[$iface] = [
+                'name' => $iface,
+                'mac' => $this->getMacAddress($iface),
+                'state' => $this->getOperState($iface),
+                'ipv4' => $addresses[$iface]['ipv4'] ?? [],
+                'ipv6' => $addresses[$iface]['ipv6'] ?? [],
+                'mtu' => $this->getMtu($iface),
+                'stats' => $this->getInterfaceStats($iface),
+            ];
+        }
+
+        return $interfaces;
+    }
+
+    /**
+     * Get MAC address of an interface.
+     *
+     * @param string $interface Interface name
+     * @return string|null MAC address or null
+     */
+    private function getMacAddress(string $interface): ?string
+    {
+        $path = "/sys/class/net/{$interface}/address";
+        if (file_exists($path)) {
+            return trim(file_get_contents($path));
+        }
+        return null;
+    }
+
+    /**
+     * Get operational state of an interface.
+     *
+     * @param string $interface Interface name
+     * @return string Operational state (up/down/unknown)
+     */
+    private function getOperState(string $interface): string
+    {
+        $path = "/sys/class/net/{$interface}/operstate";
+        if (file_exists($path)) {
+            return trim(file_get_contents($path));
+        }
+        return 'unknown';
+    }
+
+    /**
+     * Get MTU of an interface.
+     *
+     * @param string $interface Interface name
+     * @return int|null MTU or null
+     */
+    private function getMtu(string $interface): ?int
+    {
+        $path = "/sys/class/net/{$interface}/mtu";
+        if (file_exists($path)) {
+            return (int)trim(file_get_contents($path));
+        }
+        return null;
+    }
+
+    /**
+     * Get interface statistics (bytes/packets rx/tx).
+     *
+     * @param string $interface Interface name
+     * @return array Interface statistics
+     */
+    private function getInterfaceStats(string $interface): array
+    {
+        $stats = [
+            'rx_bytes' => 0,
+            'tx_bytes' => 0,
+            'rx_packets' => 0,
+            'tx_packets' => 0,
+        ];
+
+        $statsDir = "/sys/class/net/{$interface}/statistics";
+        if (is_dir($statsDir)) {
+            foreach (['rx_bytes', 'tx_bytes', 'rx_packets', 'tx_packets'] as $stat) {
+                $path = "{$statsDir}/{$stat}";
+                if (file_exists($path)) {
+                    $stats[$stat] = (int)trim(file_get_contents($path));
+                }
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
      * Convert netmask to CIDR prefix length.
      *
      * @param string $netmask Dotted decimal netmask

@@ -112,6 +112,14 @@ class App
         // Firmware
         $this->router->get('/firmware', [Controller\FirmwareController::class, 'index']);
         $this->router->post('/firmware/upload', [Controller\FirmwareController::class, 'upload']);
+
+        // Debug (public routes for troubleshooting)
+        $this->router->get('/debug', [Controller\DebugController::class, 'index']);
+        $this->router->get('/debug/logs/access', [Controller\DebugController::class, 'accessLog']);
+        $this->router->get('/debug/logs/error', [Controller\DebugController::class, 'errorLog']);
+        $this->router->get('/debug/logs/php', [Controller\DebugController::class, 'phpLog']);
+        $this->router->get('/debug/phpinfo', [Controller\DebugController::class, 'phpInfo']);
+        $this->router->get('/debug/config', [Controller\DebugController::class, 'config']);
     }
 
     /**
@@ -152,7 +160,18 @@ class App
     private function isPublicRoute(string $uri): bool
     {
         $publicRoutes = ['/login', '/api/status'];
-        return in_array($uri, $publicRoutes, true);
+
+        // Exact match
+        if (in_array($uri, $publicRoutes, true)) {
+            return true;
+        }
+
+        // Debug routes are public for troubleshooting
+        if (strpos($uri, '/debug') === 0) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

@@ -232,4 +232,30 @@ class Hardware
 
         return $info;
     }
+
+    /**
+     * Get system load average.
+     *
+     * @return array Load average (1, 5, 15 minute averages)
+     */
+    public function getLoadAverage(): array
+    {
+        $load = [
+            '1min' => 0.0,
+            '5min' => 0.0,
+            '15min' => 0.0,
+        ];
+
+        if (file_exists('/proc/loadavg')) {
+            $loadavg = file_get_contents('/proc/loadavg');
+            $parts = explode(' ', $loadavg);
+            if (count($parts) >= 3) {
+                $load['1min'] = (float)$parts[0];
+                $load['5min'] = (float)$parts[1];
+                $load['15min'] = (float)$parts[2];
+            }
+        }
+
+        return $load;
+    }
 }
