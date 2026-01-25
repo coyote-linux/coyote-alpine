@@ -104,15 +104,21 @@ local function generate_graphs(target)
     for _, period in ipairs(periods) do
         local png_file = MRTG_DIR .. "/" .. target .. "-" .. period.name .. ".png"
 
+        -- Build Y-axis limit options for percentage graphs
+        local limit_opts = ""
+        if config.upper_limit then
+            limit_opts = string.format("--lower-limit 0 --upper-limit %d --rigid ", config.upper_limit)
+        end
+
         local cmd = string.format(
             'rrdtool graph %s --start -%d --title "%s - %s" --vertical-label "%s" ' ..
-            '--width 500 --height 150 --base %d ' ..
+            '--width 500 --height 150 --base %d %s' ..
             '--color BACK"%s" --color CANVAS"%s" --color FONT"%s" --color GRID"%s" --color MGRID"%s" ' ..
             'DEF:in=%s:ds0:AVERAGE DEF:out=%s:ds1:AVERAGE ' ..
             'AREA:in%s:"%s " LINE1:out%s:"%s"',
             png_file, period.seconds,
             config.title, period.title,
-            config.y_label, config.base,
+            config.y_label, config.base, limit_opts,
             COLOR_BG, COLOR_CANVAS, COLOR_FONT, COLOR_GRID, COLOR_GRID,
             rrd_file, rrd_file,
             COLOR_IN, config.legend_in,
