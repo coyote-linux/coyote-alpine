@@ -585,7 +585,6 @@ install_system() {
     printf "  Creating directory structure...\n"
     mkdir -p "$target_boot/boot/syslinux"
     mkdir -p "$target_boot/firmware"
-    mkdir -p "$target_config/system"
 
     # Copy kernel and initramfs
     printf "  Copying kernel...\n"
@@ -688,7 +687,7 @@ IFACE
 )
     fi
 
-    cat > "$target_config/system/config.json" << EOF
+    cat > "$target_config/system.json" << EOF
 {
     "system": {
         "hostname": "$NET_HOSTNAME",
