@@ -29,7 +29,8 @@ local target_config = {
         y_label = "Percent",
         legend_in = "Total CPU",
         legend_out = "User CPU",
-        unit = "%",
+        unit = "%%",  -- escaped % for printf
+        gprint_format = "%5.1lf%%",  -- no SI prefix for percentages
         base = 1000,
         upper_limit = 100
     },
@@ -38,7 +39,8 @@ local target_config = {
         y_label = "Percent",
         legend_in = "Used Memory",
         legend_out = "Used (excl. cache)",
-        unit = "%",
+        unit = "%%",
+        gprint_format = "%5.1lf%%",
         base = 1000,
         upper_limit = 100
     }
@@ -84,6 +86,7 @@ local function get_config(target)
         legend_in = "Incoming",
         legend_out = "Outgoing",
         unit = "b/s",
+        gprint_format = "%5.1lf %sb/s",  -- SI prefix for network traffic
         base = 1000,
         upper_limit = nil
     }
@@ -110,19 +113,31 @@ local function generate_graphs(target)
             limit_opts = string.format("--lower-limit 0 --upper-limit %d --rigid ", config.upper_limit)
         end
 
+        -- Format string for GPRINT (e.g., "%5.1lf%%" for percent, "%5.1lf %sb/s" for network)
+        local gfmt = config.gprint_format
+
         local cmd = string.format(
             'rrdtool graph %s --start -%d --title "%s - %s" --vertical-label "%s" ' ..
             '--width 500 --height 150 --base %d %s' ..
             '--color BACK"%s" --color CANVAS"%s" --color FONT"%s" --color GRID"%s" --color MGRID"%s" ' ..
             'DEF:in=%s:ds0:AVERAGE DEF:out=%s:ds1:AVERAGE ' ..
-            'AREA:in%s:"%s " LINE1:out%s:"%s"',
+            'AREA:in%s:"%-12s" ' ..
+            'GPRINT:in:LAST:"Cur\\:%s" ' ..
+            'GPRINT:in:AVERAGE:"Avg\\:%s" ' ..
+            'GPRINT:in:MAX:"Max\\:%s\\n" ' ..
+            'LINE1:out%s:"%-12s" ' ..
+            'GPRINT:out:LAST:"Cur\\:%s" ' ..
+            'GPRINT:out:AVERAGE:"Avg\\:%s" ' ..
+            'GPRINT:out:MAX:"Max\\:%s\\n"',
             png_file, period.seconds,
             config.title, period.title,
             config.y_label, config.base, limit_opts,
             COLOR_BG, COLOR_CANVAS, COLOR_FONT, COLOR_GRID, COLOR_GRID,
             rrd_file, rrd_file,
             COLOR_IN, config.legend_in,
-            COLOR_OUT, config.legend_out
+            gfmt, gfmt, gfmt,
+            COLOR_OUT, config.legend_out,
+            gfmt, gfmt, gfmt
         )
 
         exec(cmd)
