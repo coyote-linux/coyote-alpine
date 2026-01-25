@@ -1,0 +1,59 @@
+#!/usr/bin/lua5.4
+--
+-- MRTG Network Interface Script
+-- Returns: rx_bytes, tx_bytes, uptime, hostname
+--
+-- Usage: mrtg-net <interface>
+--
+
+local iface = arg[1]
+
+if not iface then
+    io.stderr:write("Usage: mrtg-net <interface>\n")
+    os.exit(1)
+end
+
+-- Read a single value from a file
+local function read_file(path)
+    local f = io.open(path, "r")
+    if not f then return nil end
+    local value = f:read("*l")
+    f:close()
+    return value
+end
+
+-- Get uptime in seconds
+local function get_uptime()
+    local uptime = read_file("/proc/uptime")
+    if not uptime then return 0 end
+    local sec = uptime:match("^([%d.]+)")
+    return math.floor(tonumber(sec) or 0)
+end
+
+-- Get hostname
+local function get_hostname()
+    local name = read_file("/etc/hostname")
+    if name and name ~= "" then return name end
+    return "coyote"
+end
+
+-- Read interface statistics
+local stats_dir = "/sys/class/net/" .. iface .. "/statistics/"
+
+local rx_bytes = read_file(stats_dir .. "rx_bytes")
+local tx_bytes = read_file(stats_dir .. "tx_bytes")
+
+if not rx_bytes or not tx_bytes then
+    -- Interface doesn't exist or no stats available
+    print("0")
+    print("0")
+    print(get_uptime())
+    print(get_hostname())
+    os.exit(0)
+end
+
+-- Output for MRTG (4 lines: in, out, uptime, hostname)
+print(rx_bytes)
+print(tx_bytes)
+print(get_uptime())
+print(get_hostname())

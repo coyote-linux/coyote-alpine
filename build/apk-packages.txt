@@ -72,9 +72,12 @@ miniupnpd
 
 # Monitoring
 mrtg
+rrdtool
+rrdtool-utils
 net-snmp
 net-snmp-tools
 iptraf-ng
+perl-rrd
 
 # System utilities
 logrotate

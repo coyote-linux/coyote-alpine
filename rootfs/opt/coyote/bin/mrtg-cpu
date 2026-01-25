@@ -1,48 +1,124 @@
-#!/bin/sh
-#
-# MRTG CPU Usage Script
-# Returns: total CPU%, user CPU%, uptime, hostname
-#
+#!/usr/bin/lua5.4
+--
+-- MRTG CPU Usage Script
+-- Returns: total CPU%, user CPU%, uptime, hostname
+--
 
-# Read CPU stats
-read cpu user nice system idle iowait irq softirq < /proc/stat
+local state_file = "/tmp/mrtg-cpu.state"
 
-# Calculate percentages
-total=$((user + nice + system + idle + iowait + irq + softirq))
+-- Read /proc/stat for CPU info
+local function read_cpu_stats()
+    local f = io.open("/proc/stat", "r")
+    if not f then return nil end
 
-# Store previous values
-STATEFILE="/tmp/mrtg-cpu.state"
+    local line = f:read("*l")
+    f:close()
 
-if [ -f "$STATEFILE" ]; then
-    read prev_total prev_user prev_system < "$STATEFILE"
+    if not line then return nil end
 
-    diff_total=$((total - prev_total))
-    diff_user=$((user + nice - prev_user))
-    diff_system=$((system + irq + softirq - prev_system))
+    -- cpu  user nice system idle iowait irq softirq steal guest guest_nice
+    local cpu, user, nice, system, idle, iowait, irq, softirq =
+        line:match("^cpu%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)")
 
-    if [ "$diff_total" -gt 0 ]; then
-        user_pct=$((diff_user * 100 / diff_total))
-        total_pct=$(((diff_user + diff_system) * 100 / diff_total))
-    else
-        user_pct=0
-        total_pct=0
-    fi
-else
-    user_pct=0
-    total_pct=0
-fi
+    if not user then return nil end
 
-# Save current values
-echo "$total $((user + nice)) $((system + irq + softirq))" > "$STATEFILE"
+    return {
+        user = tonumber(user) or 0,
+        nice = tonumber(nice) or 0,
+        system = tonumber(system) or 0,
+        idle = tonumber(idle) or 0,
+        iowait = tonumber(iowait) or 0,
+        irq = tonumber(irq) or 0,
+        softirq = tonumber(softirq) or 0
+    }
+end
 
-# Get uptime
-uptime_sec=$(cut -d. -f1 /proc/uptime)
+-- Read previous state
+local function read_state()
+    local f = io.open(state_file, "r")
+    if not f then return nil end
 
-# Get hostname
-hostname=$(cat /etc/hostname 2>/dev/null || hostname)
+    local content = f:read("*a")
+    f:close()
 
-# Output for MRTG (4 lines: in, out, uptime, hostname)
-echo "$total_pct"
-echo "$user_pct"
-echo "$uptime_sec"
-echo "$hostname"
+    local total, user, system = content:match("^(%d+)%s+(%d+)%s+(%d+)")
+    if not total then return nil end
+
+    return {
+        total = tonumber(total),
+        user = tonumber(user),
+        system = tonumber(system)
+    }
+end
+
+-- Write current state
+local function write_state(total, user, system)
+    local f = io.open(state_file, "w")
+    if f then
+        f:write(string.format("%d %d %d\n", total, user, system))
+        f:close()
+    end
+end
+
+-- Get uptime in seconds
+local function get_uptime()
+    local f = io.open("/proc/uptime", "r")
+    if not f then return 0 end
+
+    local line = f:read("*l")
+    f:close()
+
+    local uptime = line:match("^([%d.]+)")
+    return math.floor(tonumber(uptime) or 0)
+end
+
+-- Get hostname
+local function get_hostname()
+    local f = io.open("/etc/hostname", "r")
+    if f then
+        local name = f:read("*l")
+        f:close()
+        if name and name ~= "" then return name end
+    end
+    return "coyote"
+end
+
+-- Main
+local stats = read_cpu_stats()
+if not stats then
+    print("0")
+    print("0")
+    print(get_uptime())
+    print(get_hostname())
+    os.exit(0)
+end
+
+local total = stats.user + stats.nice + stats.system + stats.idle +
+              stats.iowait + stats.irq + stats.softirq
+local user_total = stats.user + stats.nice
+local system_total = stats.system + stats.irq + stats.softirq
+
+local prev = read_state()
+
+local total_pct = 0
+local user_pct = 0
+
+if prev then
+    local diff_total = total - prev.total
+    local diff_user = user_total - prev.user
+    local diff_system = system_total - prev.system
+
+    if diff_total > 0 then
+        user_pct = math.floor((diff_user * 100) / diff_total)
+        total_pct = math.floor(((diff_user + diff_system) * 100) / diff_total)
+    end
+end
+
+-- Save current state
+write_state(total, user_total, system_total)
+
+-- Output for MRTG (4 lines: in, out, uptime, hostname)
+print(total_pct)
+print(user_pct)
+print(get_uptime())
+print(get_hostname())

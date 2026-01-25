@@ -1,48 +1,79 @@
-#!/bin/sh
-#
-# MRTG Memory Usage Script
-# Returns: used%, used+buffers%, uptime, hostname
-#
+#!/usr/bin/lua5.4
+--
+-- MRTG Memory Usage Script
+-- Returns: used%, used+buffers%, uptime, hostname
+--
 
-# Read memory info
-total=0
-available=0
-buffers=0
-cached=0
+-- Read /proc/meminfo
+local function read_meminfo()
+    local f = io.open("/proc/meminfo", "r")
+    if not f then return nil end
 
-while read key value unit; do
-    case "$key" in
-        MemTotal:)   total=$value ;;
-        MemAvailable:) available=$value ;;
-        Buffers:)    buffers=$value ;;
-        Cached:)     cached=$value ;;
-    esac
-done < /proc/meminfo
+    local mem = {}
+    for line in f:lines() do
+        local key, value = line:match("^(%S+):%s+(%d+)")
+        if key and value then
+            mem[key] = tonumber(value)
+        end
+    end
+    f:close()
 
-# Calculate usage
-if [ "$total" -gt 0 ]; then
-    used=$((total - available))
-    used_pct=$((used * 100 / total))
+    return mem
+end
 
-    # Calculate used excluding buffers/cache for comparison
-    used_real=$((total - available - buffers - cached))
-    if [ "$used_real" -lt 0 ]; then
-        used_real=0
-    fi
-    used_real_pct=$((used_real * 100 / total))
-else
-    used_pct=0
-    used_real_pct=0
-fi
+-- Get uptime in seconds
+local function get_uptime()
+    local f = io.open("/proc/uptime", "r")
+    if not f then return 0 end
 
-# Get uptime
-uptime_sec=$(cut -d. -f1 /proc/uptime)
+    local line = f:read("*l")
+    f:close()
 
-# Get hostname
-hostname=$(cat /etc/hostname 2>/dev/null || hostname)
+    local uptime = line:match("^([%d.]+)")
+    return math.floor(tonumber(uptime) or 0)
+end
 
-# Output for MRTG (4 lines: in, out, uptime, hostname)
-echo "$used_pct"
-echo "$used_real_pct"
-echo "$uptime_sec"
-echo "$hostname"
+-- Get hostname
+local function get_hostname()
+    local f = io.open("/etc/hostname", "r")
+    if f then
+        local name = f:read("*l")
+        f:close()
+        if name and name ~= "" then return name end
+    end
+    return "coyote"
+end
+
+-- Main
+local mem = read_meminfo()
+if not mem then
+    print("0")
+    print("0")
+    print(get_uptime())
+    print(get_hostname())
+    os.exit(0)
+end
+
+local total = mem.MemTotal or 0
+local available = mem.MemAvailable or 0
+local buffers = mem.Buffers or 0
+local cached = mem.Cached or 0
+
+local used_pct = 0
+local used_real_pct = 0
+
+if total > 0 then
+    local used = total - available
+    used_pct = math.floor((used * 100) / total)
+
+    -- Calculate used excluding buffers/cache
+    local used_real = total - available - buffers - cached
+    if used_real < 0 then used_real = 0 end
+    used_real_pct = math.floor((used_real * 100) / total)
+end
+
+-- Output for MRTG (4 lines: in, out, uptime, hostname)
+print(used_pct)
+print(used_real_pct)
+print(get_uptime())
+print(get_hostname())
