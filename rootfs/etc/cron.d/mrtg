@@ -1,0 +1,2 @@
+# Run MRTG every 5 minutes
+*/5 * * * * root /usr/bin/mrtg /etc/mrtg/mrtg.cfg --logging /var/log/mrtg.log 2>&1

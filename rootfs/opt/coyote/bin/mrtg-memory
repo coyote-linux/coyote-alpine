@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# MRTG Memory Usage Script
+# Returns: used%, used+buffers%, uptime, hostname
+#
+
+# Read memory info
+total=0
+available=0
+buffers=0
+cached=0
+
+while read key value unit; do
+    case "$key" in
+        MemTotal:)   total=$value ;;
+        MemAvailable:) available=$value ;;
+        Buffers:)    buffers=$value ;;
+        Cached:)     cached=$value ;;
+    esac
+done < /proc/meminfo
+
+# Calculate usage
+if [ "$total" -gt 0 ]; then
+    used=$((total - available))
+    used_pct=$((used * 100 / total))
+
+    # Calculate used excluding buffers/cache for comparison
+    used_real=$((total - available - buffers - cached))
+    if [ "$used_real" -lt 0 ]; then
+        used_real=0
+    fi
+    used_real_pct=$((used_real * 100 / total))
+else
+    used_pct=0
+    used_real_pct=0
+fi
+
+# Get uptime
+uptime_sec=$(cut -d. -f1 /proc/uptime)
+
+# Get hostname
+hostname=$(cat /etc/hostname 2>/dev/null || hostname)
+
+# Output for MRTG (4 lines: in, out, uptime, hostname)
+echo "$used_pct"
+echo "$used_real_pct"
+echo "$uptime_sec"
+echo "$hostname"

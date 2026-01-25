@@ -201,55 +201,50 @@ install_packages() {
 }
 
 #
-# Create busybox symlinks that --no-scripts skipped
+# Create busybox symlinks for all available applets
 #
 create_busybox_symlinks() {
     echo "Creating busybox symlinks..."
 
     local busybox="${ROOTFS_DIR}/bin/busybox"
-    if [ ! -x "$busybox" ]; then
+    if [ ! -f "$busybox" ]; then
         echo "Warning: busybox not found, skipping symlinks"
         return
     fi
 
-    # Get list of applets from busybox itself
-    # Run busybox --list to get all supported applets
-    local applets
-    applets=$("$busybox" --list 2>/dev/null) || {
-        echo "Warning: Could not get busybox applet list"
-        # Fallback to essential applets
-        applets="[ [[ ar ash awk base64 basename cat chgrp chmod chown chroot clear cmp cp cut date dd df dirname dmesg du echo ed egrep env expr false fgrep find free grep gunzip gzip head hostname id install kill killall less ln ls md5sum mkdir mknod mktemp more mount mv nproc od passwd ping ping6 printf ps pwd readlink realpath rm rmdir sed seq sh sha256sum sha512sum sleep sort stat strings stty su sync tail tar tee test time touch tr true truncate tty uname uniq unlink umount usleep vi wc wget which xargs yes zcat"
-    }
+    # Complete list of Alpine busybox applets (from busybox --list on Alpine 3.23)
+    # Note: Cannot run busybox --list on build host due to musl/glibc mismatch
+    local applets="[ [[ acpid add-shell addgroup adduser adjtimex arch arp arping ash awk base64 basename bbconfig bc beep blkdiscard blkid blockdev brctl bunzip2 bzcat bzip2 cal cat chattr chgrp chmod chown chpasswd chroot chvt cksum clear cmp comm cp cpio crond crontab cryptpw cut date dc dd deallocvt delgroup deluser depmod df diff dirname dmesg dnsdomainname dos2unix du dumpkmap echo egrep eject env ether-wake expand expr factor fallocate false fatattr fbset fbsplash fdflush fdisk fgrep find findfs flock fold free fsck fstrim fsync fuser getopt getty grep groups gunzip gzip halt hd head hexdump hostid hostname hwclock id ifconfig ifdown ifenslave ifup init inotifyd insmod install ionice iostat ip ipaddr ipcalc ipcrm ipcs iplink ipneigh iproute iprule iptunnel kbd_mode kill killall killall5 klogd last less link linux32 linux64 ln loadfont loadkmap logger login logread losetup ls lsattr lsmod lsof lsusb lzcat lzma lzop lzopcat makemime md5sum mdev mesg microcom mkdir mkdosfs mkfifo mknod mkpasswd mkswap mktemp modinfo modprobe more mount mountpoint mpstat mv nameif nanddump nandwrite nbd-client nc netstat nice nl nmeter nohup nologin nproc nsenter nslookup ntpd od openvt partprobe passwd paste pgrep pidof ping ping6 pipe_progress pivot_root pkill pmap poweroff printenv printf ps pscan pstree pwd pwdx raidautorun rdate rdev readahead readlink realpath reboot reformime remove-shell renice reset resize rev rfkill rm rmdir rmmod route run-parts sed sendmail seq setconsole setfont setkeycodes setlogcons setpriv setserial setsid sh sha1sum sha256sum sha3sum sha512sum showkey shred shuf slattach sleep sort split stat strings stty su sum swapoff swapon switch_root sync sysctl syslogd tac tail tar tee test time timeout top touch tr traceroute traceroute6 tree true truncate tty ttysize tunctl udhcpc udhcpc6 umount uname unexpand uniq unix2dos unlink unlzma unlzop unshare unxz unzip uptime usleep uudecode uuencode vconfig vi vlock volname watch watchdog wc wget which who whoami whois xargs xxd xzcat yes zcat zcip"
 
-    # Create /bin symlinks
-    local count=0
+    # Applets that belong in /sbin (system administration)
+    local sbin_applets=" acpid addgroup adduser blkid blockdev crond depmod delgroup deluser fdisk findfs fsck fstrim getty halt hwclock ifconfig ifdown ifenslave ifup init insmod klogd loadkmap losetup lsmod mdev mkdosfs mkswap modinfo modprobe mount nologin partprobe pivot_root poweroff raidautorun rdate reboot rmmod route runlevel slattach sulogin swapoff swapon switch_root sysctl syslogd tunctl udhcpc udhcpc6 umount vconfig watchdog zcip "
+
+    # Applets that init scripts expect in /usr/sbin
+    local usrsbin_applets=" crond ntpd "
+
+    local bin_count=0
+    local sbin_count=0
+
     for applet in $applets; do
-        if [ ! -e "${ROOTFS_DIR}/bin/${applet}" ] && [ ! -e "${ROOTFS_DIR}/sbin/${applet}" ] && [ ! -e "${ROOTFS_DIR}/usr/bin/${applet}" ] && [ ! -e "${ROOTFS_DIR}/usr/sbin/${applet}" ]; then
-            ln -sf busybox "${ROOTFS_DIR}/bin/${applet}"
-            count=$((count + 1))
-        fi
-    done
-
-    # Create essential /sbin symlinks
-    local sbin_applets="init halt poweroff reboot hwclock ifconfig ifup ifdown route sysctl modprobe insmod lsmod rmmod depmod fsck getty sulogin"
-    for applet in $sbin_applets; do
-        if [ ! -e "${ROOTFS_DIR}/sbin/${applet}" ]; then
+        # Check if this applet belongs in /sbin
+        if echo "$sbin_applets" | grep -q " ${applet} "; then
+            # Create in /sbin
             ln -sf /bin/busybox "${ROOTFS_DIR}/sbin/${applet}"
-            count=$((count + 1))
+            sbin_count=$((sbin_count + 1))
+        else
+            # Create in /bin
+            ln -sf busybox "${ROOTFS_DIR}/bin/${applet}"
+            bin_count=$((bin_count + 1))
         fi
     done
 
-    # Force-create symlinks for busybox-suid commands that don't work in rootless build
-    # These commands (login, su, passwd) normally need setuid but we can't set that up
-    # as non-root. Force symlink to regular busybox - functionality may be limited.
-    local suid_applets="login su passwd"
-    for applet in $suid_applets; do
-        rm -f "${ROOTFS_DIR}/bin/${applet}" 2>/dev/null || true
-        ln -sf busybox "${ROOTFS_DIR}/bin/${applet}"
-        count=$((count + 1))
+    # Create /usr/sbin symlinks for daemons expected there by init scripts
+    mkdir -p "${ROOTFS_DIR}/usr/sbin"
+    for applet in $usrsbin_applets; do
+        ln -sf /bin/busybox "${ROOTFS_DIR}/usr/sbin/${applet}"
     done
 
-    echo "Created $count busybox symlinks"
+    echo "Created $bin_count symlinks in /bin, $sbin_count symlinks in /sbin"
 }
 
 #

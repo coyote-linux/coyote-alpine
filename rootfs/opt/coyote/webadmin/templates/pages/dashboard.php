@@ -102,21 +102,37 @@
     </div>
 </div>
 
+<?php
+// Check if MRTG graphs are available
+$mrtgDir = '/var/www/mrtg';
+$mrtgAvailable = is_dir($mrtgDir) && file_exists("$mrtgDir/cpu-day.png");
+?>
+
 <div class="card full-width" style="margin-top: 1rem;">
     <h3>Traffic Graphs</h3>
-    <p class="text-muted">Network traffic statistics (MRTG integration pending)</p>
+    <?php if (!$mrtgAvailable): ?>
+    <p class="text-muted">Network traffic statistics (MRTG graphs will appear after first data collection)</p>
+    <?php endif; ?>
     <div class="graph-container">
         <?php
         $interfaces = array_keys($network['interfaces'] ?? []);
         $displayInterfaces = array_filter($interfaces, fn($i) => $i !== 'lo');
         if (empty($displayInterfaces)) $displayInterfaces = ['eth0', 'eth1'];
         foreach (array_slice($displayInterfaces, 0, 4) as $iface):
+            $graphFile = "$mrtgDir/$iface-day.png";
+            $hasGraph = file_exists($graphFile);
         ?>
         <div class="graph-card">
             <h4><?= htmlspecialchars($iface) ?> - Daily Traffic</h4>
+            <?php if ($hasGraph): ?>
+            <a href="/mrtg/<?= htmlspecialchars($iface) ?>.html">
+                <img src="/mrtg/<?= htmlspecialchars($iface) ?>-day.png" alt="<?= htmlspecialchars($iface) ?> traffic">
+            </a>
+            <?php else: ?>
             <div class="graph-placeholder">
-                <span>MRTG graph for <?= htmlspecialchars($iface) ?></span>
+                <span>Waiting for data...</span>
             </div>
+            <?php endif; ?>
         </div>
         <?php endforeach; ?>
     </div>
@@ -124,19 +140,33 @@
 
 <div class="card full-width">
     <h3>System Load</h3>
-    <p class="text-muted">CPU and memory utilization (MRTG integration pending)</p>
+    <?php if (!$mrtgAvailable): ?>
+    <p class="text-muted">CPU and memory utilization (MRTG graphs will appear after first data collection)</p>
+    <?php endif; ?>
     <div class="graph-container">
         <div class="graph-card">
             <h4>CPU Usage - Daily</h4>
+            <?php if (file_exists("$mrtgDir/cpu-day.png")): ?>
+            <a href="/mrtg/cpu.html">
+                <img src="/mrtg/cpu-day.png" alt="CPU usage">
+            </a>
+            <?php else: ?>
             <div class="graph-placeholder">
-                <span>MRTG graph for CPU</span>
+                <span>Waiting for data...</span>
             </div>
+            <?php endif; ?>
         </div>
         <div class="graph-card">
             <h4>Memory Usage - Daily</h4>
+            <?php if (file_exists("$mrtgDir/memory-day.png")): ?>
+            <a href="/mrtg/memory.html">
+                <img src="/mrtg/memory-day.png" alt="Memory usage">
+            </a>
+            <?php else: ?>
             <div class="graph-placeholder">
-                <span>MRTG graph for Memory</span>
+                <span>Waiting for data...</span>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>

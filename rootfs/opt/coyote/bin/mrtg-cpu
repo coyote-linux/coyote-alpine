@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# MRTG CPU Usage Script
+# Returns: total CPU%, user CPU%, uptime, hostname
+#
+
+# Read CPU stats
+read cpu user nice system idle iowait irq softirq < /proc/stat
+
+# Calculate percentages
+total=$((user + nice + system + idle + iowait + irq + softirq))
+
+# Store previous values
+STATEFILE="/tmp/mrtg-cpu.state"
+
+if [ -f "$STATEFILE" ]; then
+    read prev_total prev_user prev_system < "$STATEFILE"
+
+    diff_total=$((total - prev_total))
+    diff_user=$((user + nice - prev_user))
+    diff_system=$((system + irq + softirq - prev_system))
+
+    if [ "$diff_total" -gt 0 ]; then
+        user_pct=$((diff_user * 100 / diff_total))
+        total_pct=$(((diff_user + diff_system) * 100 / diff_total))
+    else
+        user_pct=0
+        total_pct=0
+    fi
+else
+    user_pct=0
+    total_pct=0
+fi
+
+# Save current values
+echo "$total $((user + nice)) $((system + irq + softirq))" > "$STATEFILE"
+
+# Get uptime
+uptime_sec=$(cut -d. -f1 /proc/uptime)
+
+# Get hostname
+hostname=$(cat /etc/hostname 2>/dev/null || hostname)
+
+# Output for MRTG (4 lines: in, out, uptime, hostname)
+echo "$total_pct"
+echo "$user_pct"
+echo "$uptime_sec"
+echo "$hostname"

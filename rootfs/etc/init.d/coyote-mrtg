@@ -1,0 +1,30 @@
+#!/sbin/openrc-run
+#
+# Coyote MRTG Setup
+# Initializes MRTG configuration on boot
+#
+
+description="Initialize MRTG monitoring"
+
+depend() {
+    need localmount
+    after coyote-config
+    before crond
+}
+
+start() {
+    ebegin "Setting up MRTG monitoring"
+
+    # Create required directories
+    mkdir -p /var/www/mrtg /var/lib/mrtg /etc/mrtg
+
+    # Generate MRTG configuration
+    /opt/coyote/bin/mrtg-setup >/dev/null 2>&1
+
+    eend $?
+}
+
+stop() {
+    # Nothing to stop
+    return 0
+}
