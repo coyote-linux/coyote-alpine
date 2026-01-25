@@ -17,6 +17,9 @@ NC='\033[0m'
 BOOT_MEDIA="${BOOT_MEDIA:-/mnt/boot}"
 FIRMWARE_SRC="${BOOT_MEDIA}/firmware/current.squashfs"
 
+# Upgrade mode flag
+UPGRADE_MODE=0
+
 # Clear screen and show header
 clear_screen() {
     printf '\033[2J\033[H'
@@ -398,6 +401,234 @@ get_available_disks() {
     done
 }
 
+# Check if a disk has an existing Coyote installation
+check_existing_installation() {
+    local disk="$1"
+    local boot_part
+
+    # Determine partition naming
+    case "$disk" in
+        /dev/nvme*)
+            boot_part="${disk}p1"
+            ;;
+        *)
+            boot_part="${disk}1"
+            ;;
+    esac
+
+    # Check if partition exists
+    [ -b "$boot_part" ] || return 1
+
+    # Try to mount and check for marker
+    local tmp_mount="/tmp/check_install"
+    mkdir -p "$tmp_mount"
+
+    if mount -t vfat -o ro "$boot_part" "$tmp_mount" 2>/dev/null; then
+        if [ -f "$tmp_mount/coyote.marker" ]; then
+            local marker_content=$(cat "$tmp_mount/coyote.marker" 2>/dev/null)
+            umount "$tmp_mount" 2>/dev/null
+            rmdir "$tmp_mount" 2>/dev/null
+            [ "$marker_content" = "COYOTE_BOOT" ] && return 0
+        else
+            umount "$tmp_mount" 2>/dev/null
+        fi
+    fi
+
+    rmdir "$tmp_mount" 2>/dev/null
+    return 1
+}
+
+# Get list of disks with existing Coyote installations
+get_upgradeable_disks() {
+    local boot_disk=""
+
+    # Find boot media's parent disk
+    if [ -n "$BOOT_MEDIA_DEV" ]; then
+        boot_disk=$(echo "$BOOT_MEDIA_DEV" | sed 's/[0-9]*$//')
+    fi
+
+    # List block devices that have Coyote installations
+    for disk in /dev/sd? /dev/nvme?n? /dev/vd?; do
+        [ -b "$disk" ] || continue
+
+        # Skip the boot media disk
+        [ "$disk" = "$boot_disk" ] && continue
+
+        # Skip CD-ROMs
+        case "$disk" in
+            /dev/sr*) continue ;;
+        esac
+
+        # Check for existing installation
+        if check_existing_installation "$disk"; then
+            # Get disk size
+            local size_sectors=$(cat /sys/block/$(basename $disk)/size 2>/dev/null)
+            if [ -n "$size_sectors" ] && [ "$size_sectors" -gt 0 ]; then
+                local size_gb=$((size_sectors * 512 / 1024 / 1024 / 1024))
+                printf "%s %dGB\n" "$disk" "$size_gb"
+            fi
+        fi
+    done
+}
+
+# Select target disk for upgrade
+select_upgrade_disk() {
+    print_header
+    printf "Select the disk to upgrade:\n\n"
+
+    local disks=$(get_upgradeable_disks)
+
+    if [ -z "$disks" ]; then
+        print_error "No existing Coyote Linux installations found."
+        printf "\nPress Enter to return..."
+        read dummy
+        return 1
+    fi
+
+    local i=1
+    echo "$disks" > /tmp/upgrade_disks
+
+    printf "  ${BOLD}#  Device          Size${NC}\n"
+    printf "  -------------------------\n"
+
+    while IFS=' ' read -r disk size; do
+        printf "  %d) %-14s %s\n" "$i" "$disk" "$size"
+        i=$((i + 1))
+    done < /tmp/upgrade_disks
+
+    printf "\n  0) Cancel\n"
+    printf "\n"
+
+    local count=$(wc -l < /tmp/upgrade_disks)
+
+    while true; do
+        printf "Enter selection [1-%d]: " "$count"
+        read selection
+
+        if [ "$selection" = "0" ]; then
+            return 1
+        fi
+
+        if [ "$selection" -ge 1 ] 2>/dev/null && [ "$selection" -le "$count" ]; then
+            TARGET_DISK=$(sed -n "${selection}p" /tmp/upgrade_disks | cut -d' ' -f1)
+            TARGET_SIZE=$(sed -n "${selection}p" /tmp/upgrade_disks | cut -d' ' -f2)
+
+            # Set partition names
+            case "$TARGET_DISK" in
+                /dev/nvme*)
+                    BOOT_PART="${TARGET_DISK}p1"
+                    CONFIG_PART="${TARGET_DISK}p2"
+                    ;;
+                *)
+                    BOOT_PART="${TARGET_DISK}1"
+                    CONFIG_PART="${TARGET_DISK}2"
+                    ;;
+            esac
+
+            return 0
+        fi
+
+        print_error "Invalid selection"
+    done
+}
+
+# Confirm upgrade
+confirm_upgrade() {
+    print_header
+    printf "${YELLOW}${BOLD}Firmware Upgrade${NC}\n\n"
+    printf "Target disk: ${BOLD}${TARGET_DISK}${NC} (${TARGET_SIZE})\n\n"
+    printf "The upgrade will:\n"
+    printf "  1. Backup the existing firmware (as previous.squashfs)\n"
+    printf "  2. Install the new kernel, initramfs, and firmware\n"
+    printf "  3. Update the bootloader configuration\n"
+    printf "\n"
+    printf "${GREEN}Your configuration will be preserved.${NC}\n"
+    printf "\n"
+
+    printf "Type ${BOLD}YES${NC} to continue, or anything else to cancel: "
+    read confirm
+
+    [ "$confirm" = "YES" ]
+}
+
+# Perform firmware upgrade
+upgrade_system() {
+    printf "\nUpgrading Coyote Linux...\n\n"
+
+    local target_boot="/tmp/target_boot"
+
+    mkdir -p "$target_boot"
+
+    # Load filesystem modules if needed
+    modprobe -q vfat 2>/dev/null || true
+    modprobe -q fat 2>/dev/null || true
+    modprobe -q nls_cp437 2>/dev/null || true
+    modprobe -q nls_iso8859-1 2>/dev/null || true
+
+    # Mount target boot partition
+    printf "  Mounting boot partition...\n"
+    mount -t vfat "$BOOT_PART" "$target_boot" || {
+        print_error "Failed to mount boot partition"
+        return 1
+    }
+
+    # Backup existing firmware
+    if [ -f "$target_boot/firmware/current.squashfs" ]; then
+        printf "  Backing up existing firmware...\n"
+        mv "$target_boot/firmware/current.squashfs" "$target_boot/firmware/previous.squashfs" || {
+            print_warn "  Warning: Could not backup existing firmware"
+        }
+        if [ -f "$target_boot/firmware/current.squashfs.sha256" ]; then
+            mv "$target_boot/firmware/current.squashfs.sha256" "$target_boot/firmware/previous.squashfs.sha256" 2>/dev/null
+        fi
+    fi
+
+    # Copy new kernel
+    printf "  Installing new kernel...\n"
+    cp "${BOOT_MEDIA}/boot/vmlinuz" "$target_boot/boot/" || {
+        print_error "Failed to copy kernel"
+        umount "$target_boot"
+        return 1
+    }
+
+    # Copy new initramfs
+    printf "  Installing new initramfs...\n"
+    cp "${BOOT_MEDIA}/boot/initramfs.gz" "$target_boot/boot/" || {
+        print_error "Failed to copy initramfs"
+        umount "$target_boot"
+        return 1
+    }
+
+    # Copy new firmware
+    printf "  Installing new firmware image...\n"
+    cp "$FIRMWARE_SRC" "$target_boot/firmware/current.squashfs" || {
+        print_error "Failed to copy firmware"
+        umount "$target_boot"
+        return 1
+    }
+    if [ -f "${FIRMWARE_SRC}.sha256" ]; then
+        cp "${FIRMWARE_SRC}.sha256" "$target_boot/firmware/current.squashfs.sha256"
+    fi
+
+    # Update syslinux files if they exist on install media
+    printf "  Updating bootloader files...\n"
+    if [ -f "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" ]; then
+        cp "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" "$target_boot/boot/syslinux/" 2>/dev/null || true
+        cp "${BOOT_MEDIA}/boot/isolinux/menu.c32" "$target_boot/boot/syslinux/" 2>/dev/null || true
+        cp "${BOOT_MEDIA}/boot/isolinux/libutil.c32" "$target_boot/boot/syslinux/" 2>/dev/null || true
+        cp "${BOOT_MEDIA}/boot/isolinux/libcom32.c32" "$target_boot/boot/syslinux/" 2>/dev/null || true
+    fi
+
+    # Ensure data is written to disk
+    sync
+
+    # Unmount
+    umount "$target_boot"
+
+    print_success "  Upgrade complete!"
+    return 0
+}
+
 # Select target disk
 select_disk() {
     print_header
@@ -714,17 +945,59 @@ EOF
     return 0
 }
 
-# Main installation flow
-main() {
+# Show main menu
+show_main_menu() {
+    local upgradeable=$(get_upgradeable_disks)
+
     print_header
     printf "Welcome to the Coyote Linux installer.\n\n"
-    printf "This wizard will guide you through installing Coyote Linux\n"
-    printf "to your system.\n\n"
-    printf "Press ${BOLD}Enter${NC} to continue or ${BOLD}Ctrl+C${NC} to cancel..."
-    read dummy
+    printf "Please select an option:\n\n"
 
+    printf "  ${BOLD}1)${NC} New Installation\n"
+    printf "     Install Coyote Linux to a new disk (erases all data)\n\n"
+
+    if [ -n "$upgradeable" ]; then
+        printf "  ${BOLD}2)${NC} Upgrade Existing Installation\n"
+        printf "     Update firmware on an existing Coyote system\n"
+        printf "     ${GREEN}(preserves your configuration)${NC}\n\n"
+    else
+        printf "  ${BOLD}2)${NC} ${YELLOW}Upgrade (no existing installations found)${NC}\n\n"
+    fi
+
+    printf "  ${BOLD}3)${NC} Exit to Shell\n\n"
+
+    while true; do
+        printf "Enter selection [1-3]: "
+        read selection
+
+        case "$selection" in
+            1)
+                UPGRADE_MODE=0
+                return 0
+                ;;
+            2)
+                if [ -n "$upgradeable" ]; then
+                    UPGRADE_MODE=1
+                    return 0
+                else
+                    print_error "No existing Coyote Linux installations found"
+                fi
+                ;;
+            3)
+                return 1
+                ;;
+            *)
+                print_error "Invalid selection"
+                ;;
+        esac
+    done
+}
+
+# Main installation flow
+main() {
     # Check for required files
     if [ ! -f "$FIRMWARE_SRC" ]; then
+        print_header
         print_error "Firmware not found at $FIRMWARE_SRC"
         print_error "Boot media may not be mounted correctly"
         printf "\nBOOT_MEDIA=$BOOT_MEDIA\n"
@@ -733,65 +1006,114 @@ main() {
         exec /bin/sh
     fi
 
-    # Load network modules and check for interfaces (required)
+    # Load network modules (needed for new installation)
     load_network_modules
-    if ! check_network_interfaces; then
+
+    # Show main menu
+    if ! show_main_menu; then
+        printf "\nExiting to shell...\n"
         exec /bin/sh
     fi
 
-    # Select target disk
-    if ! select_disk; then
-        printf "\nInstallation cancelled.\n"
-        printf "Press Enter for shell or Ctrl+Alt+Del to reboot..."
+    if [ "$UPGRADE_MODE" = "1" ]; then
+        # Upgrade path
+        if ! select_upgrade_disk; then
+            printf "\nUpgrade cancelled.\n"
+            printf "Press Enter for shell or Ctrl+Alt+Del to reboot..."
+            read dummy
+            exec /bin/sh
+        fi
+
+        if ! confirm_upgrade; then
+            printf "\nUpgrade cancelled.\n"
+            printf "Press Enter for shell or Ctrl+Alt+Del to reboot..."
+            read dummy
+            exec /bin/sh
+        fi
+
+        if ! upgrade_system; then
+            printf "\nUpgrade failed.\n"
+            printf "Press Enter for shell..."
+            read dummy
+            exec /bin/sh
+        fi
+
+        # Done - Upgrade
+        print_header
+        print_success "Upgrade completed successfully!"
+        printf "\n"
+        printf "Coyote Linux on ${BOLD}${TARGET_DISK}${NC} has been upgraded.\n\n"
+        printf "Your configuration has been preserved.\n\n"
+        printf "The previous firmware has been saved as ${BOLD}previous.squashfs${NC}\n"
+        printf "and can be used for rollback if needed.\n\n"
+        printf "You can now:\n"
+        printf "  1. Remove the installation media\n"
+        printf "  2. Reboot the system\n"
+        printf "\n"
+        printf "Press ${BOLD}Enter${NC} to reboot..."
         read dummy
-        exec /bin/sh
-    fi
 
-    # Configure network (loop until user confirms)
-    while ! configure_network; do
-        : # User chose to re-enter network configuration
-    done
+        reboot -f
+    else
+        # New installation path
+        if ! check_network_interfaces; then
+            exec /bin/sh
+        fi
 
-    # Confirm installation
-    if ! confirm_install; then
-        printf "\nInstallation cancelled.\n"
-        printf "Press Enter for shell or Ctrl+Alt+Del to reboot..."
+        # Select target disk
+        if ! select_disk; then
+            printf "\nInstallation cancelled.\n"
+            printf "Press Enter for shell or Ctrl+Alt+Del to reboot..."
+            read dummy
+            exec /bin/sh
+        fi
+
+        # Configure network (loop until user confirms)
+        while ! configure_network; do
+            : # User chose to re-enter network configuration
+        done
+
+        # Confirm installation
+        if ! confirm_install; then
+            printf "\nInstallation cancelled.\n"
+            printf "Press Enter for shell or Ctrl+Alt+Del to reboot..."
+            read dummy
+            exec /bin/sh
+        fi
+
+        # Perform installation
+        if ! partition_disk; then
+            printf "\nPress Enter for shell..."
+            read dummy
+            exec /bin/sh
+        fi
+
+        if ! format_partitions; then
+            printf "\nPress Enter for shell..."
+            read dummy
+            exec /bin/sh
+        fi
+
+        if ! install_system; then
+            printf "\nPress Enter for shell..."
+            read dummy
+            exec /bin/sh
+        fi
+
+        # Done - New Installation
+        print_header
+        print_success "Installation completed successfully!"
+        printf "\n"
+        printf "Coyote Linux has been installed to ${BOLD}${TARGET_DISK}${NC}\n\n"
+        printf "You can now:\n"
+        printf "  1. Remove the installation media\n"
+        printf "  2. Reboot the system\n"
+        printf "\n"
+        printf "Press ${BOLD}Enter${NC} to reboot..."
         read dummy
-        exec /bin/sh
+
+        reboot -f
     fi
-
-    # Perform installation
-    if ! partition_disk; then
-        printf "\nPress Enter for shell..."
-        read dummy
-        exec /bin/sh
-    fi
-
-    if ! format_partitions; then
-        printf "\nPress Enter for shell..."
-        read dummy
-        exec /bin/sh
-    fi
-
-    if ! install_system; then
-        printf "\nPress Enter for shell..."
-        read dummy
-        exec /bin/sh
-    fi
-
-    # Done
-    print_header
-    print_success "Installation completed successfully!"
-    printf "\n"
-    printf "Coyote Linux has been installed to ${BOLD}${TARGET_DISK}${NC}\n\n"
-    printf "You can now:\n"
-    printf "  1. Remove the installation media\n"
-    printf "  2. Reboot the system\n"
-    printf "\n"
-    printf "Press ${BOLD}Enter${NC} to reboot..."
-    read dummy
-
-    reboot -f
 }
 
 main "$@"
