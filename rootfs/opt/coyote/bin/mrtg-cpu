@@ -17,7 +17,8 @@ local function read_cpu_stats()
     if not line then return nil end
 
     -- cpu  user nice system idle iowait irq softirq steal guest guest_nice
-    local cpu, user, nice, system, idle, iowait, irq, softirq =
+    -- Note: "cpu" is matched literally, not captured, so first capture is "user"
+    local user, nice, system, idle, iowait, irq, softirq =
         line:match("^cpu%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)%s+(%d+)")
 
     if not user then return nil end
