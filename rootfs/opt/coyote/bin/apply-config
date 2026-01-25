@@ -57,11 +57,40 @@ function applyConfig(): bool
     $dns = $config['network']['dns'] ?? [];
     $search = $config['network']['search'] ?? [];
 
-    $resolv = "";
-    if (!empty($search)) {
-        $resolv .= "search " . implode(' ', $search) . "\n";
+    // Ensure dns is a flat array of strings
+    if (!is_array($dns)) {
+        $dns = [$dns];
     }
+    // Flatten in case of nested array
+    $dnsServers = [];
     foreach ($dns as $ns) {
+        if (is_array($ns)) {
+            foreach ($ns as $server) {
+                if (is_string($server) && !empty($server)) {
+                    $dnsServers[] = $server;
+                }
+            }
+        } elseif (is_string($ns) && !empty($ns)) {
+            $dnsServers[] = $ns;
+        }
+    }
+
+    // Ensure search is a flat array of strings
+    if (!is_array($search)) {
+        $search = !empty($search) ? [$search] : [];
+    }
+    $searchDomains = [];
+    foreach ($search as $domain) {
+        if (is_string($domain) && !empty($domain)) {
+            $searchDomains[] = $domain;
+        }
+    }
+
+    $resolv = "";
+    if (!empty($searchDomains)) {
+        $resolv .= "search " . implode(' ', $searchDomains) . "\n";
+    }
+    foreach ($dnsServers as $ns) {
         $resolv .= "nameserver {$ns}\n";
     }
     if (!empty($resolv)) {
