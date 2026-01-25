@@ -10,7 +10,7 @@ description="Apply Coyote Linux configuration"
 
 depend() {
     need coyote-init
-    provide net networking
+    provide net
     before coyote-webadmin
 }
 

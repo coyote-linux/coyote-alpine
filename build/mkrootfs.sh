@@ -368,8 +368,8 @@ EOF
     mkdir -p "${ROOTFS_DIR}/etc/runlevels/default"
     mkdir -p "${ROOTFS_DIR}/etc/runlevels/boot"
 
-    # Link standard services
-    for svc in bootmisc hostname hwclock modules sysctl urandom networking; do
+    # Link standard services (excluding networking - handled by coyote-config)
+    for svc in bootmisc hostname hwclock modules sysctl urandom; do
         if [ -f "${ROOTFS_DIR}/etc/init.d/${svc}" ]; then
             ln -sf "/etc/init.d/${svc}" "${ROOTFS_DIR}/etc/runlevels/boot/" 2>/dev/null || true
         fi
