@@ -9,7 +9,11 @@ CACHE_DIR := ../.cache
 
 SQUASHFS_OPTS := -comp xz -Xdict-size 100%
 
-.PHONY: all clean firmware installer iso initramfs kernel rootfs distclean help
+# Find all source files for dependency tracking
+ROOTFS_FILES := $(shell find $(ROOTFS_SRC) -type f 2>/dev/null)
+INITRAMFS_FILES := $(shell find $(INITRAMFS_DIR) -type f 2>/dev/null)
+
+.PHONY: all clean firmware installer iso initramfs kernel rootfs distclean help rebuild-firmware rebuild-iso
 
 all: firmware
 
@@ -17,23 +21,29 @@ help:
 	@echo "Coyote Linux Build System"
 	@echo ""
 	@echo "Targets:"
-	@echo "  rootfs      - Download Alpine and build rootfs"
-	@echo "  firmware    - Build firmware squashfs image (requires rootfs)"
-	@echo "  kernel      - Download Alpine kernel"
-	@echo "  initramfs   - Build initramfs with kernel and busybox"
-	@echo "  installer   - Build USB installer image"
-	@echo "  iso         - Build ISO installer image (for CD/VM boot)"
-	@echo "  clean       - Remove build outputs"
-	@echo "  distclean   - Remove build outputs and cached downloads"
+	@echo "  rootfs           - Download Alpine and build rootfs"
+	@echo "  firmware         - Build firmware squashfs image (requires rootfs)"
+	@echo "  kernel           - Download Alpine kernel"
+	@echo "  initramfs        - Build initramfs with kernel and busybox"
+	@echo "  installer        - Build USB installer image"
+	@echo "  iso              - Build ISO installer image (for CD/VM boot)"
+	@echo "  rebuild-firmware - Force rebuild firmware (preserves rootfs)"
+	@echo "  rebuild-iso      - Force rebuild firmware and ISO"
+	@echo "  clean            - Remove build outputs"
+	@echo "  distclean        - Remove build outputs and cached downloads"
 	@echo ""
 	@echo "Typical build sequence:"
 	@echo "  make rootfs     # First time or when packages change"
-	@echo "  make installer  # Build bootable installer"
+	@echo "  make iso        # Build bootable ISO installer"
+	@echo ""
+	@echo "After editing rootfs/ files:"
+	@echo "  make firmware   # Detects changes automatically"
+	@echo "  make iso        # Rebuild ISO with new firmware"
 
 # Build the Alpine rootfs with Coyote overlay
 rootfs: $(ROOTFS_BUILD)/.stamp
 
-$(ROOTFS_BUILD)/.stamp: $(ROOTFS_SRC) apk-packages.txt mkrootfs.sh
+$(ROOTFS_BUILD)/.stamp: $(ROOTFS_FILES) apk-packages.txt mkrootfs.sh
 	@echo "Building rootfs..."
 	./mkrootfs.sh
 	@touch $@
@@ -41,7 +51,8 @@ $(ROOTFS_BUILD)/.stamp: $(ROOTFS_SRC) apk-packages.txt mkrootfs.sh
 # Build the main firmware squashfs image
 firmware: $(BUILD_DIR)/firmware-$(VERSION).squashfs
 
-$(BUILD_DIR)/firmware-$(VERSION).squashfs: $(ROOTFS_BUILD)/.stamp
+# Firmware depends on rootfs stamp AND all source files (for overlay changes)
+$(BUILD_DIR)/firmware-$(VERSION).squashfs: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	@echo "Building firmware image..."
 	@mkdir -p $(BUILD_DIR)
 	./mksquashfs.sh $(ROOTFS_BUILD) $@ "$(SQUASHFS_OPTS)"
@@ -53,7 +64,7 @@ kernel: $(BUILD_DIR)/.initramfs-stamp
 
 initramfs: $(BUILD_DIR)/.initramfs-stamp
 
-$(BUILD_DIR)/.initramfs-stamp: mkinitramfs.sh $(INITRAMFS_DIR)/init $(wildcard $(INITRAMFS_DIR)/init.d/*.sh) $(wildcard $(INITRAMFS_DIR)/recovery/*.sh)
+$(BUILD_DIR)/.initramfs-stamp: mkinitramfs.sh $(INITRAMFS_FILES)
 	@echo "Building kernel and initramfs..."
 	@mkdir -p $(BUILD_DIR)
 	./mkinitramfs.sh
@@ -86,6 +97,17 @@ clean:
 distclean: clean
 	rm -rf $(CACHE_DIR)
 	@echo "Cache directory cleaned"
+
+# Force rebuild of firmware (removes only squashfs, preserves rootfs)
+rebuild-firmware:
+	rm -f $(BUILD_DIR)/firmware-$(VERSION).squashfs $(BUILD_DIR)/firmware-$(VERSION).squashfs.sha256
+	$(MAKE) firmware
+
+# Force rebuild of ISO (removes squashfs and ISO)
+rebuild-iso:
+	rm -f $(BUILD_DIR)/firmware-$(VERSION).squashfs $(BUILD_DIR)/firmware-$(VERSION).squashfs.sha256
+	rm -f $(BUILD_DIR)/coyote-*.iso
+	$(MAKE) iso
 
 # Development helpers
 .PHONY: test-boot lint shell

@@ -218,7 +218,7 @@ create_busybox_symlinks() {
     applets=$("$busybox" --list 2>/dev/null) || {
         echo "Warning: Could not get busybox applet list"
         # Fallback to essential applets
-        applets="[ [[ ar ash awk base64 basename cat chgrp chmod chown chroot clear cmp cp cut date dd df dirname dmesg du echo ed egrep env expr false fgrep find free grep gunzip gzip head hostname id install kill killall less ln ls md5sum mkdir mknod mktemp more mount mv nproc od passwd ping ping6 printf ps pwd readlink realpath rm rmdir sed seq sh sha256sum sha512sum sleep sort stat strings stty su sync tail tar tee test time touch tr true truncate tty uname uniq unlink usleep vi wc wget which xargs yes zcat"
+        applets="[ [[ ar ash awk base64 basename cat chgrp chmod chown chroot clear cmp cp cut date dd df dirname dmesg du echo ed egrep env expr false fgrep find free grep gunzip gzip head hostname id install kill killall less ln ls md5sum mkdir mknod mktemp more mount mv nproc od passwd ping ping6 printf ps pwd readlink realpath rm rmdir sed seq sh sha256sum sha512sum sleep sort stat strings stty su sync tail tar tee test time touch tr true truncate tty uname uniq unlink umount usleep vi wc wget which xargs yes zcat"
     }
 
     # Create /bin symlinks

@@ -20,6 +20,14 @@ modprobe -q mptspi 2>/dev/null || true
 modprobe -q mptsas 2>/dev/null || true
 modprobe -q vmw_pvscsi 2>/dev/null || true
 
+# Load filesystem modules
+log "Loading filesystem modules..."
+modprobe -q vfat 2>/dev/null || true
+modprobe -q fat 2>/dev/null || true
+modprobe -q nls_cp437 2>/dev/null || true
+modprobe -q nls_iso8859-1 2>/dev/null || true
+modprobe -q ext4 2>/dev/null || true
+
 # Wait for devices to settle (VMware may need more time)
 log "Waiting for devices..."
 sleep 3
@@ -38,34 +46,48 @@ if grep -q "installer" /proc/cmdline 2>/dev/null; then
     log "Installer mode detected - preferring CD-ROM"
 fi
 
-# Function to check disk partitions
+# Function to check disk partitions for installed system (COYOTE_BOOT marker)
 check_disk_partitions() {
+    log "check_disk_partitions: scanning for COYOTE_BOOT marker..."
     for dev in /dev/sd* /dev/nvme* /dev/vd*; do
         [ -b "$dev" ] || continue
 
         # Skip whole disks, look for partitions
         case "$dev" in
-            *[0-9]) ;;  # Partition
+            *[0-9]) ;;  # Partition (sda1, vda1)
+            *p[0-9]) ;;  # NVMe partition (nvme0n1p1)
             *) continue ;;
         esac
 
-        log "Checking disk partition: $dev"
-        mount -o ro "$dev" /mnt 2>/dev/null || continue
+        log "  Trying: $dev"
+        if ! mount -o ro "$dev" /mnt 2>/dev/null; then
+            log "    Mount failed"
+            continue
+        fi
 
+        # Check for installed system marker (COYOTE_BOOT)
         if [ -f /mnt/coyote.marker ]; then
-            BOOT_MEDIA="$dev"
-            BOOT_MEDIA_TYPE="disk"
-            log "Found boot media (disk): $dev"
-            umount /mnt
-            return 0
+            local marker_content=$(cat /mnt/coyote.marker 2>/dev/null)
+            log "    Found marker: [$marker_content]"
+            if [ "$marker_content" = "COYOTE_BOOT" ]; then
+                BOOT_MEDIA="$dev"
+                BOOT_MEDIA_TYPE="disk"
+                log "    SUCCESS: Found installed system"
+                umount /mnt
+                return 0
+            fi
+            log "    Marker mismatch (expected COYOTE_BOOT)"
+        else
+            log "    No coyote.marker file"
         fi
 
         umount /mnt
     done
+    log "check_disk_partitions: no installed system found"
     return 1
 }
 
-# Function to check CD-ROM devices
+# Function to check CD-ROM devices for installer (COYOTE_INSTALLER marker)
 check_cdrom_devices() {
     for dev in /dev/sr* /dev/hdc /dev/hdd /dev/cdrom; do
         [ -b "$dev" ] || continue
@@ -73,12 +95,17 @@ check_cdrom_devices() {
         log "Checking CD-ROM device: $dev"
         mount -o ro "$dev" /mnt 2>/dev/null || continue
 
+        # Check for installer marker (COYOTE_INSTALLER)
         if [ -f /mnt/coyote.marker ]; then
-            BOOT_MEDIA="$dev"
-            BOOT_MEDIA_TYPE="cdrom"
-            log "Found boot media (CD-ROM): $dev"
-            umount /mnt
-            return 0
+            local marker_content=$(cat /mnt/coyote.marker 2>/dev/null)
+            if [ "$marker_content" = "COYOTE_INSTALLER" ]; then
+                BOOT_MEDIA="$dev"
+                BOOT_MEDIA_TYPE="cdrom"
+                log "Found installer media (CD-ROM): $dev"
+                umount /mnt
+                return 0
+            fi
+            log "  Found marker but content is: $marker_content (not COYOTE_INSTALLER)"
         fi
 
         umount /mnt
@@ -86,13 +113,71 @@ check_cdrom_devices() {
     return 1
 }
 
+# Fallback: check any device with any coyote.marker
+check_any_boot_media() {
+    log "check_any_boot_media: scanning for any coyote.marker..."
+
+    # Check disks first
+    for dev in /dev/sd* /dev/nvme* /dev/vd*; do
+        [ -b "$dev" ] || continue
+        case "$dev" in
+            *[0-9]) ;;
+            *p[0-9]) ;;
+            *) continue ;;
+        esac
+
+        log "  Trying disk: $dev"
+        if ! mount -o ro "$dev" /mnt 2>/dev/null; then
+            log "    Mount failed"
+            continue
+        fi
+
+        if [ -f /mnt/coyote.marker ]; then
+            local marker=$(cat /mnt/coyote.marker 2>/dev/null)
+            log "    Found marker: [$marker]"
+            BOOT_MEDIA="$dev"
+            BOOT_MEDIA_TYPE="disk"
+            umount /mnt
+            return 0
+        fi
+        log "    No marker"
+        umount /mnt
+    done
+
+    # Then CD-ROMs
+    for dev in /dev/sr* /dev/hdc /dev/hdd /dev/cdrom; do
+        [ -b "$dev" ] || continue
+        log "  Trying CD-ROM: $dev"
+        if ! mount -o ro "$dev" /mnt 2>/dev/null; then
+            log "    Mount failed"
+            continue
+        fi
+
+        if [ -f /mnt/coyote.marker ]; then
+            local marker=$(cat /mnt/coyote.marker 2>/dev/null)
+            log "    Found marker: [$marker]"
+            BOOT_MEDIA="$dev"
+            BOOT_MEDIA_TYPE="cdrom"
+            umount /mnt
+            return 0
+        fi
+        log "    No marker"
+        umount /mnt
+    done
+
+    log "check_any_boot_media: no boot media found"
+    return 1
+}
+
 # Search order depends on installer mode
 if [ "$INSTALLER_MODE" = "1" ]; then
-    # Installer mode: check CD-ROM first to allow reinstallation
-    check_cdrom_devices || check_disk_partitions
+    # Installer mode: check CD-ROM first (need COYOTE_INSTALLER marker)
+    log "Searching for installer media..."
+    check_cdrom_devices || check_disk_partitions || check_any_boot_media
 else
-    # Normal boot: check disk first (prefer installed system)
-    check_disk_partitions || check_cdrom_devices
+    # Normal boot: check disk first (need COYOTE_BOOT marker from installed system)
+    log "Searching for installed system..."
+    check_disk_partitions || check_any_boot_media
 fi
 
 if [ -z "$BOOT_MEDIA" ]; then

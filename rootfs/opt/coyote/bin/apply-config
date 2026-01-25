@@ -19,6 +19,43 @@ function applyConfig(): bool
     $configManager = new ConfigManager();
     $errors = [];
 
+    // Debug: Check mount status
+    $configPath = '/mnt/config';
+    $configFile = $configPath . '/system.json';
+
+    echo "  Config path: {$configPath}\n";
+    echo "  Config file: {$configFile}\n";
+
+    // Check if config partition is mounted
+    $mounts = file_get_contents('/proc/mounts');
+    if (strpos($mounts, '/mnt/config') !== false) {
+        echo "  Config partition: mounted\n";
+    } else {
+        echo "  Config partition: NOT MOUNTED\n";
+        echo "  Attempting to find and mount config partition...\n";
+
+        // Try to mount config partition
+        foreach (glob('/dev/sd*2') + glob('/dev/nvme*p2') + glob('/dev/vd*2') as $part) {
+            if (filetype($part) !== 'block') continue;
+
+            // Try mounting (busybox mount requires -t type)
+            exec("mount -t ext4 -o ro " . escapeshellarg($part) . " " . escapeshellarg($configPath) . " 2>&1", $output, $ret);
+            if ($ret === 0) {
+                if (file_exists($configFile)) {
+                    echo "  Found config on: {$part}\n";
+                    break;
+                }
+                exec("umount " . escapeshellarg($configPath) . " 2>&1");
+            }
+        }
+    }
+
+    if (file_exists($configFile)) {
+        echo "  Config file: exists\n";
+    } else {
+        echo "  Config file: NOT FOUND (using defaults)\n";
+    }
+
     // Load configuration
     try {
         $runningConfig = $configManager->load();
@@ -28,6 +65,11 @@ function applyConfig(): bool
     }
 
     $config = $runningConfig->toArray();
+
+    // Debug: Show loaded config summary
+    $ifaceCount = count($config['network']['interfaces'] ?? []);
+    $dnsCount = is_array($config['network']['dns'] ?? null) ? count($config['network']['dns']) : 0;
+    echo "  Loaded: {$ifaceCount} interface(s), {$dnsCount} DNS server(s)\n";
 
     // Apply hostname
     $hostname = $config['system']['hostname'] ?? 'coyote';
@@ -96,6 +138,16 @@ function applyConfig(): bool
     if (!empty($resolv)) {
         file_put_contents('/etc/resolv.conf', $resolv);
         echo "  DNS configured\n";
+    }
+
+    // Configure loopback interface
+    echo "  Interface lo:\n";
+    exec("ip addr add 127.0.0.1/8 dev lo 2>&1", $output, $ret);
+    exec("ip link set lo up 2>&1", $output, $ret);
+    if ($ret === 0) {
+        echo "    Address: 127.0.0.1/8\n";
+    } else {
+        $errors[] = "Failed to configure loopback interface";
     }
 
     // Configure network interfaces

@@ -704,6 +704,9 @@ $interface_json
 }
 EOF
 
+    # Ensure data is written to disk
+    sync
+
     # Cleanup
     umount "$target_config" 2>/dev/null
 
