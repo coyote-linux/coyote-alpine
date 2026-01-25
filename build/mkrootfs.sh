@@ -348,6 +348,14 @@ EOF
     mkdir -p "${ROOTFS_DIR}/home/admin"
     chmod 755 "${ROOTFS_DIR}/home/admin"
 
+    # Set default root password (password: coyote)
+    # Users should change this on first login
+    local root_hash='$6$coyote$UOHRCUYPULONPztxMmmSzxIbCjkf4Gjljpocw4eCjIGExMr35nyHdsovoP2PkChE.yg6QIBeQoJT4RLjmJ3A9/'
+    if [ -f "${ROOTFS_DIR}/etc/shadow" ]; then
+        sed -i "s|^root:[^:]*:|root:${root_hash}:|" "${ROOTFS_DIR}/etc/shadow"
+        echo "Set default root password (password: coyote)"
+    fi
+
     # Create /var/www for lighttpd
     mkdir -p "${ROOTFS_DIR}/var/www"
 

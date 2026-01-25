@@ -1,0 +1,96 @@
+#!/sbin/openrc-run
+#
+# Dropbear SSH Server
+#
+
+description="Dropbear SSH server"
+
+DROPBEAR_PORT="${DROPBEAR_PORT:-22}"
+DROPBEAR_OPTS="${DROPBEAR_OPTS:-}"
+
+# Host keys stored on config partition for persistence
+KEY_DIR="/mnt/config/dropbear"
+RSA_KEY="${KEY_DIR}/dropbear_rsa_host_key"
+ECDSA_KEY="${KEY_DIR}/dropbear_ecdsa_host_key"
+ED25519_KEY="${KEY_DIR}/dropbear_ed25519_host_key"
+
+depend() {
+    need net
+    use logger
+    after firewall
+}
+
+generate_keys() {
+    local need_write=false
+
+    # Check if any keys need to be generated
+    [ ! -f "$RSA_KEY" ] && need_write=true
+    [ ! -f "$ECDSA_KEY" ] && need_write=true
+    [ ! -f "$ED25519_KEY" ] && need_write=true
+
+    if [ "$need_write" = "true" ]; then
+        # Remount config partition read-write
+        mount -o remount,rw /mnt/config
+
+        # Create key directory if needed
+        if [ ! -d "$KEY_DIR" ]; then
+            mkdir -p "$KEY_DIR"
+            chmod 700 "$KEY_DIR"
+        fi
+
+        # Generate missing host keys
+        if [ ! -f "$RSA_KEY" ]; then
+            einfo "Generating RSA host key..."
+            dropbearkey -t rsa -f "$RSA_KEY" -s 4096 >/dev/null 2>&1
+        fi
+
+        if [ ! -f "$ECDSA_KEY" ]; then
+            einfo "Generating ECDSA host key..."
+            dropbearkey -t ecdsa -f "$ECDSA_KEY" -s 521 >/dev/null 2>&1
+        fi
+
+        if [ ! -f "$ED25519_KEY" ]; then
+            einfo "Generating ED25519 host key..."
+            dropbearkey -t ed25519 -f "$ED25519_KEY" >/dev/null 2>&1
+        fi
+
+        # Remount config partition read-only
+        mount -o remount,ro /mnt/config
+    fi
+}
+
+setup_authorized_keys() {
+    # Set up authorized_keys from config partition for passwordless login
+    # Users can place their public keys in /mnt/config/dropbear/authorized_keys
+    local config_keys="/mnt/config/dropbear/authorized_keys"
+
+    # Create root's .ssh directory
+    mkdir -p /root/.ssh
+    chmod 700 /root/.ssh
+
+    # Link authorized_keys from config if it exists
+    if [ -f "$config_keys" ]; then
+        ln -sf "$config_keys" /root/.ssh/authorized_keys
+        einfo "Loaded authorized_keys from config partition"
+    fi
+}
+
+start() {
+    generate_keys
+    setup_authorized_keys
+
+    ebegin "Starting dropbear SSH server"
+    start-stop-daemon --start --exec /usr/sbin/dropbear \
+        -- -p ${DROPBEAR_PORT} \
+        -r "$RSA_KEY" \
+        -r "$ECDSA_KEY" \
+        -r "$ED25519_KEY" \
+        ${DROPBEAR_OPTS}
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping dropbear SSH server"
+    start-stop-daemon --stop --exec /usr/sbin/dropbear
+    eend $?
+}
