@@ -3,15 +3,13 @@
 /**
  * apply-config - Apply system configuration
  *
- * This script reads the running configuration and applies it to the system.
+ * This script reads the running configuration and applies it to the system,
+ * including network interface configuration, DNS, hostname, and timezone.
  */
 
 require_once '/opt/coyote/lib/autoload.php';
 
 use Coyote\Config\ConfigManager;
-use Coyote\System\Network;
-use Coyote\System\Services;
-use Coyote\Addon\AddonManager;
 
 /**
  * Apply system configuration
@@ -19,9 +17,7 @@ use Coyote\Addon\AddonManager;
 function applyConfig(): bool
 {
     $configManager = new ConfigManager();
-    $network = new Network();
-    $services = new Services();
-    $addonManager = new AddonManager();
+    $errors = [];
 
     // Load configuration
     try {
@@ -32,70 +28,104 @@ function applyConfig(): bool
     }
 
     $config = $runningConfig->toArray();
-    $errors = [];
 
     // Apply hostname
-    if (isset($config['system']['hostname'])) {
-        $hostname = $config['system']['hostname'];
-        if (file_put_contents('/etc/hostname', $hostname . "\n") === false) {
-            $errors[] = "Failed to set hostname";
-        }
-        exec("hostname " . escapeshellarg($hostname));
-        echo "Hostname set to: {$hostname}\n";
-    }
+    $hostname = $config['system']['hostname'] ?? 'coyote';
+    $domain = $config['system']['domain'] ?? '';
+
+    file_put_contents('/etc/hostname', $hostname . "\n");
+    exec("hostname " . escapeshellarg($hostname));
+    echo "  Hostname: {$hostname}\n";
+
+    // Build /etc/hosts
+    $fqdn = $domain ? "{$hostname}.{$domain}" : $hostname;
+    $hosts = "127.0.0.1\tlocalhost\n";
+    $hosts .= "127.0.1.1\t{$fqdn} {$hostname}\n";
+    $hosts .= "::1\t\tlocalhost ip6-localhost ip6-loopback\n";
+    file_put_contents('/etc/hosts', $hosts);
 
     // Apply timezone
-    if (isset($config['system']['timezone'])) {
-        $tz = $config['system']['timezone'];
-        $tzFile = "/usr/share/zoneinfo/{$tz}";
-        if (file_exists($tzFile)) {
-            @unlink('/etc/localtime');
-            symlink($tzFile, '/etc/localtime');
-            echo "Timezone set to: {$tz}\n";
-        }
+    $tz = $config['system']['timezone'] ?? 'UTC';
+    $tzFile = "/usr/share/zoneinfo/{$tz}";
+    if (file_exists($tzFile)) {
+        @unlink('/etc/localtime');
+        @symlink($tzFile, '/etc/localtime');
+        echo "  Timezone: {$tz}\n";
     }
 
-    // Apply network configuration
-    if (isset($config['network']['interfaces'])) {
-        foreach ($config['network']['interfaces'] as $name => $ifaceConfig) {
-            echo "Configuring interface: {$name}\n";
-            if (!$network->configureInterface($name, $ifaceConfig)) {
-                $errors[] = "Failed to configure interface: {$name}";
+    // Configure DNS (resolv.conf)
+    $dns = $config['network']['dns'] ?? [];
+    $search = $config['network']['search'] ?? [];
+
+    $resolv = "";
+    if (!empty($search)) {
+        $resolv .= "search " . implode(' ', $search) . "\n";
+    }
+    foreach ($dns as $ns) {
+        $resolv .= "nameserver {$ns}\n";
+    }
+    if (!empty($resolv)) {
+        file_put_contents('/etc/resolv.conf', $resolv);
+        echo "  DNS configured\n";
+    }
+
+    // Configure network interfaces
+    $interfaces = $config['network']['interfaces'] ?? [];
+
+    foreach ($interfaces as $ifaceConfig) {
+        $name = $ifaceConfig['name'] ?? null;
+        $address = $ifaceConfig['address'] ?? null;
+        $gateway = $ifaceConfig['gateway'] ?? null;
+
+        if (!$name) {
+            continue;
+        }
+
+        echo "  Interface {$name}:\n";
+
+        // Check if interface exists
+        if (!file_exists("/sys/class/net/{$name}")) {
+            echo "    WARNING: Interface {$name} not found\n";
+            $errors[] = "Interface {$name} not found";
+            continue;
+        }
+
+        // Flush existing addresses
+        exec("ip addr flush dev " . escapeshellarg($name) . " 2>&1");
+
+        // Bring interface up
+        exec("ip link set " . escapeshellarg($name) . " up 2>&1", $output, $ret);
+        if ($ret !== 0) {
+            $errors[] = "Failed to bring up interface {$name}";
+            continue;
+        }
+
+        // Set IP address (CIDR notation expected, e.g., 192.168.0.1/24)
+        if ($address) {
+            exec("ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name) . " 2>&1", $output, $ret);
+            if ($ret === 0) {
+                echo "    Address: {$address}\n";
+            } else {
+                $errors[] = "Failed to set address on {$name}";
+            }
+        }
+
+        // Set default gateway if specified
+        if ($gateway) {
+            // Remove existing default route first
+            exec("ip route del default 2>&1");
+            exec("ip route add default via " . escapeshellarg($gateway) . " dev " . escapeshellarg($name) . " 2>&1", $output, $ret);
+            if ($ret === 0) {
+                echo "    Gateway: {$gateway}\n";
+            } else {
+                $errors[] = "Failed to set default gateway";
             }
         }
     }
 
-    // Apply routes
-    if (isset($config['network']['routes'])) {
-        foreach ($config['network']['routes'] as $route) {
-            if (!$network->addRoute($route)) {
-                $dest = $route['destination'] ?? 'default';
-                $errors[] = "Failed to add route: {$dest}";
-            }
-        }
-    }
-
-    // Enable IP forwarding if needed
-    if (($config['network']['forwarding']['ipv4'] ?? false) ||
-        ($config['network']['forwarding']['ipv6'] ?? false)) {
-        $network->enableForwarding(
-            $config['network']['forwarding']['ipv4'] ?? false,
-            $config['network']['forwarding']['ipv6'] ?? false
-        );
-        echo "IP forwarding enabled\n";
-    }
-
-    // Apply add-on configurations
-    $addonManager->discoverAddons();
-    foreach ($addonManager->getAddons() as $addon) {
-        $addonId = $addon->getId();
-        if (isset($config['addons'][$addonId])) {
-            echo "Applying configuration for add-on: {$addon->getName()}\n";
-            if (!$addon->applyConfig($config['addons'][$addonId])) {
-                $errors[] = "Failed to apply configuration for add-on: {$addonId}";
-            }
-        }
-    }
+    // Enable IP forwarding (always enable for a firewall/router)
+    exec('sysctl -w net.ipv4.ip_forward=1 2>&1');
+    exec('sysctl -w net.ipv6.conf.all.forwarding=1 2>&1');
 
     // Report results
     if (!empty($errors)) {
@@ -111,5 +141,6 @@ function applyConfig(): bool
 }
 
 // Main
+echo "Applying Coyote Linux configuration...\n";
 $success = applyConfig();
 exit($success ? 0 : 1);

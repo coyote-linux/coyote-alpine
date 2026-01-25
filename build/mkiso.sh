@@ -125,9 +125,9 @@ LABEL rescue
     INITRD /boot/initramfs.gz
     APPEND console=ttyS0,115200 console=tty0 rescue
 
-LABEL memtest
+LABEL localdisk
     MENU LABEL Boot from local disk
-    LOCALBOOT 0x80
+    LOCALBOOT -1
 EOF
 
 # Build ISO using available tool

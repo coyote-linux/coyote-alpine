@@ -325,6 +325,37 @@ EOF
     # Create /etc/resolv.conf placeholder
     echo "# Configured by Coyote Linux" > "${ROOTFS_DIR}/etc/resolv.conf"
 
+    # Create system users and groups
+    echo "Creating system users and groups..."
+
+    # Add lighttpd group and user (system account for web server)
+    if ! grep -q "^lighttpd:" "${ROOTFS_DIR}/etc/group" 2>/dev/null; then
+        echo "lighttpd:x:100:" >> "${ROOTFS_DIR}/etc/group"
+    fi
+    if ! grep -q "^lighttpd:" "${ROOTFS_DIR}/etc/passwd" 2>/dev/null; then
+        echo "lighttpd:x:100:100:lighttpd:/var/www:/sbin/nologin" >> "${ROOTFS_DIR}/etc/passwd"
+    fi
+    if ! grep -q "^lighttpd:" "${ROOTFS_DIR}/etc/shadow" 2>/dev/null; then
+        echo "lighttpd:!::0:::::" >> "${ROOTFS_DIR}/etc/shadow"
+    fi
+
+    # Add admin group and user (non-privileged user for future use)
+    if ! grep -q "^admin:" "${ROOTFS_DIR}/etc/group" 2>/dev/null; then
+        echo "admin:x:1000:" >> "${ROOTFS_DIR}/etc/group"
+    fi
+    if ! grep -q "^admin:" "${ROOTFS_DIR}/etc/passwd" 2>/dev/null; then
+        echo "admin:x:1000:1000:Coyote Admin:/home/admin:/bin/sh" >> "${ROOTFS_DIR}/etc/passwd"
+    fi
+    if ! grep -q "^admin:" "${ROOTFS_DIR}/etc/shadow" 2>/dev/null; then
+        # Password is locked (!) until set
+        echo "admin:!::0:::::" >> "${ROOTFS_DIR}/etc/shadow"
+    fi
+    mkdir -p "${ROOTFS_DIR}/home/admin"
+    chmod 755 "${ROOTFS_DIR}/home/admin"
+
+    # Create /var/www for lighttpd
+    mkdir -p "${ROOTFS_DIR}/var/www"
+
     # Create /etc/fstab
     cat > "${ROOTFS_DIR}/etc/fstab" << 'EOF'
 # Coyote Linux fstab
@@ -355,6 +386,18 @@ EOF
     # Make CLI tools executable
     if [ -d "${ROOTFS_DIR}/opt/coyote/bin" ]; then
         chmod +x "${ROOTFS_DIR}/opt/coyote/bin/"* 2>/dev/null || true
+    fi
+
+    # Create PHP symlink (Alpine uses php83, scripts expect 'php')
+    if [ -x "${ROOTFS_DIR}/usr/bin/php83" ] && [ ! -e "${ROOTFS_DIR}/usr/bin/php" ]; then
+        ln -sf php83 "${ROOTFS_DIR}/usr/bin/php"
+        echo "Created /usr/bin/php -> php83 symlink"
+    fi
+
+    # Create env symlink (Alpine has /bin/env, scripts expect /usr/bin/env)
+    if [ -x "${ROOTFS_DIR}/bin/env" ] && [ ! -e "${ROOTFS_DIR}/usr/bin/env" ]; then
+        ln -sf /bin/env "${ROOTFS_DIR}/usr/bin/env"
+        echo "Created /usr/bin/env -> /bin/env symlink"
     fi
 
     echo "Coyote overlay applied"

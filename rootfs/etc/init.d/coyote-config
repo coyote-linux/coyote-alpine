@@ -2,18 +2,22 @@
 #
 # Coyote Linux configuration application service
 #
+# This service applies the Coyote configuration including network setup.
+# It provides the 'networking' service so other services can depend on it.
+#
 
 description="Apply Coyote Linux configuration"
 
 depend() {
     need coyote-init
-    need network
+    provide net networking
+    before coyote-webadmin
 }
 
 start() {
     ebegin "Applying Coyote Linux configuration"
 
-    # Apply system configuration
+    # Apply system configuration (includes network setup)
     /opt/coyote/bin/apply-config
 
     eend $?

@@ -193,8 +193,8 @@ build_initramfs() {
                 cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/message/fusion/" 2>/dev/null || true
             fi
 
-            # Copy filesystem modules (squashfs, isofs for CD-ROM, fat, ext4)
-            local fs_modules="squashfs isofs fat ext4 nls"
+            # Copy filesystem modules (squashfs, isofs for CD-ROM, fat, ext4, overlay)
+            local fs_modules="squashfs isofs fat ext4 nls overlay"
             for fsmod in $fs_modules; do
                 src="${CACHE_DIR}/modules/${kver}/kernel/fs/${fsmod}"
                 if [ -d "$src" ]; then
@@ -203,12 +203,17 @@ build_initramfs() {
                 fi
             done
 
-            # Copy modules.dep and related files
-            for f in modules.dep modules.alias modules.symbols modules.builtin; do
-                if [ -f "${CACHE_DIR}/modules/${kver}/${f}" ]; then
-                    cp "${CACHE_DIR}/modules/${kver}/${f}" "${INITRAMFS_BUILD}/lib/modules/${kver}/"
-                fi
-            done
+            # Copy modules.builtin (lists built-in modules)
+            if [ -f "${CACHE_DIR}/modules/${kver}/modules.builtin" ]; then
+                cp "${CACHE_DIR}/modules/${kver}/modules.builtin" "${INITRAMFS_BUILD}/lib/modules/${kver}/"
+            fi
+
+            # Regenerate modules.dep for the initramfs subset
+            # This ensures modprobe can find the modules we included
+            if command -v depmod &>/dev/null; then
+                echo "Regenerating modules.dep for initramfs..."
+                depmod -b "${INITRAMFS_BUILD}" "$kver" 2>/dev/null || true
+            fi
         fi
     fi
 

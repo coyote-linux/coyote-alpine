@@ -80,6 +80,7 @@ iptraf-ng
 logrotate
 ca-certificates
 tzdata
+openssl
 
 # Filesystem tools
 squashfs-tools

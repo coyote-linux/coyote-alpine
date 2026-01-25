@@ -10,11 +10,15 @@
 description="Coyote Linux root filesystem (read-only squashfs)"
 
 depend() {
-    need localmount
+    # No dependencies - this is one of the first services to run
+    # We explicitly do NOT need localmount since our root is read-only squashfs
+    provide root
+    before localmount
 }
 
 start() {
-    ebegin "Root filesystem is read-only squashfs (by design)"
+    # Nothing to do - root is already mounted read-only by initramfs
+    ebegin "Root filesystem (read-only squashfs)"
     eend 0
 }
 

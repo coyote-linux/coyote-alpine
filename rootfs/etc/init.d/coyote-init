@@ -2,12 +2,17 @@
 #
 # Coyote Linux initialization service
 #
+# This service runs early in boot to:
+# - Load network interface kernel modules
+# - Create runtime directories
+# - Load the Coyote configuration
+#
 
 description="Coyote Linux system initialization"
 
 depend() {
-    need localmount
-    before network
+    after localmount
+    before coyote-config
 }
 
 start() {
@@ -17,7 +22,41 @@ start() {
     mkdir -p /tmp/coyote
     mkdir -p /var/log/coyote
 
-    # Load configuration into running config
+    # Load common network interface modules
+    einfo "Loading network interface modules..."
+
+    # Virtual/emulated NIC drivers (for VMs)
+    modprobe -q virtio_net 2>/dev/null || true    # KVM/QEMU virtio
+    modprobe -q vmxnet3 2>/dev/null || true       # VMware vmxnet3
+    modprobe -q e1000 2>/dev/null || true         # VMware/QEMU e1000
+    modprobe -q e1000e 2>/dev/null || true        # Intel e1000e
+    modprobe -q xen-netfront 2>/dev/null || true  # Xen
+
+    # Intel NIC drivers
+    modprobe -q igb 2>/dev/null || true           # Intel 1GbE
+    modprobe -q igc 2>/dev/null || true           # Intel 2.5GbE
+    modprobe -q ixgbe 2>/dev/null || true         # Intel 10GbE
+    modprobe -q i40e 2>/dev/null || true          # Intel 10/25/40GbE
+    modprobe -q ice 2>/dev/null || true           # Intel E800 series
+
+    # Realtek NIC drivers
+    modprobe -q r8169 2>/dev/null || true         # Realtek 8169/8168/8101/8125
+
+    # Broadcom NIC drivers
+    modprobe -q tg3 2>/dev/null || true           # Broadcom Tigon3
+    modprobe -q bnx2 2>/dev/null || true          # Broadcom NetXtreme II
+
+    # Other common NIC drivers
+    modprobe -q atlantic 2>/dev/null || true      # Aquantia/Marvell
+    modprobe -q mlx4_en 2>/dev/null || true       # Mellanox ConnectX-3
+    modprobe -q mlx5_core 2>/dev/null || true     # Mellanox ConnectX-4+
+    modprobe -q ena 2>/dev/null || true           # Amazon ENA
+
+    # Wait briefly for interfaces to appear
+    sleep 1
+
+    # Load Coyote configuration into running config
+    einfo "Loading configuration..."
     /opt/coyote/bin/coyote-cli config load
 
     eend $?
@@ -25,6 +64,5 @@ start() {
 
 stop() {
     ebegin "Stopping Coyote Linux services"
-    # Cleanup tasks if needed
     eend 0
 }
