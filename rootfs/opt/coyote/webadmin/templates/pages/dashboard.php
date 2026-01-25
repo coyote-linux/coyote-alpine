@@ -47,7 +47,7 @@
                             <?= htmlspecialchars($iface['state'] ?? 'unknown') ?>
                         </span>
                     </td>
-                    <td><?= htmlspecialchars($iface['address'] ?? '-') ?></td>
+                    <td><?= htmlspecialchars(implode(', ', $iface['ipv4'] ?? []) ?: '-') ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -99,5 +99,44 @@
                 <?= ($loadbalancer['running'] ?? false) ? 'Running' : 'Stopped' ?>
             </span>
         </p>
+    </div>
+</div>
+
+<div class="card full-width" style="margin-top: 1rem;">
+    <h3>Traffic Graphs</h3>
+    <p class="text-muted">Network traffic statistics (MRTG integration pending)</p>
+    <div class="graph-container">
+        <?php
+        $interfaces = array_keys($network['interfaces'] ?? []);
+        $displayInterfaces = array_filter($interfaces, fn($i) => $i !== 'lo');
+        if (empty($displayInterfaces)) $displayInterfaces = ['eth0', 'eth1'];
+        foreach (array_slice($displayInterfaces, 0, 4) as $iface):
+        ?>
+        <div class="graph-card">
+            <h4><?= htmlspecialchars($iface) ?> - Daily Traffic</h4>
+            <div class="graph-placeholder">
+                <span>MRTG graph for <?= htmlspecialchars($iface) ?></span>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+
+<div class="card full-width">
+    <h3>System Load</h3>
+    <p class="text-muted">CPU and memory utilization (MRTG integration pending)</p>
+    <div class="graph-container">
+        <div class="graph-card">
+            <h4>CPU Usage - Daily</h4>
+            <div class="graph-placeholder">
+                <span>MRTG graph for CPU</span>
+            </div>
+        </div>
+        <div class="graph-card">
+            <h4>Memory Usage - Daily</h4>
+            <div class="graph-placeholder">
+                <span>MRTG graph for Memory</span>
+            </div>
+        </div>
     </div>
 </div>

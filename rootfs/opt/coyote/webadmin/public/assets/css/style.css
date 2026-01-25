@@ -273,3 +273,98 @@ dt {
 dd {
     color: var(--text-primary);
 }
+
+/* Full Width Cards */
+.card.full-width {
+    grid-column: 1 / -1;
+}
+
+/* Placeholder Box */
+.placeholder-box {
+    background: var(--bg-dark);
+    border: 2px dashed var(--bg-light);
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.placeholder-box p {
+    margin: 0.5rem 0;
+}
+
+/* Text Utilities */
+.text-muted {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Small Buttons */
+.btn-small {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+}
+
+/* MRTG Graph Placeholders */
+.graph-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.graph-card {
+    background: var(--bg-dark);
+    border-radius: 4px;
+    padding: 1rem;
+}
+
+.graph-card h4 {
+    margin: 0 0 0.75rem 0;
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.graph-placeholder {
+    background: var(--bg-medium);
+    border: 2px dashed var(--bg-light);
+    border-radius: 4px;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.graph-placeholder img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Card Header with Actions */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.card-header h3 {
+    margin-bottom: 0;
+}
+
+/* Info List */
+.info-list {
+    list-style: none;
+}
+
+.info-list li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--bg-light);
+}
+
+.info-list li:last-child {
+    border-bottom: none;
+}
