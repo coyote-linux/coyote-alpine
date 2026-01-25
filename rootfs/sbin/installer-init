@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# installer-init - Minimal init for Coyote Linux Installer
+#
+# This replaces /sbin/init (OpenRC) in installer mode to avoid
+# starting unnecessary services. It just sets up the basic
+# environment and runs the installer directly.
+#
+
+# Mount essential filesystems if not already mounted
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts 2>/dev/null || true
+mount -t tmpfs tmpfs /dev/shm 2>/dev/null || true
+mount -t tmpfs tmpfs /tmp 2>/dev/null || true
+mount -t tmpfs tmpfs /run 2>/dev/null || true
+
+# Set up basic environment
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export HOME=/root
+export TERM=linux
+export BOOT_MEDIA=/mnt/boot
+
+# Set hostname
+hostname coyote-installer
+
+# Start mdev for device management (busybox alternative to udev)
+if [ -x /sbin/mdev ]; then
+    echo /sbin/mdev > /proc/sys/kernel/hotplug
+    mdev -s
+fi
+
+# Clear screen
+printf '\033[2J\033[H'
+
+# Run the installer on tty1
+# Use setsid to create a new session and control the tty
+if [ -x /usr/bin/installer.sh ]; then
+    exec setsid sh -c 'exec /usr/bin/installer.sh </dev/tty1 >/dev/tty1 2>&1'
+else
+    echo "ERROR: Installer script not found!"
+    echo "Dropping to shell..."
+    exec /bin/sh
+fi

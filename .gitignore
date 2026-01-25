@@ -402,8 +402,9 @@ apk-build/cpiso.sh
 # Coyote Linux specific
 # ===================
 
-# Don't ignore Coyote bin directory
+# Don't ignore Coyote directories
 !rootfs/opt/coyote/bin/
+!initramfs/bin/
 
 # Build outputs and cache
 output/
@@ -431,3 +432,7 @@ composer.lock
 # Runtime
 *.pid
 *.sock
+
+# Local development config (not committed)
+.local-config
+build/.local-config

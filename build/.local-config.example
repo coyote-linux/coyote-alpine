@@ -1,0 +1,23 @@
+#
+# .local-config - Local development settings (not committed to git)
+#
+# Copy this file to .local-config and customize for your environment.
+# This file is sourced by build scripts and can override default settings.
+#
+
+# Use a local Alpine mirror instead of the remote CDN
+# This speeds up repeated builds and reduces load on public mirrors
+#
+# For a local file-based mirror:
+# ALPINE_MIRROR="file:///path/to/local/mirror"
+#
+# For a local HTTP server:
+# ALPINE_MIRROR="http://localhost/alpine"
+
+# ALPINE_MIRROR="file:///path/to/alpine/mirror"
+
+# Firmware signing key (Ed25519 private key)
+# Generate with: openssl genpkey -algorithm Ed25519 -out firmware-signing.key
+# Keep this key secure and never commit it to the repository!
+
+# COYOTE_SIGNING_KEY="/path/to/your/firmware-signing.key"

@@ -68,20 +68,31 @@ if [ -f "${ISOLINUX_DIR}/libcom32.c32" ]; then
     cp "${ISOLINUX_DIR}/libcom32.c32" "${ISO_BUILD}/boot/isolinux/"
 fi
 
-# Copy kernel and initramfs
-echo "Copying kernel and initramfs..."
+# Copy kernel and installer initramfs
+echo "Copying kernel and installer initramfs..."
 if [ -f "${BUILD_DIR}/vmlinuz" ]; then
     cp "${BUILD_DIR}/vmlinuz" "${ISO_BUILD}/boot/vmlinuz"
 else
     echo "Error: Kernel not found at ${BUILD_DIR}/vmlinuz"
-    echo "Run 'make kernel' first"
+    echo "Run 'make initramfs' first"
     exit 1
 fi
 
-if [ -f "${BUILD_DIR}/initramfs.cpio.gz" ]; then
-    cp "${BUILD_DIR}/initramfs.cpio.gz" "${ISO_BUILD}/boot/initramfs.gz"
+# Use installer-specific initramfs for booting the installer
+if [ -f "${BUILD_DIR}/initramfs-installer.cpio.gz" ]; then
+    cp "${BUILD_DIR}/initramfs-installer.cpio.gz" "${ISO_BUILD}/boot/initramfs.gz"
 else
-    echo "Error: Initramfs not found at ${BUILD_DIR}/initramfs.cpio.gz"
+    echo "Error: Installer initramfs not found at ${BUILD_DIR}/initramfs-installer.cpio.gz"
+    echo "Run 'make initramfs-installer' first"
+    exit 1
+fi
+
+# Also include the system initramfs - this is what gets installed to the target system
+echo "Copying system initramfs..."
+if [ -f "${BUILD_DIR}/initramfs.cpio.gz" ]; then
+    cp "${BUILD_DIR}/initramfs.cpio.gz" "${ISO_BUILD}/boot/initramfs-system.gz"
+else
+    echo "Error: System initramfs not found at ${BUILD_DIR}/initramfs.cpio.gz"
     echo "Run 'make initramfs' first"
     exit 1
 fi
@@ -93,6 +104,13 @@ if [ -n "$FIRMWARE_SRC" ] && [ -f "$FIRMWARE_SRC" ]; then
     cp "$FIRMWARE_SRC" "${ISO_BUILD}/firmware/current.squashfs"
     if [ -f "${FIRMWARE_SRC}.sha256" ]; then
         cp "${FIRMWARE_SRC}.sha256" "${ISO_BUILD}/firmware/current.squashfs.sha256"
+    fi
+    # Copy signature file if it exists
+    if [ -f "${FIRMWARE_SRC}.sig" ]; then
+        echo "Copying firmware signature..."
+        cp "${FIRMWARE_SRC}.sig" "${ISO_BUILD}/firmware/current.squashfs.sig"
+    else
+        echo "Note: No firmware signature found (unsigned build)"
     fi
 else
     echo "Error: No firmware image found in ${BUILD_DIR}/"
@@ -117,13 +135,13 @@ LABEL install
     MENU DEFAULT
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=ttyS0,115200 console=tty0 installer
+    APPEND console=tty0 installer
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=ttyS0,115200 console=tty0 rescue
+    APPEND console=tty0 rescue
 
 LABEL localdisk
     MENU LABEL Boot from local disk

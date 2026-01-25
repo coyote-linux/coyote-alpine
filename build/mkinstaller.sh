@@ -102,11 +102,23 @@ else
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$KERNEL_SRC" ::/boot/vmlinuz
 fi
 
-INITRAMFS_SRC="${BUILD_DIR}/initramfs.cpio.gz"
+# Use installer-specific initramfs for booting the installer
+INITRAMFS_SRC="${BUILD_DIR}/initramfs-installer.cpio.gz"
 if [ -f "$INITRAMFS_SRC" ]; then
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_SRC" ::/boot/initramfs.gz
 else
-    echo "Warning: No initramfs found at ${INITRAMFS_SRC}"
+    echo "Warning: No installer initramfs found at ${INITRAMFS_SRC}"
+    echo "         Run 'make initramfs-installer' to build it"
+fi
+
+# Also include the system initramfs - this is what gets installed to the target system
+INITRAMFS_SYSTEM="${BUILD_DIR}/initramfs.cpio.gz"
+if [ -f "$INITRAMFS_SYSTEM" ]; then
+    echo "Copying system initramfs..."
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_SYSTEM" ::/boot/initramfs-system.gz
+else
+    echo "Warning: No system initramfs found at ${INITRAMFS_SYSTEM}"
+    echo "         Run 'make initramfs' to build it"
 fi
 
 # Copy firmware
@@ -116,6 +128,13 @@ if [ -n "$FIRMWARE_SRC" ] && [ -f "$FIRMWARE_SRC" ]; then
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$FIRMWARE_SRC" ::/firmware/current.squashfs
     if [ -f "${FIRMWARE_SRC}.sha256" ]; then
         mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${FIRMWARE_SRC}.sha256" ::/firmware/current.squashfs.sha256
+    fi
+    # Copy signature file if it exists
+    if [ -f "${FIRMWARE_SRC}.sig" ]; then
+        echo "Copying firmware signature..."
+        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${FIRMWARE_SRC}.sig" ::/firmware/current.squashfs.sig
+    else
+        echo "Note: No firmware signature found (unsigned build)"
     fi
 else
     echo "Warning: No firmware image found in ${BUILD_DIR}/"
@@ -139,13 +158,13 @@ LABEL install
     MENU LABEL Install Coyote Linux
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=ttyS0,115200 console=tty0 installer
+    APPEND console=tty0 installer
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=ttyS0,115200 console=tty0 rescue
+    APPEND console=tty0 rescue
 EOF
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${BUILD_DIR}/syslinux.cfg" ::/boot/syslinux/
 rm -f "${BUILD_DIR}/syslinux.cfg"

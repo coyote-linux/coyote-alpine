@@ -17,6 +17,13 @@ ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine"
 ARCH="x86_64"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source local config if it exists (can override ALPINE_MIRROR, etc.)
+# This file is gitignored and used for local development settings
+if [ -f "${SCRIPT_DIR}/.local-config" ]; then
+    echo "Loading local config from ${SCRIPT_DIR}/.local-config"
+    source "${SCRIPT_DIR}/.local-config"
+fi
 BUILD_DIR="${SCRIPT_DIR}/../output"
 CACHE_DIR="${SCRIPT_DIR}/../.cache"
 ROOTFS_DIR="${SCRIPT_DIR}/../output/rootfs"
@@ -25,6 +32,8 @@ PACKAGES_FILE="${SCRIPT_DIR}/apk-packages.txt"
 
 # Create directories
 mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$ROOTFS_DIR"
+
+echo "Using Alpine mirror: ${ALPINE_MIRROR}"
 
 #
 # Download and extract apk-tools-static
@@ -301,8 +310,8 @@ tty1::respawn:/usr/bin/tty1-handler.sh
 tty2::respawn:/sbin/getty 38400 tty2
 tty3::respawn:/sbin/getty 38400 tty3
 
-# Serial console
-ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100
+# Serial console (disabled - enable if serial console is available)
+# ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100
 
 ::shutdown:/sbin/openrc shutdown
 ::ctrlaltdel:/sbin/reboot

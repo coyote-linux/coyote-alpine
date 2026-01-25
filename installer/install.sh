@@ -45,6 +45,69 @@ print_warn() {
     printf "${YELLOW}%s${NC}\n" "$1"
 }
 
+# Firmware signature status (set by verify_firmware_source)
+FIRMWARE_SIGNED=0
+FIRMWARE_SIG_VALID=0
+
+# Verify firmware signature on source media
+verify_firmware_source() {
+    local firmware="$FIRMWARE_SRC"
+    local sigfile="${firmware}.sig"
+    local pubkey="/etc/coyote/keys/firmware-signing.pub"
+
+    printf "Checking firmware signature...\n"
+
+    # Check if signature file exists
+    if [ ! -f "$sigfile" ]; then
+        print_warn "  Firmware is not signed"
+        FIRMWARE_SIGNED=0
+        FIRMWARE_SIG_VALID=0
+        return 0
+    fi
+
+    FIRMWARE_SIGNED=1
+
+    # Check if public key exists
+    if [ ! -f "$pubkey" ]; then
+        print_warn "  No public key available for verification"
+        FIRMWARE_SIG_VALID=0
+        return 0
+    fi
+
+    # Verify signature
+    if command -v openssl >/dev/null 2>&1; then
+        if openssl pkeyutl -verify \
+            -pubin -inkey "$pubkey" \
+            -rawin \
+            -in "$firmware" \
+            -sigfile "$sigfile" >/dev/null 2>&1; then
+            print_success "  Firmware signature: VALID"
+            FIRMWARE_SIG_VALID=1
+        else
+            print_error "  Firmware signature: INVALID"
+            FIRMWARE_SIG_VALID=0
+        fi
+    else
+        print_warn "  OpenSSL not available, cannot verify signature"
+        FIRMWARE_SIG_VALID=0
+    fi
+
+    return 0
+}
+
+# Display firmware verification status in summary
+show_firmware_status() {
+    if [ "$FIRMWARE_SIGNED" = "1" ]; then
+        if [ "$FIRMWARE_SIG_VALID" = "1" ]; then
+            printf "  Firmware:       ${GREEN}Signed and verified${NC}\n"
+        else
+            printf "  Firmware:       ${RED}Signature INVALID${NC}\n"
+        fi
+    else
+        printf "  Firmware:       ${YELLOW}Unsigned${NC}\n"
+    fi
+}
+
 # Load common network interface modules
 load_network_modules() {
     printf "Detecting network hardware...\n"
@@ -536,7 +599,9 @@ select_upgrade_disk() {
 confirm_upgrade() {
     print_header
     printf "${YELLOW}${BOLD}Firmware Upgrade${NC}\n\n"
-    printf "Target disk: ${BOLD}${TARGET_DISK}${NC} (${TARGET_SIZE})\n\n"
+    printf "Target disk: ${BOLD}${TARGET_DISK}${NC} (${TARGET_SIZE})\n"
+    show_firmware_status
+    printf "\n"
     printf "The upgrade will:\n"
     printf "  1. Backup the existing firmware (as previous.squashfs)\n"
     printf "  2. Install the new kernel, initramfs, and firmware\n"
@@ -581,6 +646,9 @@ upgrade_system() {
         if [ -f "$target_boot/firmware/current.squashfs.sha256" ]; then
             mv "$target_boot/firmware/current.squashfs.sha256" "$target_boot/firmware/previous.squashfs.sha256" 2>/dev/null
         fi
+        if [ -f "$target_boot/firmware/current.squashfs.sig" ]; then
+            mv "$target_boot/firmware/current.squashfs.sig" "$target_boot/firmware/previous.squashfs.sig" 2>/dev/null
+        fi
     fi
 
     # Copy new kernel
@@ -591,16 +659,23 @@ upgrade_system() {
         return 1
     }
 
-    # Copy new initramfs
+    # Copy new initramfs (use the system initramfs, not installer initramfs)
     printf "  Installing new initramfs...\n"
-    cp "${BOOT_MEDIA}/boot/initramfs.gz" "$target_boot/boot/" || {
+    cp "${BOOT_MEDIA}/boot/initramfs-system.gz" "$target_boot/boot/initramfs.gz" || {
         print_error "Failed to copy initramfs"
         umount "$target_boot"
         return 1
     }
 
     # Copy new firmware
-    printf "  Installing new firmware image...\n"
+    printf "  Installing new firmware image"
+    if [ "$FIRMWARE_SIG_VALID" = "1" ]; then
+        printf " (signed)...\n"
+    elif [ "$FIRMWARE_SIGNED" = "1" ]; then
+        printf " (signature invalid!)...\n"
+    else
+        printf " (unsigned)...\n"
+    fi
     cp "$FIRMWARE_SRC" "$target_boot/firmware/current.squashfs" || {
         print_error "Failed to copy firmware"
         umount "$target_boot"
@@ -608,6 +683,9 @@ upgrade_system() {
     }
     if [ -f "${FIRMWARE_SRC}.sha256" ]; then
         cp "${FIRMWARE_SRC}.sha256" "$target_boot/firmware/current.squashfs.sha256"
+    fi
+    if [ -f "${FIRMWARE_SRC}.sig" ]; then
+        cp "${FIRMWARE_SRC}.sig" "$target_boot/firmware/current.squashfs.sig"
     fi
 
     # Update syslinux files if they exist on install media
@@ -682,7 +760,9 @@ select_disk() {
 confirm_install() {
     print_header
     printf "${YELLOW}${BOLD}WARNING: All data on ${TARGET_DISK} will be destroyed!${NC}\n\n"
-    printf "Target disk: ${BOLD}${TARGET_DISK}${NC} (${TARGET_SIZE})\n\n"
+    printf "Target disk: ${BOLD}${TARGET_DISK}${NC} (${TARGET_SIZE})\n"
+    show_firmware_status
+    printf "\n"
     printf "The installer will:\n"
     printf "  1. Create a new partition table\n"
     printf "  2. Create a boot partition (2GB, FAT32)\n"
@@ -825,19 +905,30 @@ install_system() {
     }
 
     printf "  Copying initramfs...\n"
-    cp "${BOOT_MEDIA}/boot/initramfs.gz" "$target_boot/boot/" || {
+    # Use the system initramfs, not installer initramfs
+    cp "${BOOT_MEDIA}/boot/initramfs-system.gz" "$target_boot/boot/initramfs.gz" || {
         print_error "Failed to copy initramfs"
         return 1
     }
 
     # Copy firmware
-    printf "  Copying firmware image...\n"
+    printf "  Copying firmware image"
+    if [ "$FIRMWARE_SIG_VALID" = "1" ]; then
+        printf " (signed)...\n"
+    elif [ "$FIRMWARE_SIGNED" = "1" ]; then
+        printf " (signature invalid!)...\n"
+    else
+        printf " (unsigned)...\n"
+    fi
     cp "$FIRMWARE_SRC" "$target_boot/firmware/current.squashfs" || {
         print_error "Failed to copy firmware"
         return 1
     }
     if [ -f "${FIRMWARE_SRC}.sha256" ]; then
         cp "${FIRMWARE_SRC}.sha256" "$target_boot/firmware/current.squashfs.sha256"
+    fi
+    if [ -f "${FIRMWARE_SRC}.sig" ]; then
+        cp "${FIRMWARE_SRC}.sig" "$target_boot/firmware/current.squashfs.sig"
     fi
 
     # Create boot marker
@@ -865,13 +956,13 @@ LABEL coyote
     MENU DEFAULT
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=ttyS0,115200 console=tty0 quiet
+    APPEND console=tty0 quiet
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=ttyS0,115200 console=tty0 rescue
+    APPEND console=tty0 rescue
 SYSLINUX_CFG
 
     # Unmount boot partition for syslinux install
@@ -1004,6 +1095,26 @@ main() {
         printf "\nPress Enter to drop to shell for debugging..."
         read dummy
         exec /bin/sh
+    fi
+
+    # Verify firmware signature
+    verify_firmware_source
+
+    # Warn if signature is invalid
+    if [ "$FIRMWARE_SIGNED" = "1" ] && [ "$FIRMWARE_SIG_VALID" = "0" ]; then
+        print_header
+        print_error "WARNING: Firmware signature verification FAILED!"
+        printf "\n"
+        printf "The firmware on this installation media has an invalid signature.\n"
+        printf "This could indicate the firmware has been tampered with or corrupted.\n"
+        printf "\n"
+        printf "Type ${BOLD}CONTINUE${NC} to proceed anyway (not recommended), or press Enter to exit: "
+        read confirm
+        if [ "$confirm" != "CONTINUE" ]; then
+            printf "\nInstallation aborted.\n"
+            exec /bin/sh
+        fi
+        printf "\n"
     fi
 
     # Load network modules (needed for new installation)

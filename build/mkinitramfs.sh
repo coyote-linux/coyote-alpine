@@ -126,6 +126,63 @@ setup_busybox() {
 }
 
 #
+# Setup openssl for signature verification
+# We extract from the built rootfs since it's already downloaded
+#
+setup_openssl() {
+    local openssl_cache="${CACHE_DIR}/openssl"
+
+    if [ -d "$openssl_cache" ] && [ -x "${openssl_cache}/usr/bin/openssl" ]; then
+        echo "Using cached openssl"
+        return 0
+    fi
+
+    echo "Extracting openssl from rootfs..."
+
+    # Check if rootfs exists
+    if [ ! -d "$ROOTFS_BUILD" ]; then
+        echo "Warning: Rootfs not built yet, openssl will be missing from initramfs"
+        echo "         Run 'make rootfs' first for signature verification support"
+        return 1
+    fi
+
+    mkdir -p "$openssl_cache"
+
+    # Copy openssl binary
+    if [ -f "${ROOTFS_BUILD}/usr/bin/openssl" ]; then
+        mkdir -p "${openssl_cache}/usr/bin"
+        cp "${ROOTFS_BUILD}/usr/bin/openssl" "${openssl_cache}/usr/bin/"
+        chmod +x "${openssl_cache}/usr/bin/openssl"
+    else
+        echo "Warning: openssl not found in rootfs"
+        return 1
+    fi
+
+    # Copy required libraries
+    mkdir -p "${openssl_cache}/lib" "${openssl_cache}/usr/lib"
+
+    # Find and copy required shared libraries
+    local libs="libssl libcrypto libc.musl"
+    for lib in $libs; do
+        # Check /lib
+        for f in "${ROOTFS_BUILD}/lib/${lib}"*.so*; do
+            [ -f "$f" ] && cp -a "$f" "${openssl_cache}/lib/" 2>/dev/null
+        done
+        # Check /usr/lib
+        for f in "${ROOTFS_BUILD}/usr/lib/${lib}"*.so*; do
+            [ -f "$f" ] && cp -a "$f" "${openssl_cache}/usr/lib/" 2>/dev/null
+        done
+    done
+
+    # Copy ld-musl (the dynamic linker)
+    for f in "${ROOTFS_BUILD}/lib/ld-musl"*.so*; do
+        [ -f "$f" ] && cp -a "$f" "${openssl_cache}/lib/" 2>/dev/null
+    done
+
+    echo "OpenSSL extracted for initramfs"
+}
+
+#
 # Build the initramfs
 #
 build_initramfs() {
@@ -228,6 +285,30 @@ build_initramfs() {
     echo "root:x:0:0:root:/:/bin/sh" > "${INITRAMFS_BUILD}/etc/passwd"
     echo "root:x:0:" > "${INITRAMFS_BUILD}/etc/group"
 
+    # Copy openssl for signature verification
+    local openssl_cache="${CACHE_DIR}/openssl"
+    if [ -d "$openssl_cache" ] && [ -x "${openssl_cache}/usr/bin/openssl" ]; then
+        echo "Including openssl for signature verification..."
+        cp -a "${openssl_cache}/usr/bin/openssl" "${INITRAMFS_BUILD}/bin/"
+        cp -a "${openssl_cache}/lib/"* "${INITRAMFS_BUILD}/lib/" 2>/dev/null || true
+        mkdir -p "${INITRAMFS_BUILD}/usr/lib"
+        cp -a "${openssl_cache}/usr/lib/"* "${INITRAMFS_BUILD}/usr/lib/" 2>/dev/null || true
+    else
+        echo "Warning: openssl not available, signature verification disabled"
+    fi
+
+    # Copy verify-signature script
+    if [ -f "${INITRAMFS_SRC}/bin/verify-signature" ]; then
+        cp "${INITRAMFS_SRC}/bin/verify-signature" "${INITRAMFS_BUILD}/bin/"
+        chmod +x "${INITRAMFS_BUILD}/bin/verify-signature"
+    fi
+
+    # Copy firmware signing public key
+    if [ -d "${INITRAMFS_SRC}/etc/coyote/keys" ]; then
+        mkdir -p "${INITRAMFS_BUILD}/etc/coyote/keys"
+        cp "${INITRAMFS_SRC}/etc/coyote/keys/"* "${INITRAMFS_BUILD}/etc/coyote/keys/" 2>/dev/null || true
+    fi
+
     # Create the cpio archive
     echo "Creating initramfs archive..."
     cd "$INITRAMFS_BUILD"
@@ -247,6 +328,7 @@ main() {
     echo ""
 
     setup_busybox
+    setup_openssl
     setup_kernel
     build_initramfs
 
