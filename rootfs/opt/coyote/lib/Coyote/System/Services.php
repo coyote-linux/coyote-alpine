@@ -15,7 +15,8 @@ class Services
      */
     public function start(string $service): bool
     {
-        exec("rc-service {$service} start 2>&1", $output, $returnCode);
+        $cmd = $this->getPrivilegedCommand('rc-service');
+        exec("{$cmd} " . escapeshellarg($service) . " start 2>&1", $output, $returnCode);
         return $returnCode === 0;
     }
 
@@ -27,7 +28,8 @@ class Services
      */
     public function stop(string $service): bool
     {
-        exec("rc-service {$service} stop 2>&1", $output, $returnCode);
+        $cmd = $this->getPrivilegedCommand('rc-service');
+        exec("{$cmd} " . escapeshellarg($service) . " stop 2>&1", $output, $returnCode);
         return $returnCode === 0;
     }
 
@@ -39,7 +41,8 @@ class Services
      */
     public function restart(string $service): bool
     {
-        exec("rc-service {$service} restart 2>&1", $output, $returnCode);
+        $cmd = $this->getPrivilegedCommand('rc-service');
+        exec("{$cmd} " . escapeshellarg($service) . " restart 2>&1", $output, $returnCode);
         return $returnCode === 0;
     }
 
@@ -51,7 +54,8 @@ class Services
      */
     public function reload(string $service): bool
     {
-        exec("rc-service {$service} reload 2>&1", $output, $returnCode);
+        $cmd = $this->getPrivilegedCommand('rc-service');
+        exec("{$cmd} " . escapeshellarg($service) . " reload 2>&1", $output, $returnCode);
         return $returnCode === 0;
     }
 
@@ -63,7 +67,7 @@ class Services
      */
     public function status(string $service): array
     {
-        exec("rc-service {$service} status 2>&1", $output, $returnCode);
+        exec("rc-service " . escapeshellarg($service) . " status 2>&1", $output, $returnCode);
 
         return [
             'service' => $service,
@@ -80,7 +84,7 @@ class Services
      */
     public function isRunning(string $service): bool
     {
-        exec("rc-service {$service} status 2>&1", $output, $returnCode);
+        exec("rc-service " . escapeshellarg($service) . " status 2>&1", $output, $returnCode);
         return $returnCode === 0;
     }
 
@@ -93,7 +97,8 @@ class Services
      */
     public function enable(string $service, string $runlevel = 'default'): bool
     {
-        exec("rc-update add {$service} {$runlevel} 2>&1", $output, $returnCode);
+        $cmd = $this->getPrivilegedCommand('rc-update');
+        exec("{$cmd} add " . escapeshellarg($service) . " " . escapeshellarg($runlevel) . " 2>&1", $output, $returnCode);
         return $returnCode === 0;
     }
 
@@ -106,7 +111,8 @@ class Services
      */
     public function disable(string $service, string $runlevel = 'default'): bool
     {
-        exec("rc-update del {$service} {$runlevel} 2>&1", $output, $returnCode);
+        $cmd = $this->getPrivilegedCommand('rc-update');
+        exec("{$cmd} del " . escapeshellarg($service) . " " . escapeshellarg($runlevel) . " 2>&1", $output, $returnCode);
         return $returnCode === 0;
     }
 
@@ -120,8 +126,9 @@ class Services
     {
         exec("rc-update show 2>&1", $output, $returnCode);
 
+        $escaped = preg_quote($service, '/');
         foreach ($output as $line) {
-            if (preg_match("/^\s*{$service}\s*\|/", $line)) {
+            if (preg_match("/^\s*{$escaped}\s*\|/", $line)) {
                 return true;
             }
         }
@@ -172,5 +179,20 @@ class Services
     {
         $configPath = $configDir . '/' . $service . '.conf';
         return file_put_contents($configPath, $content) !== false;
+    }
+
+    /**
+     * Get a command with privilege escalation if needed.
+     *
+     * @param string $command The command to run
+     * @return string The command, prefixed with doas if not running as root
+     */
+    private function getPrivilegedCommand(string $command): string
+    {
+        // If running as root, no need for doas
+        if (posix_getuid() === 0) {
+            return $command;
+        }
+        return "doas {$command}";
     }
 }

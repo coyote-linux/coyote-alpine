@@ -97,10 +97,35 @@ class ConfigManager
             return false;
         }
 
-        return $this->writer->write(
-            $this->persistentPath . '/system.json',
-            $this->runningConfig->toArray()
-        );
+        // Remount config partition read-write for saving
+        $this->remountConfig(true);
+
+        try {
+            $result = $this->writer->write(
+                $this->persistentPath . '/system.json',
+                $this->runningConfig->toArray()
+            );
+        } finally {
+            // Always remount read-only after save attempt
+            $this->remountConfig(false);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Remount the config partition.
+     *
+     * @param bool $writable True for read-write, false for read-only
+     * @return bool True if successful
+     */
+    private function remountConfig(bool $writable): bool
+    {
+        $mode = $writable ? 'rw' : 'ro';
+        // Use doas for privilege escalation when running as non-root (e.g., web server)
+        $cmd = (posix_getuid() === 0) ? 'mount' : 'doas mount';
+        exec("{$cmd} -o remount,{$mode} " . escapeshellarg($this->persistentPath) . " 2>&1", $output, $returnCode);
+        return $returnCode === 0;
     }
 
     /**
@@ -153,11 +178,6 @@ class ConfigManager
     public function backup(string $backupName): bool
     {
         $backupDir = $this->persistentPath . '/backups';
-
-        if (!is_dir($backupDir)) {
-            mkdir($backupDir, 0755, true);
-        }
-
         $backupFile = $backupDir . '/' . $backupName . '.json';
         $sourceFile = $this->persistentPath . '/system.json';
 
@@ -165,7 +185,29 @@ class ConfigManager
             return false;
         }
 
-        return copy($sourceFile, $backupFile);
+        // Remount config partition read-write
+        $this->remountConfig(true);
+
+        try {
+            if (!is_dir($backupDir)) {
+                mkdir($backupDir, 0755, true);
+                // Set ownership for web admin access
+                @chown($backupDir, 'lighttpd');
+                @chgrp($backupDir, 'lighttpd');
+            }
+
+            $result = copy($sourceFile, $backupFile);
+
+            if ($result) {
+                // Set ownership for web admin access
+                @chown($backupFile, 'lighttpd');
+                @chgrp($backupFile, 'lighttpd');
+            }
+        } finally {
+            $this->remountConfig(false);
+        }
+
+        return $result;
     }
 
     /**
@@ -183,6 +225,16 @@ class ConfigManager
         }
 
         $destFile = $this->persistentPath . '/system.json';
-        return copy($backupFile, $destFile);
+
+        // Remount config partition read-write
+        $this->remountConfig(true);
+
+        try {
+            $result = copy($backupFile, $destFile);
+        } finally {
+            $this->remountConfig(false);
+        }
+
+        return $result;
     }
 }

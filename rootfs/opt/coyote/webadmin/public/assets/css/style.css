@@ -202,6 +202,11 @@ th {
     border: 1px solid var(--warning);
 }
 
+.alert-info {
+    background: rgba(74, 158, 255, 0.2);
+    border: 1px solid var(--accent);
+}
+
 /* Forms */
 .form-group {
     margin-bottom: 1rem;
@@ -254,9 +259,22 @@ input:focus, select:focus, textarea:focus {
     color: white;
 }
 
+.btn-danger:hover {
+    background: #d32f2f;
+}
+
 .btn-success {
     background: var(--success);
     color: white;
+}
+
+.btn-success:hover {
+    background: #43a047;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 /* Definition Lists */

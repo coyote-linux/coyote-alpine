@@ -103,11 +103,22 @@ class App
         $this->router->get('/services', [Controller\ServicesController::class, 'index']);
         $this->router->post('/services/{service}/start', [Controller\ServicesController::class, 'start']);
         $this->router->post('/services/{service}/stop', [Controller\ServicesController::class, 'stop']);
+        $this->router->post('/services/{service}/restart', [Controller\ServicesController::class, 'restart']);
+        $this->router->post('/services/{service}/enable', [Controller\ServicesController::class, 'enable']);
+        $this->router->post('/services/{service}/disable', [Controller\ServicesController::class, 'disable']);
 
         // System
         $this->router->get('/system', [Controller\SystemController::class, 'index']);
+        $this->router->post('/system', [Controller\SystemController::class, 'save']);
         $this->router->post('/system/apply', [Controller\SystemController::class, 'apply']);
         $this->router->post('/system/confirm', [Controller\SystemController::class, 'confirm']);
+        $this->router->post('/system/reboot', [Controller\SystemController::class, 'reboot']);
+        $this->router->post('/system/shutdown', [Controller\SystemController::class, 'shutdown']);
+        $this->router->post('/system/backup', [Controller\SystemController::class, 'backup']);
+        $this->router->get('/system/backup/download', [Controller\SystemController::class, 'downloadBackup']);
+        $this->router->post('/system/restore', [Controller\SystemController::class, 'restore']);
+        $this->router->post('/system/restore/upload', [Controller\SystemController::class, 'uploadRestore']);
+        $this->router->post('/system/backup/delete', [Controller\SystemController::class, 'deleteBackup']);
 
         // Firmware
         $this->router->get('/firmware', [Controller\FirmwareController::class, 'index']);

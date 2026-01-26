@@ -235,12 +235,3 @@ The `.local-config` file is gitignored and will not be committed.
 - `Coyote\LoadBalancer\` - HAProxy load balancer
 - `Coyote\Util\` - Utility classes
 
-## Related Repositories
-
-- [coyote-webadmin](https://github.com/coyote-linux/coyote-webadmin) - Web administration interface
-- [coyote-firewall](https://github.com/coyote-linux/coyote-firewall) - Edge firewall add-on
-- [coyote-loadbalancer](https://github.com/coyote-linux/coyote-loadbalancer) - HAProxy load balancer add-on
-
-## License
-
-See [LICENSE](LICENSE) for details.

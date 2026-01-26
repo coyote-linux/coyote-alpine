@@ -63,6 +63,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Debug endpoints at `/debug/*` for troubleshooting (logs, PHP info, config status)
 - Consistent dark blue theme across all pages
 - REST API endpoints for programmatic access
+- System settings editing (hostname, domain, timezone, nameservers)
+- Service management (start, stop, restart, enable, disable)
+- System power control (reboot, shutdown)
+- Configuration backup and restore with download/upload support
+- doas privilege escalation for web server operations (mount, hostname, rc-service, reboot)
 
 #### Console TUI Application
 - Menu-driven configuration interface
@@ -154,6 +159,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Persistent directory setup moved to `coyote-config` service (runs after config partition mount)
 - Removed `/var/run` migration warning by disabling `bootmisc` service
 - Installer utility output suppressed for clean dialog progress display
+- Web admin file permissions set up in coyote-config init service for lighttpd access
 
 ### Optimized
 
@@ -173,14 +179,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Self-signed SSL certificates for web admin HTTPS
 - Dropbear SSH with persistent host keys
 - Authentication framework for web admin (bypass mode for initial setup)
+- doas rules restrict web server to specific privileged commands only
+- Config partition mounted read-only by default, remounted read-write only during writes
 
 ## [Unreleased]
 
 ### Planned
 
 - Web admin authentication enforcement
-- Configuration backup and restore
 - Firewall rule management UI
 - VPN tunnel configuration UI
 - Load balancer configuration UI
+- Network interface configuration UI
 - UEFI boot support

@@ -24,6 +24,9 @@ start() {
     # /root is a symlink to /mnt/config/root for persistent home
     setup_persistent_dirs
 
+    # Set up web admin write permissions
+    setup_webadmin_permissions
+
     eend $?
 }
 
@@ -65,6 +68,45 @@ setup_persistent_dirs() {
             mkdir -p /mnt/config/ssl
             chmod 700 /mnt/config/ssl
         fi
+
+        mount -o remount,ro /mnt/config 2>/dev/null || true
+    fi
+}
+
+# Set up permissions for web admin to write configuration
+setup_webadmin_permissions() {
+    # Create running-config directory with lighttpd ownership
+    # This allows the web admin to write working configuration changes
+    if [ ! -d /tmp/running-config ]; then
+        mkdir -p /tmp/running-config
+    fi
+    chown lighttpd:lighttpd /tmp/running-config
+    chmod 755 /tmp/running-config
+
+    # If running-config file exists (created by apply-config), make it writable
+    if [ -f /tmp/running-config/system.json ]; then
+        chown lighttpd:lighttpd /tmp/running-config/system.json
+        chmod 644 /tmp/running-config/system.json
+    fi
+
+    # Set permissions on persistent config for web admin writes
+    # Config partition must be mounted
+    if mountpoint -q /mnt/config 2>/dev/null; then
+        # Temporarily remount rw to fix permissions
+        mount -o remount,rw /mnt/config 2>/dev/null || return 0
+
+        # Make system.json writable by lighttpd if it exists
+        if [ -f /mnt/config/system.json ]; then
+            chown lighttpd:lighttpd /mnt/config/system.json
+            chmod 644 /mnt/config/system.json
+        fi
+
+        # Create and set permissions on backups directory
+        if [ ! -d /mnt/config/backups ]; then
+            mkdir -p /mnt/config/backups
+        fi
+        chown lighttpd:lighttpd /mnt/config/backups
+        chmod 755 /mnt/config/backups
 
         mount -o remount,ro /mnt/config 2>/dev/null || true
     fi
