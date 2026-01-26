@@ -5,6 +5,11 @@
 
 log "Detecting boot media..."
 
+# Suppress kernel messages during module loading to avoid
+# "missing symbols" and "invalid ELF" errors for unavailable modules
+saved_printk=$(cat /proc/sys/kernel/printk 2>/dev/null)
+echo "1 1 1 1" > /proc/sys/kernel/printk 2>/dev/null
+
 # Load necessary kernel modules for storage devices
 log "Loading storage modules..."
 modprobe -q ata_piix 2>/dev/null || true
@@ -33,15 +38,18 @@ modprobe -q mbcache 2>/dev/null || true
 modprobe -q jbd2 2>/dev/null || true
 modprobe -q ext4 2>/dev/null || true
 
+# Restore kernel message level
+[ -n "$saved_printk" ] && echo "$saved_printk" > /proc/sys/kernel/printk 2>/dev/null
+
 # Wait for devices to settle (VMware may need more time)
 log "Waiting for devices..."
 sleep 3
 
 # Debug: show available block devices
-log "Available block devices:"
-ls -la /dev/sd* /dev/sr* /dev/hd* /dev/nvme* /dev/vd* 2>/dev/null || log "  (none found)"
-log "All block devices in /dev:"
-ls /dev/ | grep -E "^(sd|sr|hd|nvme|vd|cd)" || log "  (none matching)"
+# log "Available block devices:"
+# ls -la /dev/sd* /dev/sr* /dev/hd* /dev/nvme* /dev/vd* 2>/dev/null || log "  (none found)"
+# log "All block devices in /dev:"
+# ls /dev/ | grep -E "^(sd|sr|hd|nvme|vd|cd)" || log "  (none matching)"
 
 # Check if we're in installer mode (kernel parameter "installer")
 # If so, prefer CD-ROM to allow reinstallation over existing system

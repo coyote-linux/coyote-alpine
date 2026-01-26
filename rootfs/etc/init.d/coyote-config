@@ -17,10 +17,57 @@ depend() {
 start() {
     ebegin "Applying Coyote Linux configuration"
 
-    # Apply system configuration (includes network setup)
+    # Apply system configuration (includes network setup, mounts config partition)
     /opt/coyote/bin/apply-config
 
+    # Set up persistent directories now that config partition is mounted
+    # /root is a symlink to /mnt/config/root for persistent home
+    setup_persistent_dirs
+
     eend $?
+}
+
+# Create persistent directories on config partition
+setup_persistent_dirs() {
+    # Check if config partition is mounted
+    if ! mountpoint -q /mnt/config 2>/dev/null; then
+        ewarn "Config partition not mounted, skipping persistent directory setup"
+        return 0
+    fi
+
+    local need_write=false
+
+    # Check if directories need to be created
+    [ ! -d /mnt/config/root ] && need_write=true
+    [ ! -d /mnt/config/ssl ] && need_write=true
+
+    if [ "$need_write" = "true" ]; then
+        einfo "Creating persistent directories..."
+        mount -o remount,rw /mnt/config 2>/dev/null || {
+            ewarn "Cannot remount config partition read-write"
+            return 0
+        }
+
+        # Create root home directory
+        if [ ! -d /mnt/config/root ]; then
+            mkdir -p /mnt/config/root
+            chmod 700 /mnt/config/root
+        fi
+
+        # Create .ssh directory for root
+        if [ ! -d /mnt/config/root/.ssh ]; then
+            mkdir -p /mnt/config/root/.ssh
+            chmod 700 /mnt/config/root/.ssh
+        fi
+
+        # Create SSL certificate directory
+        if [ ! -d /mnt/config/ssl ]; then
+            mkdir -p /mnt/config/ssl
+            chmod 700 /mnt/config/ssl
+        fi
+
+        mount -o remount,ro /mnt/config 2>/dev/null || true
+    fi
 }
 
 stop() {

@@ -144,13 +144,13 @@ LABEL install
     MENU DEFAULT
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 installer
+    APPEND console=tty0 quiet installer
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 rescue
+    APPEND console=tty0 quiet rescue
 
 LABEL localdisk
     MENU LABEL Boot from local disk

@@ -168,13 +168,13 @@ LABEL install
     MENU LABEL Install Coyote Linux
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 installer
+    APPEND console=tty0 quiet installer
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 rescue
+    APPEND console=tty0 quiet rescue
 EOF
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${BUILD_DIR}/syslinux.cfg" ::/boot/syslinux/
 rm -f "${BUILD_DIR}/syslinux.cfg"

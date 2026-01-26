@@ -304,7 +304,7 @@ configure_network() {
     printf "Press Enter to accept the default value shown in brackets.\n\n"
 
     # Get IP address in CIDR notation
-    local default_ip="192.168.0.1/24"
+    local default_ip="192.168.99.2/24"
     while true; do
         printf "IP Address [${default_ip}]: "
         read NET_IP_CIDR
@@ -969,7 +969,7 @@ LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 rescue
+    APPEND console=tty0 quiet rescue
 SYSLINUX_CFG
 
     # Unmount boot partition for syslinux install
