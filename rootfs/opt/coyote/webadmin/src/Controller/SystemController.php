@@ -3,6 +3,7 @@
 namespace Coyote\WebAdmin\Controller;
 
 use Coyote\Config\ConfigManager;
+use Coyote\System\PrivilegedExecutor;
 use Coyote\WebAdmin\Service\ConfigService;
 use Coyote\WebAdmin\Service\ApplyService;
 
@@ -206,12 +207,17 @@ class SystemController extends BaseController
         // Send response before rebooting
         $this->redirect('/system');
 
+        // Flush output to browser
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+
         // Give the browser time to receive the redirect
         sleep(1);
 
-        // Execute reboot (use doas if not root)
-        $cmd = $this->getPrivilegedCommand('reboot');
-        exec("{$cmd} &");
+        // Execute reboot via privileged helper
+        $executor = new PrivilegedExecutor();
+        $executor->reboot();
     }
 
     /**
@@ -224,12 +230,17 @@ class SystemController extends BaseController
         // Send response before shutdown
         $this->redirect('/system');
 
+        // Flush output to browser
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+
         // Give the browser time to receive the redirect
         sleep(1);
 
-        // Execute shutdown (use doas if not root)
-        $cmd = $this->getPrivilegedCommand('poweroff');
-        exec("{$cmd} &");
+        // Execute shutdown via privileged helper
+        $executor = new PrivilegedExecutor();
+        $executor->poweroff();
     }
 
     /**
@@ -406,25 +417,15 @@ class SystemController extends BaseController
      */
     private function remountConfig(bool $writable): bool
     {
-        $mode = $writable ? 'rw' : 'ro';
-        $cmd = $this->getPrivilegedCommand('mount');
-        exec("{$cmd} -o remount,{$mode} /mnt/config 2>&1", $output, $returnCode);
-        return $returnCode === 0;
-    }
+        $executor = new PrivilegedExecutor();
 
-    /**
-     * Get a command with privilege escalation if needed.
-     *
-     * @param string $command The command to run
-     * @return string The command, prefixed with doas if not running as root
-     */
-    private function getPrivilegedCommand(string $command): string
-    {
-        // If running as root, no need for doas
-        if (posix_getuid() === 0) {
-            return $command;
+        if ($writable) {
+            $result = $executor->mountConfigRw();
+        } else {
+            $result = $executor->mountConfigRo();
         }
-        return "doas {$command}";
+
+        return $result['success'];
     }
 
     /**

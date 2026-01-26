@@ -217,4 +217,64 @@ class PrivilegedExecutor
             'output' => $result['output'],
         ];
     }
+
+    /**
+     * Reboot the system.
+     *
+     * @return array{success: bool, output: string}
+     */
+    public function reboot(): array
+    {
+        $result = $this->execute('reboot');
+
+        return [
+            'success' => $result['success'],
+            'output' => $result['output'],
+        ];
+    }
+
+    /**
+     * Shutdown the system.
+     *
+     * @return array{success: bool, output: string}
+     */
+    public function poweroff(): array
+    {
+        $result = $this->execute('poweroff');
+
+        return [
+            'success' => $result['success'],
+            'output' => $result['output'],
+        ];
+    }
+
+    /**
+     * Remount /mnt/config read-write.
+     *
+     * @return array{success: bool, output: string}
+     */
+    public function mountConfigRw(): array
+    {
+        $result = $this->execute('mount-rw');
+
+        return [
+            'success' => $result['success'],
+            'output' => $result['output'],
+        ];
+    }
+
+    /**
+     * Remount /mnt/config read-only.
+     *
+     * @return array{success: bool, output: string}
+     */
+    public function mountConfigRo(): array
+    {
+        $result = $this->execute('mount-ro');
+
+        return [
+            'success' => $result['success'],
+            'output' => $result['output'],
+        ];
+    }
 }

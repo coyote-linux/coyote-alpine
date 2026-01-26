@@ -18,6 +18,10 @@
 #   pppd <args...>              Start PPPoE client
 #   kill-pid <pid>              Kill process by PID
 #   pkill-pattern <pattern>     Kill processes matching pattern
+#   reboot                      Reboot the system
+#   poweroff                    Shutdown the system
+#   mount-rw                    Remount /mnt/config read-write
+#   mount-ro                    Remount /mnt/config read-only
 #
 
 set -e
@@ -212,6 +216,34 @@ cmd_pkill_pattern() {
     echo "OK"
 }
 
+# Command: reboot
+cmd_reboot() {
+    log_action "reboot: system reboot requested"
+    sync
+    /sbin/reboot
+}
+
+# Command: poweroff
+cmd_poweroff() {
+    log_action "poweroff: system shutdown requested"
+    sync
+    /sbin/poweroff
+}
+
+# Command: mount-rw (remount /mnt/config read-write)
+cmd_mount_rw() {
+    log_action "mount-rw: remounting /mnt/config read-write"
+    mount -o remount,rw /mnt/config
+    echo "OK"
+}
+
+# Command: mount-ro (remount /mnt/config read-only)
+cmd_mount_ro() {
+    log_action "mount-ro: remounting /mnt/config read-only"
+    mount -o remount,ro /mnt/config
+    echo "OK"
+}
+
 # Main entry point
 main() {
     local cmd="$1"
@@ -247,6 +279,18 @@ main() {
             ;;
         pkill-pattern)
             cmd_pkill_pattern "$@"
+            ;;
+        reboot)
+            cmd_reboot
+            ;;
+        poweroff)
+            cmd_poweroff
+            ;;
+        mount-rw)
+            cmd_mount_rw
+            ;;
+        mount-ro)
+            cmd_mount_ro
             ;;
         *)
             die "Unknown command: $cmd"
