@@ -24,18 +24,34 @@ start_pre() {
     # Ensure socket directory exists
     checkpath --directory --owner lighttpd:lighttpd --mode 0755 /var/run/lighttpd
 
-    # Ensure SSL directory exists
-    mkdir -p /etc/lighttpd/ssl
+    # SSL certificates stored on config partition for persistence
+    # Create symlink from /etc/lighttpd/ssl to /mnt/config/ssl
+    mkdir -p /etc/lighttpd
+    if [ ! -L /etc/lighttpd/ssl ]; then
+        rm -rf /etc/lighttpd/ssl
+        ln -s /mnt/config/ssl /etc/lighttpd/ssl
+    fi
 
-    # Ensure SSL certificate exists
-    if [ ! -f /etc/lighttpd/ssl/server.pem ]; then
+    # Generate SSL certificate if it doesn't exist (stored persistently)
+    if [ ! -f /mnt/config/ssl/server.pem ]; then
         einfo "Generating self-signed SSL certificate..."
+
+        # Remount config partition read-write
+        mount -o remount,rw /mnt/config
+
+        # Ensure SSL directory exists
+        mkdir -p /mnt/config/ssl
+        chmod 700 /mnt/config/ssl
+
+        # Generate certificate
         openssl req -new -x509 -days 3650 -nodes \
-            -out /etc/lighttpd/ssl/server.pem \
-            -keyout /etc/lighttpd/ssl/server.pem \
+            -out /mnt/config/ssl/server.pem \
+            -keyout /mnt/config/ssl/server.pem \
             -subj "/CN=$(hostname)/O=Coyote Linux/C=US" 2>/dev/null
-        chown lighttpd:lighttpd /etc/lighttpd/ssl/server.pem
-        chmod 600 /etc/lighttpd/ssl/server.pem
+        chmod 600 /mnt/config/ssl/server.pem
+
+        # Remount config partition read-only
+        mount -o remount,ro /mnt/config
     fi
 }
 

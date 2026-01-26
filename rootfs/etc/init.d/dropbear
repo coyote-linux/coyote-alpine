@@ -64,12 +64,11 @@ setup_authorized_keys() {
     # Users can place their public keys in /mnt/config/dropbear/authorized_keys
     local config_keys="/mnt/config/dropbear/authorized_keys"
 
-    # Create root's .ssh directory
-    mkdir -p /root/.ssh
-    chmod 700 /root/.ssh
+    # /root is a symlink to /mnt/config/root (created by coyote-init)
+    # The .ssh directory is created by coyote-init on first boot
 
     # Link authorized_keys from config if it exists
-    if [ -f "$config_keys" ]; then
+    if [ -f "$config_keys" ] && [ -d /root/.ssh ]; then
         ln -sf "$config_keys" /root/.ssh/authorized_keys
         einfo "Loaded authorized_keys from config partition"
     fi
