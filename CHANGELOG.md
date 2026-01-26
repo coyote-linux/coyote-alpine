@@ -41,6 +41,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Support for authorized_keys from `/mnt/config/dropbear/authorized_keys`
 - Default root password set to 'coyote' (change on first login)
 
+#### Persistent Storage
+- `/root` symlinked to `/mnt/config/root` for persistent home directory
+- SSH known_hosts and user files persist across reboots and firmware updates
+- SSL certificates stored at `/mnt/config/ssl` for persistence
+- Directories created automatically on first boot by `coyote-init`
+- Config partition remounted read-write only when needed, then read-only
+
 #### Firmware Upgrade Support
 - Installer main menu with options: New Install, Upgrade, Shell
 - Automatic detection of existing Coyote installations
