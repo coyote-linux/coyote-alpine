@@ -4,6 +4,26 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.32] - 2026-01-26
+
+### Added
+
+#### Subsystem-Based Configuration Apply
+- Modular subsystem architecture for configuration application
+- SubsystemInterface and AbstractSubsystem base classes
+- HostnameSubsystem: handles hostname/domain (safe, no countdown)
+- TimezoneSubsystem: handles timezone/localtime (safe, no countdown)
+- DnsSubsystem: handles resolv.conf/nameservers (safe, no countdown)
+- NetworkSubsystem: handles interfaces/routes/gateway (requires 60-second countdown)
+- SubsystemManager coordinates subsystems and determines countdown requirements
+- Selective countdown only for changes that could cause loss of remote access
+- Safe changes (hostname, timezone, DNS) apply immediately without countdown
+- Network changes trigger 60-second confirmation countdown
+- UI shows different styling for safe vs network changes
+
+### Fixed
+- SystemController constructor now calls parent::__construct()
+
 ## [4.0.28] - 2026-01-26
 
 ### Added
