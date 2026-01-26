@@ -85,6 +85,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Utility**: Logging, process management, and filesystem helpers
 
 #### Build System
+- Auto-incrementing build number (version 4.0.xxx where xxx increments each build)
+- Build number stored in `build/.build-number` and tracked in git
+- `make show-version` displays current and next version numbers
 - Rootless build using `apk --usermode` and mtools
 - `mkrootfs.sh` - Alpine 3.23 bootstrap without root privileges
 - `mksquashfs.sh` - Squashfs firmware image builder
