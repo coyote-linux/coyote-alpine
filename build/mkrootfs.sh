@@ -264,6 +264,19 @@ apply_coyote_overlay() {
 
     # Copy Coyote-specific files from the source rootfs
     if [ -d "$COYOTE_ROOTFS" ]; then
+        # Handle symlinks that would replace directories
+        # (e.g., /root is a symlink to /mnt/config/root for persistence)
+        for item in "${COYOTE_ROOTFS}/"*; do
+            local basename=$(basename "$item")
+            local target="${ROOTFS_DIR}/${basename}"
+
+            # If source is a symlink and target is a directory, remove target first
+            if [ -L "$item" ] && [ -d "$target" ] && [ ! -L "$target" ]; then
+                echo "Replacing directory $target with symlink..."
+                rm -rf "$target"
+            fi
+        done
+
         cp -a "${COYOTE_ROOTFS}/"* "$ROOTFS_DIR/"
     fi
 

@@ -200,6 +200,11 @@ else
     echo "Warning: MBR boot code not found, image may not boot on all systems"
 fi
 
+# Create/update symlink to latest installer
+LATEST_LINK="${BUILD_DIR}/coyote-installer-latest.img"
+rm -f "$LATEST_LINK"
+ln -s "$(basename "$INSTALLER_IMG")" "$LATEST_LINK"
+
 echo ""
 echo "=========================================="
 echo "Installer image created: $INSTALLER_IMG"

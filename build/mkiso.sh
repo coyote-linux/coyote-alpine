@@ -197,6 +197,11 @@ sha256sum "$ISO_FILE" > "${ISO_FILE}.sha256"
 # Clean up staging directory
 rm -rf "$ISO_BUILD"
 
+# Create/update symlink to latest ISO
+LATEST_LINK="${BUILD_DIR}/coyote-installer-latest.iso"
+rm -f "$LATEST_LINK"
+ln -s "$(basename "$ISO_FILE")" "$LATEST_LINK"
+
 echo ""
 echo "=========================================="
 echo "ISO image created: $ISO_FILE"
