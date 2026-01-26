@@ -22,13 +22,26 @@ class DebugController extends BaseController
         echo "<!DOCTYPE html>\n<html><head><title>Coyote Debug</title></head><body>\n";
         echo "<h1>Coyote Linux Debug</h1>\n";
         echo "<ul>\n";
+        echo "<li><a href=\"/debug/logs/apply\">Apply/Subsystem Log</a> (configuration apply debugging)</li>\n";
         echo "<li><a href=\"/debug/logs/access\">Lighttpd Access Log</a></li>\n";
         echo "<li><a href=\"/debug/logs/error\">Lighttpd Error Log</a></li>\n";
         echo "<li><a href=\"/debug/logs/php\">PHP Error Log</a></li>\n";
+        echo "<li><a href=\"/debug/logs/syslog\">System Log (logread)</a></li>\n";
         echo "<li><a href=\"/debug/phpinfo\">PHP Info</a></li>\n";
         echo "<li><a href=\"/debug/config\">Running Configuration</a></li>\n";
         echo "</ul>\n";
         echo "</body></html>\n";
+    }
+
+    /**
+     * Display configuration apply log (subsystem debugging).
+     *
+     * @param array $params Route parameters
+     * @return void
+     */
+    public function applyLog(array $params = []): void
+    {
+        $this->displayLogFile('/var/log/coyote-apply.log', 'Configuration Apply Log');
     }
 
     /**
@@ -77,6 +90,42 @@ class DebugController extends BaseController
         }
 
         $this->displayLogFile('/var/log/php/error.log', 'PHP Error Log');
+    }
+
+    /**
+     * Display system log (via logread).
+     *
+     * @param array $params Route parameters
+     * @return void
+     */
+    public function syslog(array $params = []): void
+    {
+        header('Content-Type: text/plain; charset=utf-8');
+
+        echo "=== System Log (logread) ===\n";
+        echo "Time: " . date('Y-m-d H:i:s') . "\n";
+        echo str_repeat('=', 60) . "\n\n";
+
+        $lines = $this->query('lines', 100);
+        $lines = max(10, min(1000, (int)$lines));
+
+        // Use logread to get syslog entries
+        $output = [];
+        exec("logread 2>&1 | tail -n {$lines}", $output, $ret);
+
+        if ($ret !== 0) {
+            echo "ERROR: Failed to read system log (logread returned {$ret})\n";
+            return;
+        }
+
+        if (empty($output)) {
+            echo "(No log entries)\n";
+        } else {
+            echo implode("\n", $output);
+        }
+
+        echo "\n\n" . str_repeat('=', 60) . "\n";
+        echo "Showing last {$lines} lines. Use ?lines=N to change.\n";
     }
 
     /**

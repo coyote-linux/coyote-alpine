@@ -2,6 +2,8 @@
 
 namespace Coyote\System\Subsystem;
 
+use Coyote\Util\Logger;
+
 /**
  * Manages configuration subsystems.
  *
@@ -14,11 +16,19 @@ class SubsystemManager
     /** @var SubsystemInterface[] Registered subsystems */
     private array $subsystems = [];
 
+    /** @var Logger */
+    private Logger $logger;
+
+    /** @var string Log file for debugging apply operations */
+    private const LOG_FILE = '/var/log/coyote-apply.log';
+
     /**
      * Create a new SubsystemManager with default subsystems.
      */
     public function __construct()
     {
+        $this->logger = new Logger('subsystem', LOG_LOCAL0, self::LOG_FILE);
+
         // Register default subsystems in apply order
         $this->register(new HostnameSubsystem());
         $this->register(new TimezoneSubsystem());
@@ -111,6 +121,7 @@ class SubsystemManager
         $changed = $this->getChangedSubsystems($working, $running);
 
         if (empty($changed)) {
+            $this->logger->debug('No subsystems have changes to apply');
             return [
                 'success' => true,
                 'message' => 'No changes to apply',
@@ -119,16 +130,40 @@ class SubsystemManager
             ];
         }
 
+        $changedNames = array_map(fn($s) => $s->getName(), $changed);
+        $this->logger->info('Applying changes to subsystems: ' . implode(', ', $changedNames));
+
         $results = [];
         $allSuccess = true;
         $requiresCountdown = false;
+        $failedSubsystems = [];
+        $errorDetails = [];
 
         foreach ($changed as $subsystem) {
+            $name = $subsystem->getName();
+            $this->logger->debug("Applying subsystem: {$name}");
+
             $result = $subsystem->apply($working);
-            $results[$subsystem->getName()] = $result;
+            $results[$name] = $result;
 
             if (!$result['success']) {
                 $allSuccess = false;
+                $failedSubsystems[] = $name;
+
+                // Log the failure
+                $this->logger->error("Subsystem {$name} failed: " . ($result['message'] ?? 'Unknown error'));
+
+                // Log individual errors if present
+                if (!empty($result['errors'])) {
+                    foreach ($result['errors'] as $error) {
+                        $this->logger->error("  - {$error}");
+                        $errorDetails[] = "[{$name}] {$error}";
+                    }
+                } else {
+                    $errorDetails[] = "[{$name}] " . ($result['message'] ?? 'Unknown error');
+                }
+            } else {
+                $this->logger->info("Subsystem {$name} applied successfully");
             }
 
             if ($subsystem->requiresCountdown()) {
@@ -136,13 +171,22 @@ class SubsystemManager
             }
         }
 
-        $changedNames = array_map(fn($s) => $s->getName(), $changed);
+        // Build descriptive message
+        if ($allSuccess) {
+            $message = 'Applied: ' . implode(', ', $changedNames);
+        } else {
+            $message = 'Failed subsystems: ' . implode(', ', $failedSubsystems);
+            if (!empty($errorDetails)) {
+                $message .= '. Errors: ' . implode('; ', array_slice($errorDetails, 0, 3));
+                if (count($errorDetails) > 3) {
+                    $message .= ' (and ' . (count($errorDetails) - 3) . ' more)';
+                }
+            }
+        }
 
         return [
             'success' => $allSuccess,
-            'message' => $allSuccess
-                ? 'Applied: ' . implode(', ', $changedNames)
-                : 'Some subsystems failed to apply',
+            'message' => $message,
             'results' => $results,
             'requiresCountdown' => $requiresCountdown,
         ];
@@ -156,23 +200,55 @@ class SubsystemManager
      */
     public function applyAll(array $config): array
     {
+        $this->logger->info('Applying all subsystems');
+
         $results = [];
         $allSuccess = true;
+        $failedSubsystems = [];
+        $errorDetails = [];
 
         foreach ($this->subsystems as $subsystem) {
+            $name = $subsystem->getName();
+            $this->logger->debug("Applying subsystem: {$name}");
+
             $result = $subsystem->apply($config);
-            $results[$subsystem->getName()] = $result;
+            $results[$name] = $result;
 
             if (!$result['success']) {
                 $allSuccess = false;
+                $failedSubsystems[] = $name;
+
+                $this->logger->error("Subsystem {$name} failed: " . ($result['message'] ?? 'Unknown error'));
+
+                if (!empty($result['errors'])) {
+                    foreach ($result['errors'] as $error) {
+                        $this->logger->error("  - {$error}");
+                        $errorDetails[] = "[{$name}] {$error}";
+                    }
+                } else {
+                    $errorDetails[] = "[{$name}] " . ($result['message'] ?? 'Unknown error');
+                }
+            } else {
+                $this->logger->info("Subsystem {$name} applied successfully");
+            }
+        }
+
+        // Build descriptive message
+        if ($allSuccess) {
+            $message = 'All subsystems applied successfully';
+        } else {
+            $message = 'Failed subsystems: ' . implode(', ', $failedSubsystems);
+            if (!empty($errorDetails)) {
+                $message .= '. Errors: ' . implode('; ', array_slice($errorDetails, 0, 3));
+                if (count($errorDetails) > 3) {
+                    $message .= ' (and ' . (count($errorDetails) - 3) . ' more)';
+                }
             }
         }
 
         return [
             'success' => $allSuccess,
-            'message' => $allSuccess
-                ? 'All subsystems applied successfully'
-                : 'Some subsystems failed to apply',
+            'message' => $message,
             'results' => $results,
         ];
     }

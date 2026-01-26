@@ -43,6 +43,9 @@ class ApplyService
     /** @var Logger */
     private Logger $logger;
 
+    /** @var string Path to apply log file for debugging */
+    private const LOG_FILE = '/var/log/coyote-apply.log';
+
     /**
      * Create a new ApplyService instance.
      */
@@ -50,7 +53,7 @@ class ApplyService
     {
         $this->configService = new ConfigService();
         $this->subsystemManager = new SubsystemManager();
-        $this->logger = new Logger('coyote-apply');
+        $this->logger = new Logger('coyote-apply', LOG_LOCAL0, self::LOG_FILE);
     }
 
     /**
@@ -106,6 +109,23 @@ class ApplyService
         $result = $this->subsystemManager->applyChanges($working, $running);
 
         if (!$result['success']) {
+            // Log detailed failure information
+            $this->logger->error('Configuration apply failed: ' . $result['message']);
+
+            // Log individual subsystem results
+            if (!empty($result['results'])) {
+                foreach ($result['results'] as $subsystemName => $subResult) {
+                    if (!$subResult['success']) {
+                        $this->logger->error("  Subsystem {$subsystemName}: " . ($subResult['message'] ?? 'failed'));
+                        if (!empty($subResult['errors'])) {
+                            foreach ($subResult['errors'] as $error) {
+                                $this->logger->error("    - {$error}");
+                            }
+                        }
+                    }
+                }
+            }
+
             return [
                 'success' => false,
                 'message' => $result['message'],

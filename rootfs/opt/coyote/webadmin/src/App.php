@@ -132,9 +132,11 @@ class App
 
         // Debug (public routes for troubleshooting)
         $this->router->get('/debug', [Controller\DebugController::class, 'index']);
+        $this->router->get('/debug/logs/apply', [Controller\DebugController::class, 'applyLog']);
         $this->router->get('/debug/logs/access', [Controller\DebugController::class, 'accessLog']);
         $this->router->get('/debug/logs/error', [Controller\DebugController::class, 'errorLog']);
         $this->router->get('/debug/logs/php', [Controller\DebugController::class, 'phpLog']);
+        $this->router->get('/debug/logs/syslog', [Controller\DebugController::class, 'syslog']);
         $this->router->get('/debug/phpinfo', [Controller\DebugController::class, 'phpInfo']);
         $this->router->get('/debug/config', [Controller\DebugController::class, 'config']);
     }

@@ -4,6 +4,18 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.35] - 2026-01-26
+
+### Added
+
+#### Configuration Apply Debugging
+- Detailed logging for subsystem apply operations to `/var/log/coyote-apply.log`
+- SubsystemManager now logs success/failure for each subsystem with specific error messages
+- ApplyService logs detailed failure information when configuration apply fails
+- Debug endpoint `/debug/logs/apply` to view apply log from web interface
+- Debug endpoint `/debug/logs/syslog` to view system log (logread) from web interface
+- Error messages now include specific subsystem failures instead of generic "Some subsystems failed to apply"
+
 ## [4.0.34] - 2026-01-26
 
 ### Added
