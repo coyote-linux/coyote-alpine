@@ -26,6 +26,11 @@ modprobe -q vfat 2>/dev/null || true
 modprobe -q fat 2>/dev/null || true
 modprobe -q nls_cp437 2>/dev/null || true
 modprobe -q nls_iso8859-1 2>/dev/null || true
+# ext4 dependencies must be loaded first
+modprobe -q crc16 2>/dev/null || true
+modprobe -q crc32c_generic 2>/dev/null || true
+modprobe -q mbcache 2>/dev/null || true
+modprobe -q jbd2 2>/dev/null || true
 modprobe -q ext4 2>/dev/null || true
 
 # Wait for devices to settle (VMware may need more time)

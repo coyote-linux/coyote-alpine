@@ -251,12 +251,24 @@ build_initramfs() {
             fi
 
             # Copy filesystem modules (squashfs, isofs for CD-ROM, fat, ext4, overlay)
-            local fs_modules="squashfs isofs fat ext4 nls overlay"
+            # Note: ext4 depends on jbd2, mbcache, and crc modules
+            local fs_modules="squashfs isofs fat ext4 nls overlay jbd2 mbcache"
             for fsmod in $fs_modules; do
                 src="${CACHE_DIR}/modules/${kver}/kernel/fs/${fsmod}"
                 if [ -d "$src" ]; then
                     mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}"
                     cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}/" 2>/dev/null || true
+                fi
+            done
+
+            # Copy crypto/crc modules needed by ext4 and other filesystems
+            local crypto_dirs="crypto lib/crc"
+            for cdir in $crypto_dirs; do
+                src="${CACHE_DIR}/modules/${kver}/kernel/${cdir}"
+                if [ -d "$src" ]; then
+                    mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/${cdir}"
+                    # Only copy crc-related modules to keep size down
+                    find "$src" -name "*crc*" -type f -exec cp {} "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/${cdir}/" \; 2>/dev/null || true
                 fi
             done
 
