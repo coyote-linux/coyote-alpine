@@ -4,6 +4,27 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.34] - 2026-01-26
+
+### Added
+
+#### Expanded Network Interface Editor
+- Full configuration support for all interface types: Static, DHCP, PPPoE, Bridge, Disabled
+- Multiple IP addresses per interface (primary + secondary aliases)
+- MTU configuration (576-9000)
+- MAC address override (for ISP requirements)
+- 802.1q VLAN sub-interfaces on static interfaces
+- DHCP hostname option for ISP requirements
+- PPPoE client with username/password credentials
+- Constraint: only one interface can use dynamic addressing (DHCP or PPPoE)
+- VLAN interfaces shown as read-only (configured via parent interface)
+- NetworkSubsystem handles all interface types: static (multi-address), DHCP (udhcpc), PPPoE (pppd), bridge mode
+- VLAN support via 8021q kernel module
+
+### Fixed
+- Auto-refresh now only applies to dashboard page (was causing form resets on editor pages)
+- Installer now writes correct interface configuration format (type, enabled, addresses array, routes)
+
 ## [4.0.33] - 2026-01-26
 
 ### Added
@@ -12,7 +33,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Web admin interface for configuring network interfaces
 - Edit individual interfaces with static IP, DHCP, or disabled modes
 - CIDR notation validation for IP addresses (e.g., 192.168.1.1/24)
-- Gateway configuration per interface
 - Configuration badges showing interface state (Static/DHCP/Disabled/Unconfigured)
 - Loopback interface excluded from list (not user-configurable)
 - Apply configuration with 60-second countdown for network changes

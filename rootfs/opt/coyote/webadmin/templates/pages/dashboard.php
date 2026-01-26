@@ -1,6 +1,6 @@
 <?php $pageTitle = 'Dashboard'; $page = 'dashboard'; ?>
 
-<div class="dashboard-grid">
+<div class="dashboard-grid" data-auto-refresh="30">
     <div class="card">
         <h3>System</h3>
         <dl>

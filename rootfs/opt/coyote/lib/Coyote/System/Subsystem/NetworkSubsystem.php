@@ -6,9 +6,13 @@ namespace Coyote\System\Subsystem;
  * Network interface configuration subsystem.
  *
  * Handles:
- * - Interface IP addresses
+ * - Interface IP addresses (static, multiple)
+ * - DHCP client
+ * - PPPoE client
  * - Interface state (up/down)
- * - Default gateway
+ * - MTU configuration
+ * - MAC address override
+ * - VLAN sub-interfaces
  * - Static routes
  * - IP forwarding
  *
@@ -97,8 +101,9 @@ class NetworkSubsystem extends AbstractSubsystem
     {
         $name = $ifaceConfig['name'] ?? null;
         $type = $ifaceConfig['type'] ?? 'disabled';
-        $address = $ifaceConfig['address'] ?? null;
-        $gateway = $ifaceConfig['gateway'] ?? null;
+        $enabled = $ifaceConfig['enabled'] ?? true;
+        $mtu = $ifaceConfig['mtu'] ?? 1500;
+        $macOverride = $ifaceConfig['mac_override'] ?? null;
 
         if (!$name) {
             return;
@@ -110,94 +115,238 @@ class NetworkSubsystem extends AbstractSubsystem
             return;
         }
 
-        // Handle disabled interfaces
-        if ($type === 'disabled') {
-            // Stop any DHCP client running on this interface
+        // Handle disabled or not enabled interfaces
+        if ($type === 'disabled' || !$enabled) {
             $this->stopDhcp($name);
-            // Flush addresses and bring interface down
+            $this->stopPppoe($name);
             $this->exec("ip addr flush dev " . escapeshellarg($name), true);
             $this->exec("ip link set " . escapeshellarg($name) . " down", true);
             return;
         }
 
-        // Handle DHCP configuration
-        if ($type === 'dhcp') {
-            // Flush any static addresses
-            $this->exec("ip addr flush dev " . escapeshellarg($name), true);
-            // Bring interface up
-            $this->exec("ip link set " . escapeshellarg($name) . " up", true);
-            // Start DHCP client
-            $this->startDhcp($name, $errors);
-            return;
+        // Stop any running clients first
+        $this->stopDhcp($name);
+        $this->stopPppoe($name);
+
+        // Set MTU
+        if ($mtu && $mtu != 1500) {
+            $this->exec("ip link set " . escapeshellarg($name) . " mtu " . escapeshellarg($mtu), true);
         }
 
-        // Handle static configuration
-        if ($type === 'static') {
-            // Stop any DHCP client first
-            $this->stopDhcp($name);
-
-            // Get current interface state
-            $currentAddress = $this->getCurrentAddress($name);
-
-            // Only reconfigure if address is different
-            if ($address && $currentAddress !== $address) {
-                // Flush existing addresses
-                $this->exec("ip addr flush dev " . escapeshellarg($name), true);
-
-                // Add new address
-                $result = $this->exec(
-                    "ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name),
-                    true
-                );
-
-                if (!$result['success']) {
-                    $errors[] = "Failed to set address on {$name}: " . $result['output'];
-                }
+        // Set MAC address override if specified
+        if (!empty($macOverride)) {
+            // Interface must be down to change MAC
+            $this->exec("ip link set " . escapeshellarg($name) . " down", true);
+            $result = $this->exec("ip link set " . escapeshellarg($name) . " address " . escapeshellarg($macOverride), true);
+            if (!$result['success']) {
+                $errors[] = "Failed to set MAC address on {$name}: " . $result['output'];
             }
+        }
 
-            // Bring interface up
-            $this->exec("ip link set " . escapeshellarg($name) . " up", true);
+        // Handle by type
+        switch ($type) {
+            case 'static':
+                $this->configureStatic($name, $ifaceConfig, $errors);
+                break;
 
-            // Set default gateway if specified
-            if ($gateway) {
-                $currentGateway = $this->getCurrentGateway();
+            case 'dhcp':
+                $this->configureDhcp($name, $ifaceConfig, $errors);
+                break;
 
-                if ($currentGateway !== $gateway) {
-                    // Remove existing default route
-                    $this->exec('ip route del default', true);
+            case 'pppoe':
+                $this->configurePppoe($name, $ifaceConfig, $errors);
+                break;
 
-                    // Add new default route
-                    $result = $this->exec(
-                        "ip route add default via " . escapeshellarg($gateway) . " dev " . escapeshellarg($name),
-                        true
-                    );
+            case 'bridge':
+                $this->configureBridge($name, $ifaceConfig, $errors);
+                break;
+        }
 
-                    if (!$result['success']) {
-                        $errors[] = "Failed to set gateway: " . $result['output'];
-                    }
-                }
+        // Configure VLANs (only for static interfaces)
+        if ($type === 'static' && !empty($ifaceConfig['vlans'])) {
+            $this->configureVlans($name, $ifaceConfig['vlans'], $errors);
+        }
+    }
+
+    /**
+     * Configure static IP addressing.
+     */
+    private function configureStatic(string $name, array $config, array &$errors): void
+    {
+        $addresses = $config['addresses'] ?? [];
+
+        // Flush existing addresses
+        $this->exec("ip addr flush dev " . escapeshellarg($name), true);
+
+        // Bring interface up
+        $this->exec("ip link set " . escapeshellarg($name) . " up", true);
+
+        // Add all addresses
+        foreach ($addresses as $address) {
+            if (empty($address)) continue;
+
+            $result = $this->exec(
+                "ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name),
+                true
+            );
+
+            if (!$result['success'] && strpos($result['output'], 'RTNETLINK answers: File exists') === false) {
+                $errors[] = "Failed to set address {$address} on {$name}: " . $result['output'];
             }
         }
     }
 
     /**
-     * Start DHCP client on an interface.
+     * Configure DHCP client.
      */
-    private function startDhcp(string $iface, array &$errors): void
+    private function configureDhcp(string $name, array $config, array &$errors): void
     {
-        // First stop any existing instance
-        $this->stopDhcp($iface);
+        $hostname = $config['dhcp_hostname'] ?? '';
 
-        // Use udhcpc (busybox DHCP client) - common on Alpine
-        // -i interface, -b background, -p pidfile, -q quit after obtaining lease
-        $pidFile = "/var/run/udhcpc.{$iface}.pid";
-        $result = $this->exec(
-            "udhcpc -i " . escapeshellarg($iface) . " -b -p " . escapeshellarg($pidFile) . " -S",
-            true
-        );
+        // Flush any existing addresses
+        $this->exec("ip addr flush dev " . escapeshellarg($name), true);
+
+        // Bring interface up
+        $this->exec("ip link set " . escapeshellarg($name) . " up", true);
+
+        // Build udhcpc command
+        $pidFile = "/var/run/udhcpc.{$name}.pid";
+        $cmd = "udhcpc -i " . escapeshellarg($name) . " -b -p " . escapeshellarg($pidFile) . " -S";
+
+        if (!empty($hostname)) {
+            $cmd .= " -H " . escapeshellarg($hostname);
+        }
+
+        $result = $this->exec($cmd, true);
 
         if (!$result['success']) {
-            $errors[] = "Failed to start DHCP on {$iface}: " . $result['output'];
+            $errors[] = "Failed to start DHCP on {$name}: " . $result['output'];
+        }
+    }
+
+    /**
+     * Configure PPPoE client.
+     */
+    private function configurePppoe(string $name, array $config, array &$errors): void
+    {
+        $username = $config['pppoe_username'] ?? '';
+        $password = $config['pppoe_password'] ?? '';
+
+        if (empty($username) || empty($password)) {
+            $errors[] = "PPPoE username and password required for {$name}";
+            return;
+        }
+
+        // Bring interface up (PPPoE needs raw access)
+        $this->exec("ip addr flush dev " . escapeshellarg($name), true);
+        $this->exec("ip link set " . escapeshellarg($name) . " up", true);
+
+        // Write PPPoE peer configuration
+        $peerConfig = "plugin pppoe.so {$name}\n";
+        $peerConfig .= "user \"{$username}\"\n";
+        $peerConfig .= "password \"{$password}\"\n";
+        $peerConfig .= "persist\n";
+        $peerConfig .= "defaultroute\n";
+        $peerConfig .= "usepeerdns\n";
+        $peerConfig .= "noauth\n";
+        $peerConfig .= "hide-password\n";
+
+        $peerFile = "/etc/ppp/peers/pppoe-{$name}";
+        @mkdir('/etc/ppp/peers', 0755, true);
+
+        if (file_put_contents($peerFile, $peerConfig) === false) {
+            $errors[] = "Failed to write PPPoE configuration for {$name}";
+            return;
+        }
+
+        // Start pppd
+        $result = $this->exec("pppd call pppoe-{$name}", true);
+
+        if (!$result['success']) {
+            $errors[] = "Failed to start PPPoE on {$name}: " . $result['output'];
+        }
+    }
+
+    /**
+     * Configure interface for bridging.
+     */
+    private function configureBridge(string $name, array $config, array &$errors): void
+    {
+        // For bridge member, just bring the interface up with no address
+        $this->exec("ip addr flush dev " . escapeshellarg($name), true);
+        $this->exec("ip link set " . escapeshellarg($name) . " up", true);
+
+        // Note: Actual bridge configuration (brctl addif) would be done
+        // when configuring the bridge interface itself
+    }
+
+    /**
+     * Configure VLAN sub-interfaces.
+     */
+    private function configureVlans(string $parentName, array $vlanIds, array &$errors): void
+    {
+        // Load 8021q module if not loaded
+        $this->exec('modprobe 8021q', true);
+
+        foreach ($vlanIds as $vlanId) {
+            $vlanName = "{$parentName}.{$vlanId}";
+
+            // Check if VLAN interface already exists
+            if (!file_exists("/sys/class/net/{$vlanName}")) {
+                // Create VLAN interface
+                $result = $this->exec(
+                    "ip link add link " . escapeshellarg($parentName) .
+                    " name " . escapeshellarg($vlanName) .
+                    " type vlan id " . escapeshellarg($vlanId),
+                    true
+                );
+
+                if (!$result['success']) {
+                    $errors[] = "Failed to create VLAN {$vlanId} on {$parentName}: " . $result['output'];
+                    continue;
+                }
+            }
+
+            // Bring VLAN interface up
+            $this->exec("ip link set " . escapeshellarg($vlanName) . " up", true);
+        }
+    }
+
+    /**
+     * Configure a static route.
+     */
+    private function configureRoute(array $route, array &$errors): void
+    {
+        $dest = $route['destination'] ?? null;
+        $gateway = $route['gateway'] ?? null;
+        $dev = $route['interface'] ?? $route['device'] ?? null;
+
+        if (!$dest) {
+            return;
+        }
+
+        // Handle default route specially
+        if ($dest === 'default') {
+            // Remove existing default route first
+            $this->exec('ip route del default', true);
+
+            $cmd = "ip route add default";
+        } else {
+            $cmd = "ip route replace " . escapeshellarg($dest);
+        }
+
+        if ($gateway) {
+            $cmd .= " via " . escapeshellarg($gateway);
+        }
+
+        if ($dev) {
+            $cmd .= " dev " . escapeshellarg($dev);
+        }
+
+        $result = $this->exec($cmd, true);
+
+        if (!$result['success']) {
+            $errors[] = "Failed to add route to {$dest}: " . $result['output'];
         }
     }
 
@@ -217,37 +366,19 @@ class NetworkSubsystem extends AbstractSubsystem
         }
 
         // Also try to kill by process name pattern (backup method)
-        $this->exec("pkill -f 'udhcpc.*-i " . escapeshellarg($iface) . "'", true);
+        $this->exec("pkill -f 'udhcpc.*-i " . $iface . "'", true);
     }
 
     /**
-     * Configure a static route.
+     * Stop PPPoE client on an interface.
      */
-    private function configureRoute(array $route, array &$errors): void
+    private function stopPppoe(string $iface): void
     {
-        $dest = $route['destination'] ?? null;
-        $via = $route['gateway'] ?? null;
-        $dev = $route['device'] ?? null;
+        // Kill pppd using this peer config
+        $this->exec("pkill -f 'pppd call pppoe-" . $iface . "'", true);
 
-        if (!$dest) {
-            return;
-        }
-
-        $cmd = "ip route replace " . escapeshellarg($dest);
-
-        if ($via) {
-            $cmd .= " via " . escapeshellarg($via);
-        }
-
-        if ($dev) {
-            $cmd .= " dev " . escapeshellarg($dev);
-        }
-
-        $result = $this->exec($cmd, true);
-
-        if (!$result['success']) {
-            $errors[] = "Failed to add route to {$dest}: " . $result['output'];
-        }
+        // Also kill any pppoe-related processes for this interface
+        $this->exec("pkill -f 'pppoe.*" . $iface . "'", true);
     }
 
     /**

@@ -22,13 +22,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Auto-refresh dashboard every 30 seconds if on dashboard page
-    if (document.querySelector('.dashboard-grid')) {
+    // Auto-refresh pages that have data-auto-refresh attribute
+    var autoRefreshEl = document.querySelector('[data-auto-refresh]');
+    if (autoRefreshEl) {
+        var interval = parseInt(autoRefreshEl.dataset.autoRefresh, 10) * 1000 || 30000;
         setInterval(function() {
             // Only refresh if page is visible
             if (!document.hidden) {
                 location.reload();
             }
-        }, 30000);
+        }, interval);
     }
 });

@@ -696,9 +696,16 @@ SYSLINUX_CFG
         "interfaces": [
             {
                 "name": "$NET_INTERFACE",
-                "mac": "$NET_MAC",
-                "address": "$NET_IP_CIDR",
-                "gateway": "$NET_GATEWAY"
+                "type": "static",
+                "enabled": true,
+                "addresses": ["$NET_IP_CIDR"]
+            }
+        ],
+        "routes": [
+            {
+                "destination": "default",
+                "gateway": "$NET_GATEWAY",
+                "interface": "$NET_INTERFACE"
             }
         ]
     }
@@ -718,8 +725,9 @@ EOF
         "interfaces": [
             {
                 "name": "$NET_INTERFACE",
-                "mac": "$NET_MAC",
-                "address": "$NET_IP_CIDR"
+                "type": "static",
+                "enabled": true,
+                "addresses": ["$NET_IP_CIDR"]
             }
         ]
     }

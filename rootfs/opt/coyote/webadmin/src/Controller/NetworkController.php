@@ -50,6 +50,7 @@ class NetworkController extends BaseController
         // Merge system state with configuration
         $interfaces = [];
         foreach ($systemInterfaces as $name => $sysIface) {
+            $ifaceConfig = $configByName[$name] ?? null;
             $interfaces[$name] = [
                 'name' => $name,
                 'mac' => $sysIface['mac'] ?? '',
@@ -57,8 +58,8 @@ class NetworkController extends BaseController
                 'ipv4' => $sysIface['ipv4'] ?? [],
                 'mtu' => $sysIface['mtu'] ?? 1500,
                 'stats' => $sysIface['stats'] ?? ['rx_bytes' => 0, 'tx_bytes' => 0],
-                'configured' => isset($configByName[$name]),
-                'config' => $configByName[$name] ?? null,
+                'configured' => $ifaceConfig !== null,
+                'config' => $ifaceConfig,
             ];
         }
 
@@ -112,17 +113,38 @@ class NetworkController extends BaseController
             }
         }
 
+        // Check if any interface already has dynamic addressing (DHCP or PPPoE)
+        $hasDynamicInterface = false;
+        $dynamicInterfaceName = '';
+        foreach ($configuredInterfaces as $iface) {
+            $type = $iface['type'] ?? 'disabled';
+            if ($type === 'dhcp' || $type === 'pppoe') {
+                $hasDynamicInterface = true;
+                $dynamicInterfaceName = $iface['name'] ?? '';
+                break;
+            }
+        }
+
         // Default config for unconfigured interface
         if ($ifaceConfig === null) {
             $ifaceConfig = [
                 'name' => $ifaceName,
                 'type' => 'disabled',
-                'address' => '',
-                'gateway' => '',
+                'enabled' => true,
+                'mtu' => 1500,
+                'mac_override' => '',
+                'addresses' => [],
+                'dhcp_hostname' => '',
+                'pppoe_username' => '',
+                'pppoe_password' => '',
+                'vlans' => [],
             ];
         }
 
         $sysIface = $systemInterfaces[$ifaceName];
+
+        // Check if this is a VLAN interface (contains a dot)
+        $isVlanInterface = strpos($ifaceName, '.') !== false;
 
         $data = [
             'interface' => [
@@ -130,8 +152,11 @@ class NetworkController extends BaseController
                 'mac' => $sysIface['mac'] ?? '',
                 'state' => $sysIface['state'] ?? 'down',
                 'currentIpv4' => $sysIface['ipv4'] ?? [],
+                'isVlan' => $isVlanInterface,
             ],
             'config' => $ifaceConfig,
+            'hasDynamicInterface' => $hasDynamicInterface,
+            'dynamicInterfaceName' => $dynamicInterfaceName,
         ];
 
         $this->render('pages/network/interface-edit', $data);
@@ -156,26 +181,95 @@ class NetworkController extends BaseController
 
         // Get form data
         $type = $this->post('type', 'disabled');
-        $address = trim($this->post('address', ''));
-        $gateway = trim($this->post('gateway', ''));
+        $enabled = $this->post('enabled', '') === '1';
+        $mtu = (int) $this->post('mtu', '1500');
+        $macOverride = trim($this->post('mac_override', ''));
+
+        // Static IP fields
+        $primaryAddress = trim($this->post('address', ''));
+        $secondaryAddresses = $this->post('secondary_addresses', []);
+
+        // DHCP fields
+        $dhcpHostname = trim($this->post('dhcp_hostname', ''));
+
+        // PPPoE fields
+        $pppoeUsername = trim($this->post('pppoe_username', ''));
+        $pppoePassword = trim($this->post('pppoe_password', ''));
+
+        // VLAN fields
+        $vlans = array_filter(array_map('intval', $this->post('vlans', [])));
 
         // Validation
         $errors = [];
 
-        if (!in_array($type, ['static', 'dhcp', 'disabled'], true)) {
-            $errors[] = 'Invalid interface type';
+        if (!in_array($type, ['static', 'dhcp', 'pppoe', 'bridge', 'disabled'], true)) {
+            $errors[] = 'Invalid configuration type';
         }
 
+        // MTU validation
+        if ($mtu < 576 || $mtu > 9000) {
+            $errors[] = 'MTU must be between 576 and 9000';
+        }
+
+        // MAC address validation
+        if (!empty($macOverride) && !$this->isValidMac($macOverride)) {
+            $errors[] = 'Invalid MAC address format';
+        }
+
+        // Static IP validation
         if ($type === 'static') {
-            if (empty($address)) {
-                $errors[] = 'IP address is required for static configuration';
-            } elseif (!$this->isValidCidr($address)) {
-                $errors[] = 'Invalid IP address format. Use CIDR notation (e.g., 192.168.1.1/24)';
+            if (empty($primaryAddress)) {
+                $errors[] = 'Primary IP address is required for static configuration';
+            } elseif (!$this->isValidCidr($primaryAddress)) {
+                $errors[] = 'Invalid primary IP address format. Use CIDR notation (e.g., 192.168.1.1/24)';
             }
 
-            if (!empty($gateway) && !filter_var($gateway, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                $errors[] = 'Invalid gateway IP address';
+            // Validate secondary addresses
+            foreach ($secondaryAddresses as $addr) {
+                $addr = trim($addr);
+                if (!empty($addr) && !$this->isValidCidr($addr)) {
+                    $errors[] = "Invalid secondary IP address: {$addr}";
+                }
             }
+        }
+
+        // DHCP/PPPoE - check that no other interface uses dynamic addressing
+        if ($type === 'dhcp' || $type === 'pppoe') {
+            $config = $this->configService->getWorkingConfig();
+            $interfaces = $config->get('network.interfaces', []);
+
+            foreach ($interfaces as $iface) {
+                if (($iface['name'] ?? '') === $ifaceName) {
+                    continue; // Skip self
+                }
+                $existingType = $iface['type'] ?? 'disabled';
+                if ($existingType === 'dhcp' || $existingType === 'pppoe') {
+                    $errors[] = "Another interface ({$iface['name']}) already uses dynamic addressing. Only one interface can use DHCP or PPPoE.";
+                    break;
+                }
+            }
+        }
+
+        // PPPoE validation
+        if ($type === 'pppoe') {
+            if (empty($pppoeUsername)) {
+                $errors[] = 'PPPoE username is required';
+            }
+            if (empty($pppoePassword)) {
+                $errors[] = 'PPPoE password is required';
+            }
+        }
+
+        // VLAN validation
+        foreach ($vlans as $vlanId) {
+            if ($vlanId < 1 || $vlanId > 4094) {
+                $errors[] = "Invalid VLAN ID: {$vlanId}. Must be between 1 and 4094.";
+            }
+        }
+
+        // VLANs only allowed on static interfaces
+        if (!empty($vlans) && $type !== 'static') {
+            $errors[] = 'VLAN sub-interfaces can only be configured on static interfaces';
         }
 
         if (!empty($errors)) {
@@ -188,13 +282,36 @@ class NetworkController extends BaseController
         $newIfaceConfig = [
             'name' => $ifaceName,
             'type' => $type,
+            'enabled' => $enabled,
+            'mtu' => $mtu,
         ];
 
+        // Add MAC override if specified
+        if (!empty($macOverride)) {
+            $newIfaceConfig['mac_override'] = $macOverride;
+        }
+
+        // Add type-specific fields
         if ($type === 'static') {
-            $newIfaceConfig['address'] = $address;
-            if (!empty($gateway)) {
-                $newIfaceConfig['gateway'] = $gateway;
+            $addresses = [$primaryAddress];
+            foreach ($secondaryAddresses as $addr) {
+                $addr = trim($addr);
+                if (!empty($addr)) {
+                    $addresses[] = $addr;
+                }
             }
+            $newIfaceConfig['addresses'] = $addresses;
+
+            if (!empty($vlans)) {
+                $newIfaceConfig['vlans'] = array_values(array_unique($vlans));
+            }
+        } elseif ($type === 'dhcp') {
+            if (!empty($dhcpHostname)) {
+                $newIfaceConfig['dhcp_hostname'] = $dhcpHostname;
+            }
+        } elseif ($type === 'pppoe') {
+            $newIfaceConfig['pppoe_username'] = $pppoeUsername;
+            $newIfaceConfig['pppoe_password'] = $pppoePassword;
         }
 
         // Update working config
@@ -294,5 +411,14 @@ class NetworkController extends BaseController
         }
 
         return true;
+    }
+
+    /**
+     * Validate MAC address format.
+     */
+    private function isValidMac(string $mac): bool
+    {
+        // Accept formats: 00:00:00:00:00:00 or 00-00-00-00-00-00
+        return preg_match('/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/', $mac) === 1;
     }
 }
