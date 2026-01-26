@@ -175,8 +175,14 @@ function applyConfig(): bool
 
     foreach ($interfaces as $ifaceConfig) {
         $name = $ifaceConfig['name'] ?? null;
-        $address = $ifaceConfig['address'] ?? null;
-        $gateway = $ifaceConfig['gateway'] ?? null;
+        $type = $ifaceConfig['type'] ?? 'static';
+        $enabled = $ifaceConfig['enabled'] ?? true;
+
+        // Support both 'addresses' (array) and 'address' (string) formats
+        $addresses = $ifaceConfig['addresses'] ?? [];
+        if (empty($addresses) && !empty($ifaceConfig['address'])) {
+            $addresses = [$ifaceConfig['address']];
+        }
 
         if (!$name) {
             continue;
@@ -191,6 +197,14 @@ function applyConfig(): bool
             continue;
         }
 
+        // Handle disabled interfaces
+        if ($type === 'disabled' || !$enabled) {
+            exec("ip addr flush dev " . escapeshellarg($name) . " 2>&1");
+            exec("ip link set " . escapeshellarg($name) . " down 2>&1");
+            echo "    Status: disabled\n";
+            continue;
+        }
+
         // Flush existing addresses
         exec("ip addr flush dev " . escapeshellarg($name) . " 2>&1");
 
@@ -201,26 +215,64 @@ function applyConfig(): bool
             continue;
         }
 
-        // Set IP address (CIDR notation expected, e.g., 192.168.0.1/24)
-        if ($address) {
-            exec("ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name) . " 2>&1", $output, $ret);
+        // Handle by type
+        if ($type === 'static') {
+            // Set IP addresses (CIDR notation expected, e.g., 192.168.0.1/24)
+            foreach ($addresses as $address) {
+                if (empty($address)) continue;
+                exec("ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name) . " 2>&1", $output, $ret);
+                if ($ret === 0) {
+                    echo "    Address: {$address}\n";
+                } else {
+                    $errors[] = "Failed to set address {$address} on {$name}";
+                }
+            }
+        } elseif ($type === 'dhcp') {
+            // Start DHCP client
+            $hostname = $ifaceConfig['dhcp_hostname'] ?? '';
+            $pidFile = "/var/run/udhcpc.{$name}.pid";
+            $cmd = "udhcpc -i " . escapeshellarg($name) . " -b -p " . escapeshellarg($pidFile) . " -S";
+            if (!empty($hostname)) {
+                $cmd .= " -H " . escapeshellarg($hostname);
+            }
+            exec($cmd . " 2>&1", $output, $ret);
             if ($ret === 0) {
-                echo "    Address: {$address}\n";
+                echo "    DHCP: started\n";
             } else {
-                $errors[] = "Failed to set address on {$name}";
+                $errors[] = "Failed to start DHCP on {$name}";
             }
         }
+    }
 
-        // Set default gateway if specified
-        if ($gateway) {
+    // Configure routes
+    $routes = $config['network']['routes'] ?? [];
+    foreach ($routes as $route) {
+        $dest = $route['destination'] ?? null;
+        $gateway = $route['gateway'] ?? null;
+        $dev = $route['interface'] ?? $route['device'] ?? null;
+
+        if (!$dest) continue;
+
+        if ($dest === 'default') {
             // Remove existing default route first
             exec("ip route del default 2>&1");
-            exec("ip route add default via " . escapeshellarg($gateway) . " dev " . escapeshellarg($name) . " 2>&1", $output, $ret);
-            if ($ret === 0) {
-                echo "    Gateway: {$gateway}\n";
-            } else {
-                $errors[] = "Failed to set default gateway";
-            }
+            $cmd = "ip route add default";
+        } else {
+            $cmd = "ip route replace " . escapeshellarg($dest);
+        }
+
+        if ($gateway) {
+            $cmd .= " via " . escapeshellarg($gateway);
+        }
+        if ($dev) {
+            $cmd .= " dev " . escapeshellarg($dev);
+        }
+
+        exec($cmd . " 2>&1", $output, $ret);
+        if ($ret === 0) {
+            echo "  Route: {$dest}" . ($gateway ? " via {$gateway}" : "") . ($dev ? " dev {$dev}" : "") . "\n";
+        } else {
+            $errors[] = "Failed to add route to {$dest}";
         }
     }
 
