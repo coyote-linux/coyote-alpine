@@ -1,11 +1,15 @@
-<?php $pageTitle = 'Firmware'; $page = 'firmware'; ?>
+<?php
+$pageTitle = 'Firmware';
+$page = 'firmware';
+$version = trim(@file_get_contents('/etc/coyote/version') ?: '4.0');
+?>
 
 <div class="dashboard-grid">
     <div class="card">
         <h3>Current Firmware</h3>
         <dl>
             <dt>Version</dt>
-            <dd>4.0.0</dd>
+            <dd><?= htmlspecialchars($version) ?></dd>
             <dt>Build Date</dt>
             <dd><?= htmlspecialchars($firmware_date ?? 'Unknown') ?></dd>
             <dt>Size</dt>
