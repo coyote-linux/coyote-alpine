@@ -3,36 +3,42 @@
 namespace Coyote\WebAdmin\Controller;
 
 use Coyote\Config\ConfigManager;
-use Coyote\Config\ConfigWriter;
+use Coyote\WebAdmin\Service\ConfigService;
+use Coyote\WebAdmin\Service\ApplyService;
 
 /**
  * System configuration controller.
  */
 class SystemController extends BaseController
 {
-    /** @var array Allowed services that can be managed */
-    private array $allowedServices = [
-        'lighttpd', 'dropbear', 'dnsmasq', 'haproxy', 'strongswan'
-    ];
+    /** @var ConfigService */
+    private ConfigService $configService;
+
+    /** @var ApplyService */
+    private ApplyService $applyService;
+
+    public function __construct()
+    {
+        $this->configService = new ConfigService();
+        $this->applyService = new ApplyService();
+    }
 
     /**
      * Display system settings.
      */
     public function index(array $params = []): void
     {
-        $configManager = new ConfigManager();
-
-        try {
-            $config = $configManager->load()->toArray();
-        } catch (\Exception $e) {
-            $config = [];
-        }
+        // Get working config (includes uncommitted changes)
+        $config = $this->configService->getWorkingConfig()->toArray();
 
         // Get list of available timezones
         $timezones = \DateTimeZone::listIdentifiers();
 
         // Get list of backups
         $backups = $this->listBackups();
+
+        // Get apply status
+        $applyStatus = $this->applyService->getStatus();
 
         $data = [
             'hostname' => $config['system']['hostname'] ?? 'coyote',
@@ -41,13 +47,17 @@ class SystemController extends BaseController
             'nameservers' => $config['system']['nameservers'] ?? ['1.1.1.1'],
             'timezones' => $timezones,
             'backups' => $backups,
+            'applyStatus' => $applyStatus,
         ];
 
         $this->render('pages/system', $data);
     }
 
     /**
-     * Save system settings.
+     * Save system settings to working configuration.
+     *
+     * Note: This saves to working-config only. Changes are NOT applied to
+     * the running system until the user clicks "Apply Configuration".
      */
     public function save(array $params = []): void
     {
@@ -90,63 +100,99 @@ class SystemController extends BaseController
             return;
         }
 
-        // Load and update config
-        $configManager = new ConfigManager();
-        try {
-            $config = $configManager->load();
-            $config->set('system.hostname', $hostname);
-            $config->set('system.domain', $domain);
-            $config->set('system.timezone', $timezone);
-            if (!empty($dnsServers)) {
-                $config->set('system.nameservers', $dnsServers);
-            }
+        // Load working config (or running config if no working config exists)
+        $config = $this->configService->getWorkingConfig();
+        $config->set('system.hostname', $hostname);
+        $config->set('system.domain', $domain);
+        $config->set('system.timezone', $timezone);
+        if (!empty($dnsServers)) {
+            $config->set('system.nameservers', $dnsServers);
+        }
 
-            // Save to persistent storage
-            if ($configManager->save()) {
-                // Apply hostname immediately
-                $this->applyHostname($hostname, $domain);
-                // Apply timezone immediately
-                $this->applyTimezone($timezone);
-
-                $this->flash('success', 'System settings saved successfully');
-            } else {
-                $this->flash('error', 'Failed to save configuration');
-            }
-        } catch (\Exception $e) {
-            $this->flash('error', 'Error saving configuration: ' . $e->getMessage());
+        // Save to working configuration
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'Settings saved. Click "Apply Configuration" to activate changes.');
+        } else {
+            $this->flash('error', 'Failed to save configuration');
         }
 
         $this->redirect('/system');
     }
 
     /**
-     * Apply hostname to running system.
+     * Apply working configuration to the system.
+     *
+     * Starts the 60-second confirmation countdown.
      */
-    private function applyHostname(string $hostname, string $domain): void
+    public function applyConfig(array $params = []): void
     {
-        // Set hostname (use doas if not root)
-        $cmd = $this->getPrivilegedCommand('hostname');
-        exec("{$cmd} " . escapeshellarg($hostname) . " 2>&1", $output, $returnCode);
+        $result = $this->applyService->apply();
 
-        // Update /etc/hostname and /etc/hosts (these are on tmpfs overlay, writable)
-        @file_put_contents('/etc/hostname', $hostname . "\n");
+        if ($result['success']) {
+            $this->flash('warning', $result['message']);
+        } else {
+            $this->flash('error', $result['message']);
+        }
 
-        $fqdn = !empty($domain) ? "{$hostname}.{$domain}" : $hostname;
-        $hosts = "127.0.0.1\tlocalhost\n";
-        $hosts .= "127.0.1.1\t{$fqdn}\t{$hostname}\n";
-        @file_put_contents('/etc/hosts', $hosts);
+        $this->redirect('/system');
     }
 
     /**
-     * Apply timezone to running system.
+     * Confirm the applied configuration.
+     *
+     * Saves the configuration to persistent storage.
      */
-    private function applyTimezone(string $timezone): void
+    public function confirmConfig(array $params = []): void
     {
-        $zonefile = "/usr/share/zoneinfo/{$timezone}";
-        if (file_exists($zonefile)) {
-            @copy($zonefile, '/etc/localtime');
-            @file_put_contents('/etc/timezone', $timezone . "\n");
+        $result = $this->applyService->confirm();
+
+        if ($result['success']) {
+            $this->flash('success', $result['message']);
+        } else {
+            $this->flash('error', $result['message']);
         }
+
+        $this->redirect('/system');
+    }
+
+    /**
+     * Cancel the pending configuration and rollback.
+     */
+    public function cancelConfig(array $params = []): void
+    {
+        $result = $this->applyService->cancel();
+
+        if ($result['success']) {
+            $this->flash('info', $result['message']);
+        } else {
+            $this->flash('error', $result['message']);
+        }
+
+        $this->redirect('/system');
+    }
+
+    /**
+     * Discard uncommitted changes in working config.
+     */
+    public function discardChanges(array $params = []): void
+    {
+        if ($this->configService->discardWorkingConfig()) {
+            $this->flash('info', 'Uncommitted changes discarded');
+        } else {
+            $this->flash('error', 'Failed to discard changes');
+        }
+
+        $this->redirect('/system');
+    }
+
+    /**
+     * Get configuration status (AJAX endpoint).
+     */
+    public function configStatus(array $params = []): void
+    {
+        header('Content-Type: application/json');
+        echo json_encode($this->applyService->getStatus());
+        exit;
     }
 
     /**
@@ -229,6 +275,9 @@ class SystemController extends BaseController
 
     /**
      * Restore configuration from a backup.
+     *
+     * The backup is loaded into working-config. The user must then click
+     * "Apply Configuration" to activate it.
      */
     public function restore(array $params = []): void
     {
@@ -242,22 +291,34 @@ class SystemController extends BaseController
 
         // Sanitize backup name to prevent directory traversal
         $backupName = basename($backupName);
-        if (!preg_match('/^backup-[\d-]+$/', $backupName)) {
+
+        // Allow backup names with various prefixes (backup-, pre-restore-, pre-upload-, etc.)
+        if (!preg_match('/^[a-z]+-[\d-]+$/i', $backupName)) {
             $this->flash('error', 'Invalid backup name');
             $this->redirect('/system');
             return;
         }
 
-        $configManager = new ConfigManager();
+        // Load the backup file
+        $backupFile = '/mnt/config/backups/' . $backupName . '.json';
+        if (!file_exists($backupFile)) {
+            $this->flash('error', 'Backup file not found');
+            $this->redirect('/system');
+            return;
+        }
 
-        // Create a backup of current config before restoring
-        $preRestoreBackup = 'pre-restore-' . date('Y-m-d-His');
-        $configManager->backup($preRestoreBackup);
+        $loader = new \Coyote\Config\ConfigLoader();
+        try {
+            $configData = $loader->load($backupFile);
+            $config = new \Coyote\Config\RunningConfig($configData);
 
-        if ($configManager->restore($backupName)) {
-            $this->flash('success', "Configuration restored from {$backupName}. Previous config backed up as {$preRestoreBackup}.");
-        } else {
-            $this->flash('error', 'Failed to restore configuration');
+            if ($this->configService->saveWorkingConfig($config)) {
+                $this->flash('success', "Backup {$backupName} loaded. Click \"Apply Configuration\" to activate it.");
+            } else {
+                $this->flash('error', 'Failed to load backup into working configuration');
+            }
+        } catch (\Exception $e) {
+            $this->flash('error', 'Failed to load backup: ' . $e->getMessage());
         }
 
         $this->redirect('/system');
@@ -265,6 +326,9 @@ class SystemController extends BaseController
 
     /**
      * Upload and restore configuration from file.
+     *
+     * The uploaded configuration is saved to working-config. The user must
+     * then click "Apply Configuration" to activate it.
      */
     public function uploadRestore(array $params = []): void
     {
@@ -278,35 +342,26 @@ class SystemController extends BaseController
         $content = file_get_contents($uploadedFile);
 
         // Validate JSON
-        $config = json_decode($content, true);
-        if ($config === null) {
+        $configData = json_decode($content, true);
+        if ($configData === null) {
             $this->flash('error', 'Invalid JSON file');
             $this->redirect('/system');
             return;
         }
 
         // Basic validation - must have system section
-        if (!isset($config['system'])) {
+        if (!isset($configData['system'])) {
             $this->flash('error', 'Invalid configuration file: missing system section');
             $this->redirect('/system');
             return;
         }
 
-        // Backup current config
-        $configManager = new ConfigManager();
-        $preUploadBackup = 'pre-upload-' . date('Y-m-d-His');
-        $configManager->backup($preUploadBackup);
-
-        // Write new config (with remount handling)
-        $configWriter = new ConfigWriter();
-        try {
-            $this->remountConfig(true);
-            $configWriter->write('/mnt/config/system.json', $config);
-            $this->remountConfig(false);
-            $this->flash('success', "Configuration uploaded and saved. Previous config backed up as {$preUploadBackup}.");
-        } catch (\Exception $e) {
-            $this->remountConfig(false);
-            $this->flash('error', 'Failed to save uploaded configuration: ' . $e->getMessage());
+        // Save to working configuration
+        $config = new \Coyote\Config\RunningConfig($configData);
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'Configuration uploaded. Click "Apply Configuration" to activate it.');
+        } else {
+            $this->flash('error', 'Failed to save uploaded configuration');
         }
 
         $this->redirect('/system');

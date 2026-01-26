@@ -2,7 +2,7 @@
 
 namespace Coyote\WebAdmin\Api;
 
-use Coyote\Config\ConfigManager;
+use Coyote\WebAdmin\Service\ConfigService;
 use Coyote\WebAdmin\Service\ApplyService;
 
 /**
@@ -10,8 +10,8 @@ use Coyote\WebAdmin\Service\ApplyService;
  */
 class ConfigApi extends BaseApi
 {
-    /** @var ConfigManager */
-    private ConfigManager $configManager;
+    /** @var ConfigService */
+    private ConfigService $configService;
 
     /** @var ApplyService */
     private ApplyService $applyService;
@@ -21,12 +21,15 @@ class ConfigApi extends BaseApi
      */
     public function __construct()
     {
-        $this->configManager = new ConfigManager();
+        $this->configService = new ConfigService();
         $this->applyService = new ApplyService();
     }
 
     /**
      * Get current configuration.
+     *
+     * Returns the working configuration if there are uncommitted changes,
+     * otherwise returns the running configuration.
      *
      * @param array $params Route parameters
      * @return void
@@ -34,8 +37,13 @@ class ConfigApi extends BaseApi
     public function get(array $params = []): void
     {
         try {
-            $config = $this->configManager->load();
-            $this->json($config->toArray());
+            $config = $this->configService->getWorkingConfig();
+            $status = $this->applyService->getStatus();
+
+            $this->json([
+                'config' => $config->toArray(),
+                'status' => $status,
+            ]);
         } catch (\Exception $e) {
             $this->error('Failed to load configuration: ' . $e->getMessage(), 500);
         }
@@ -43,6 +51,9 @@ class ConfigApi extends BaseApi
 
     /**
      * Update configuration.
+     *
+     * Updates are saved to the working configuration. They are not applied
+     * to the system until the apply endpoint is called.
      *
      * @param array $params Route parameters
      * @return void
@@ -57,22 +68,23 @@ class ConfigApi extends BaseApi
         }
 
         try {
-            // Load current config
-            $config = $this->configManager->load();
+            // Load working config
+            $config = $this->configService->getWorkingConfig();
 
             // Merge updates
             foreach ($data as $key => $value) {
                 $config->set($key, $value);
             }
 
-            // Validate
-            $errors = $this->configManager->validate();
-            if (!empty($errors)) {
-                $this->json(['success' => false, 'errors' => $errors], 400);
-                return;
+            // Save to working config
+            if ($this->configService->saveWorkingConfig($config)) {
+                $this->json([
+                    'success' => true,
+                    'message' => 'Configuration updated. Call /api/config/apply to apply changes.',
+                ]);
+            } else {
+                $this->error('Failed to save working configuration', 500);
             }
-
-            $this->success('Configuration updated (not yet applied)');
         } catch (\Exception $e) {
             $this->error('Failed to update configuration: ' . $e->getMessage(), 500);
         }
@@ -80,6 +92,9 @@ class ConfigApi extends BaseApi
 
     /**
      * Apply configuration changes.
+     *
+     * Applies the working configuration to the system and starts the
+     * 60-second confirmation countdown.
      *
      * @param array $params Route parameters
      * @return void
@@ -93,6 +108,9 @@ class ConfigApi extends BaseApi
     /**
      * Confirm applied configuration.
      *
+     * Confirms the applied configuration, promoting it to running config
+     * and saving it to persistent storage.
+     *
      * @param array $params Route parameters
      * @return void
      */
@@ -105,6 +123,9 @@ class ConfigApi extends BaseApi
     /**
      * Rollback to previous configuration.
      *
+     * Cancels the pending apply operation and restores the previous
+     * running configuration.
+     *
      * @param array $params Route parameters
      * @return void
      */
@@ -112,5 +133,16 @@ class ConfigApi extends BaseApi
     {
         $result = $this->applyService->rollback();
         $this->json($result, $result['success'] ? 200 : 400);
+    }
+
+    /**
+     * Get configuration status.
+     *
+     * @param array $params Route parameters
+     * @return void
+     */
+    public function status(array $params = []): void
+    {
+        $this->json($this->applyService->getStatus());
     }
 }

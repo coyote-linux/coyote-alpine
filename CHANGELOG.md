@@ -69,6 +69,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Configuration backup and restore with download/upload support
 - doas privilege escalation for web server operations (mount, hostname, rc-service, reboot)
 
+#### Configuration Management Architecture
+- Three-tier configuration: working-config, running-config, persistent storage
+- working-config: Uncommitted changes from web admin (`/tmp/working-config/`)
+- running-config: Configuration currently applied to system (`/tmp/running-config/`)
+- persistent storage: Survives reboot (`/mnt/config/system.json`)
+- 60-second confirmation countdown after applying changes
+- Automatic rollback if confirmation timeout expires
+- Safe for network configuration changes that could cause lockout
+- ConfigService and ApplyService for proper configuration flow
+
 #### Console TUI Application
 - Menu-driven configuration interface
 - Network, firewall, NAT, VPN, load balancer, services, and system menus

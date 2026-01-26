@@ -3,68 +3,100 @@
 /**
  * apply-config - Apply system configuration
  *
- * This script reads the running configuration and applies it to the system,
+ * This script reads a configuration file and applies it to the system,
  * including network interface configuration, DNS, hostname, and timezone.
+ *
+ * Environment variables:
+ *   COYOTE_CONFIG_FILE - Path to config file to apply (default: auto-detect)
+ *
+ * When COYOTE_CONFIG_FILE is not set, it will:
+ *   1. Look for /tmp/running-config/system.json (running config in RAM)
+ *   2. Look for /mnt/config/system.json (persistent config)
+ *   3. Use defaults if neither exists
  */
 
 require_once '/opt/coyote/lib/autoload.php';
 
-use Coyote\Config\ConfigManager;
+use Coyote\Config\ConfigLoader;
 
 /**
  * Apply system configuration
  */
 function applyConfig(): bool
 {
-    $configManager = new ConfigManager();
+    $loader = new ConfigLoader();
     $errors = [];
 
-    // Debug: Check mount status
-    $configPath = '/mnt/config';
-    $configFile = $configPath . '/system.json';
+    // Check for explicit config file from environment
+    $configFile = getenv('COYOTE_CONFIG_FILE');
 
-    echo "  Config path: {$configPath}\n";
-    echo "  Config file: {$configFile}\n";
-
-    // Check if config partition is mounted
-    $mounts = file_get_contents('/proc/mounts');
-    if (strpos($mounts, '/mnt/config') !== false) {
-        echo "  Config partition: mounted\n";
+    if ($configFile && file_exists($configFile)) {
+        echo "  Using config file: {$configFile}\n";
+        try {
+            $config = $loader->load($configFile);
+        } catch (\Exception $e) {
+            echo "Error loading configuration: " . $e->getMessage() . "\n";
+            return false;
+        }
     } else {
-        echo "  Config partition: NOT MOUNTED\n";
-        echo "  Attempting to find and mount config partition...\n";
+        // Auto-detect config file
+        $runningConfig = '/tmp/running-config/system.json';
+        $persistentConfig = '/mnt/config/system.json';
 
-        // Try to mount config partition
-        foreach (glob('/dev/sd*2') + glob('/dev/nvme*p2') + glob('/dev/vd*2') as $part) {
-            if (filetype($part) !== 'block') continue;
+        // Check running config first (already in RAM)
+        if (file_exists($runningConfig)) {
+            echo "  Using running config: {$runningConfig}\n";
+            try {
+                $config = $loader->load($runningConfig);
+            } catch (\Exception $e) {
+                echo "Error loading running config: " . $e->getMessage() . "\n";
+                return false;
+            }
+        } elseif (file_exists($persistentConfig)) {
+            echo "  Using persistent config: {$persistentConfig}\n";
+            try {
+                $config = $loader->load($persistentConfig);
+            } catch (\Exception $e) {
+                echo "Error loading persistent config: " . $e->getMessage() . "\n";
+                return false;
+            }
+        } else {
+            // Check if config partition is mounted
+            $mounts = file_get_contents('/proc/mounts');
+            if (strpos($mounts, '/mnt/config') === false) {
+                echo "  Config partition: NOT MOUNTED\n";
+                echo "  Attempting to find and mount config partition...\n";
 
-            // Try mounting (busybox mount requires -t type)
-            exec("mount -t ext4 -o ro " . escapeshellarg($part) . " " . escapeshellarg($configPath) . " 2>&1", $output, $ret);
-            if ($ret === 0) {
-                if (file_exists($configFile)) {
-                    echo "  Found config on: {$part}\n";
-                    break;
+                // Try to mount config partition
+                foreach (glob('/dev/sd*2') + glob('/dev/nvme*p2') + glob('/dev/vd*2') as $part) {
+                    if (filetype($part) !== 'block') continue;
+
+                    // Try mounting (busybox mount requires -t type)
+                    exec("mount -t ext4 -o ro " . escapeshellarg($part) . " /mnt/config 2>&1", $output, $ret);
+                    if ($ret === 0) {
+                        if (file_exists($persistentConfig)) {
+                            echo "  Found config on: {$part}\n";
+                            break;
+                        }
+                        exec("umount /mnt/config 2>&1");
+                    }
                 }
-                exec("umount " . escapeshellarg($configPath) . " 2>&1");
+            }
+
+            if (file_exists($persistentConfig)) {
+                echo "  Using persistent config: {$persistentConfig}\n";
+                try {
+                    $config = $loader->load($persistentConfig);
+                } catch (\Exception $e) {
+                    echo "Error loading persistent config: " . $e->getMessage() . "\n";
+                    return false;
+                }
+            } else {
+                echo "  Config file: NOT FOUND (using defaults)\n";
+                $config = getDefaults();
             }
         }
     }
-
-    if (file_exists($configFile)) {
-        echo "  Config file: exists\n";
-    } else {
-        echo "  Config file: NOT FOUND (using defaults)\n";
-    }
-
-    // Load configuration
-    try {
-        $runningConfig = $configManager->load();
-    } catch (\Exception $e) {
-        echo "Error loading configuration: " . $e->getMessage() . "\n";
-        return false;
-    }
-
-    $config = $runningConfig->toArray();
 
     // Debug: Show loaded config summary
     $ifaceCount = count($config['network']['interfaces'] ?? []);
@@ -217,8 +249,64 @@ function applyConfig(): bool
         return false;
     }
 
+    // If this is a boot-time apply (not from ApplyService), update running-config
+    $configFileEnv = getenv('COYOTE_CONFIG_FILE');
+    if (!$configFileEnv) {
+        writeRunningConfig($config);
+    }
+
     echo "\nConfiguration applied successfully.\n";
     return true;
+}
+
+/**
+ * Write configuration to running-config.
+ *
+ * @param array $config The configuration data
+ */
+function writeRunningConfig(array $config): void
+{
+    $runningConfigDir = '/tmp/running-config';
+    $runningConfigFile = $runningConfigDir . '/system.json';
+
+    if (!is_dir($runningConfigDir)) {
+        mkdir($runningConfigDir, 0755, true);
+    }
+
+    $json = json_encode($config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    file_put_contents($runningConfigFile, $json);
+
+    // Set ownership for web admin access
+    @chown($runningConfigFile, 'lighttpd');
+    @chgrp($runningConfigFile, 'lighttpd');
+
+    echo "  Running config updated: {$runningConfigFile}\n";
+}
+
+/**
+ * Get default configuration values.
+ */
+function getDefaults(): array
+{
+    $defaultsFile = '/opt/coyote/defaults/system.json';
+
+    if (file_exists($defaultsFile)) {
+        $loader = new ConfigLoader();
+        return $loader->load($defaultsFile);
+    }
+
+    return [
+        'system' => [
+            'hostname' => 'coyote',
+            'timezone' => 'UTC',
+        ],
+        'network' => [
+            'interfaces' => [],
+            'routes' => [],
+            'dns' => [],
+        ],
+        'services' => [],
+    ];
 }
 
 // Main

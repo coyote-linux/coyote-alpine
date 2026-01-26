@@ -110,8 +110,11 @@ class App
         // System
         $this->router->get('/system', [Controller\SystemController::class, 'index']);
         $this->router->post('/system', [Controller\SystemController::class, 'save']);
-        $this->router->post('/system/apply', [Controller\SystemController::class, 'apply']);
-        $this->router->post('/system/confirm', [Controller\SystemController::class, 'confirm']);
+        $this->router->post('/system/config/apply', [Controller\SystemController::class, 'applyConfig']);
+        $this->router->post('/system/config/confirm', [Controller\SystemController::class, 'confirmConfig']);
+        $this->router->post('/system/config/cancel', [Controller\SystemController::class, 'cancelConfig']);
+        $this->router->post('/system/config/discard', [Controller\SystemController::class, 'discardChanges']);
+        $this->router->get('/system/config/status', [Controller\SystemController::class, 'configStatus']);
         $this->router->post('/system/reboot', [Controller\SystemController::class, 'reboot']);
         $this->router->post('/system/shutdown', [Controller\SystemController::class, 'shutdown']);
         $this->router->post('/system/backup', [Controller\SystemController::class, 'backup']);
@@ -147,6 +150,7 @@ class App
 
         // Config
         $this->router->get('/api/config', [Api\ConfigApi::class, 'get']);
+        $this->router->get('/api/config/status', [Api\ConfigApi::class, 'status']);
         $this->router->post('/api/config', [Api\ConfigApi::class, 'update']);
         $this->router->post('/api/config/apply', [Api\ConfigApi::class, 'apply']);
         $this->router->post('/api/config/confirm', [Api\ConfigApi::class, 'confirm']);

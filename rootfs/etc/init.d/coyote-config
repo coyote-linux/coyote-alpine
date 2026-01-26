@@ -76,12 +76,20 @@ setup_persistent_dirs() {
 # Set up permissions for web admin to write configuration
 setup_webadmin_permissions() {
     # Create running-config directory with lighttpd ownership
-    # This allows the web admin to write working configuration changes
+    # This holds the configuration currently applied to the system
     if [ ! -d /tmp/running-config ]; then
         mkdir -p /tmp/running-config
     fi
     chown lighttpd:lighttpd /tmp/running-config
     chmod 755 /tmp/running-config
+
+    # Create working-config directory with lighttpd ownership
+    # This holds uncommitted changes made in the web admin
+    if [ ! -d /tmp/working-config ]; then
+        mkdir -p /tmp/working-config
+    fi
+    chown lighttpd:lighttpd /tmp/working-config
+    chmod 755 /tmp/working-config
 
     # If running-config file exists (created by apply-config), make it writable
     if [ -f /tmp/running-config/system.json ]; then

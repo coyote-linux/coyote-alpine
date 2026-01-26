@@ -1,6 +1,67 @@
 <?php $pageTitle = 'System'; $page = 'system'; ?>
 
+<?php
+// Get apply status from controller
+$applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChanges' => false];
+?>
+
+<?php if ($applyStatus['pending']): ?>
+<!-- Confirmation countdown modal -->
+<div class="apply-countdown-overlay" id="countdown-overlay">
+    <div class="apply-countdown-modal">
+        <h3>Configuration Applied</h3>
+        <p>Please verify your settings are working correctly.</p>
+        <p class="countdown-timer">
+            Time remaining: <span id="countdown"><?= $applyStatus['remaining'] ?></span> seconds
+        </p>
+        <p>If you don't confirm, the previous configuration will be restored automatically.</p>
+        <div class="countdown-actions">
+            <form method="post" action="/system/config/confirm" style="display: inline;">
+                <button type="submit" class="btn btn-primary btn-large">Confirm &amp; Save</button>
+            </form>
+            <form method="post" action="/system/config/cancel" style="display: inline;">
+                <button type="submit" class="btn btn-danger">Cancel &amp; Rollback</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var remaining = <?= $applyStatus['remaining'] ?>;
+    var countdownEl = document.getElementById('countdown');
+
+    var timer = setInterval(function() {
+        remaining--;
+        if (countdownEl) {
+            countdownEl.textContent = remaining;
+        }
+        if (remaining <= 0) {
+            clearInterval(timer);
+            // Auto-refresh to show rollback message
+            window.location.reload();
+        }
+    }, 1000);
+})();
+</script>
+<?php endif; ?>
+
 <div class="dashboard-grid">
+    <?php if ($applyStatus['hasChanges'] && !$applyStatus['pending']): ?>
+    <div class="card apply-config-card">
+        <h3>Pending Configuration Changes</h3>
+        <p>You have uncommitted changes that have not been applied to the system.</p>
+        <div class="apply-actions">
+            <form method="post" action="/system/config/apply" style="display: inline;">
+                <button type="submit" class="btn btn-primary btn-large" data-confirm="Apply configuration changes? You will have 60 seconds to confirm before automatic rollback.">Apply Configuration</button>
+            </form>
+            <form method="post" action="/system/config/discard" style="display: inline;">
+                <button type="submit" class="btn btn-danger" data-confirm="Discard all uncommitted changes?">Discard Changes</button>
+            </form>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <div class="card">
         <h3>Basic Settings</h3>
         <form method="post" action="/system">
@@ -26,6 +87,7 @@
                 <small>Comma-separated list of DNS server IP addresses</small>
             </div>
             <button type="submit" class="btn btn-primary">Save Changes</button>
+            <small class="form-note">Changes are saved but not applied until you click "Apply Configuration"</small>
         </form>
     </div>
 
@@ -100,5 +162,79 @@
     color: #888;
     font-size: 0.85em;
     margin-top: 0.25rem;
+}
+
+.form-note {
+    display: block;
+    color: #888;
+    font-size: 0.85em;
+    margin-top: 0.75rem;
+}
+
+/* Apply Configuration Card */
+.apply-config-card {
+    background: #2a3a4a;
+    border: 2px solid #f0ad4e;
+}
+
+.apply-config-card h3 {
+    color: #f0ad4e;
+}
+
+.apply-actions {
+    margin-top: 1rem;
+}
+
+/* Countdown Overlay */
+.apply-countdown-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.apply-countdown-modal {
+    background: #1e2a3a;
+    padding: 2rem;
+    border-radius: 8px;
+    border: 2px solid #f0ad4e;
+    text-align: center;
+    max-width: 500px;
+}
+
+.apply-countdown-modal h3 {
+    color: #f0ad4e;
+    margin-bottom: 1rem;
+}
+
+.countdown-timer {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #f0ad4e;
+    margin: 1.5rem 0;
+}
+
+.countdown-timer span {
+    font-size: 2rem;
+    color: #ff6b6b;
+}
+
+.countdown-actions {
+    margin-top: 1.5rem;
+}
+
+.countdown-actions .btn {
+    margin: 0 0.5rem;
+}
+
+.btn-large {
+    padding: 0.75rem 1.5rem;
+    font-size: 1.1rem;
 }
 </style>
