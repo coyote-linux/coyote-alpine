@@ -2,11 +2,29 @@
 
 namespace Coyote\System\Subsystem;
 
+use Coyote\System\PrivilegedExecutor;
+
 /**
  * Abstract base class for subsystems with common functionality.
  */
 abstract class AbstractSubsystem implements SubsystemInterface
 {
+    /** @var PrivilegedExecutor Shared privileged executor instance */
+    private static ?PrivilegedExecutor $privilegedExecutor = null;
+
+    /**
+     * Get the privileged executor instance.
+     *
+     * @return PrivilegedExecutor
+     */
+    protected function getPrivilegedExecutor(): PrivilegedExecutor
+    {
+        if (self::$privilegedExecutor === null) {
+            self::$privilegedExecutor = new PrivilegedExecutor();
+        }
+        return self::$privilegedExecutor;
+    }
+
     /**
      * Get a nested value from an array using dot notation.
      *

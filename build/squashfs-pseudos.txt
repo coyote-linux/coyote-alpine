@@ -1,0 +1,8 @@
+# Pseudo-file definitions for mksquashfs
+# Format: filename m mode uid gid
+#
+# These entries modify existing files to set special permissions
+# that cannot be set during a non-root build.
+
+# doas must be setuid root for privilege escalation
+/usr/bin/doas m 4755 0 0

@@ -40,6 +40,7 @@ class HostnameSubsystem extends AbstractSubsystem
     public function apply(array $config): array
     {
         $errors = [];
+        $priv = $this->getPrivilegedExecutor();
 
         $hostname = $this->getNestedValue($config, 'system.hostname', 'coyote');
         $domain = $this->getNestedValue($config, 'system.domain', '');
@@ -49,15 +50,16 @@ class HostnameSubsystem extends AbstractSubsystem
             return $this->failure('Invalid hostname format', ['Invalid hostname: ' . $hostname]);
         }
 
-        // Set hostname
-        $result = $this->exec('hostname ' . escapeshellarg($hostname), true);
+        // Set hostname via privileged executor
+        $result = $priv->setHostname($hostname);
         if (!$result['success']) {
             $errors[] = 'Failed to set hostname: ' . $result['output'];
         }
 
-        // Write /etc/hostname
-        if (file_put_contents('/etc/hostname', $hostname . "\n") === false) {
-            $errors[] = 'Failed to write /etc/hostname';
+        // Write /etc/hostname via privileged executor
+        $result = $priv->writeFile('/etc/hostname', $hostname . "\n");
+        if (!$result['success']) {
+            $errors[] = 'Failed to write /etc/hostname: ' . $result['output'];
         }
 
         // Build /etc/hosts
@@ -66,8 +68,10 @@ class HostnameSubsystem extends AbstractSubsystem
         $hosts .= "127.0.1.1\t{$fqdn} {$hostname}\n";
         $hosts .= "::1\t\tlocalhost ip6-localhost ip6-loopback\n";
 
-        if (file_put_contents('/etc/hosts', $hosts) === false) {
-            $errors[] = 'Failed to write /etc/hosts';
+        // Write /etc/hosts via privileged executor
+        $result = $priv->writeFile('/etc/hosts', $hosts);
+        if (!$result['success']) {
+            $errors[] = 'Failed to write /etc/hosts: ' . $result['output'];
         }
 
         if (!empty($errors)) {

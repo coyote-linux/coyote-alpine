@@ -4,6 +4,39 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.36] - 2026-01-26
+
+### Added
+
+#### Privileged Helper for Web Admin
+- `coyote-apply-helper` script for secure privilege escalation from web server
+- Web server (lighttpd) no longer requires root access
+- doas configuration allows lighttpd to run only the helper script
+- Helper validates all operations against allowlists before executing
+- All privileged operations logged via syslog for audit trail
+- PrivilegedExecutor PHP class provides clean API for subsystems
+
+#### Supported Privileged Operations
+- Write to specific system files: `/etc/hostname`, `/etc/hosts`, `/etc/resolv.conf`, `/etc/timezone`, `/etc/ppp/peers/*`
+- Create symlinks: `/etc/localtime`
+- Network commands: `ip`, `sysctl`, `modprobe` (8021q only)
+- Daemons: `udhcpc`, `pppd`
+- Process control: `kill`, `pkill` (for stopping DHCP/PPPoE clients)
+
+### Changed
+- All subsystems (Hostname, Timezone, DNS, Network) now use PrivilegedExecutor
+- No direct file writes to `/etc/` from web server process
+- No direct privileged command execution from web server process
+
+### Security
+- Web server runs as unprivileged `lighttpd` user
+- Privilege escalation restricted to specific, audited operations
+- Helper script validates file destinations against allowlist
+- Helper script validates kernel modules against allowlist
+
+### Fixed
+- doas setuid bit now set via mksquashfs pseudo-file (enables rootless build)
+
 ## [4.0.35] - 2026-01-26
 
 ### Added

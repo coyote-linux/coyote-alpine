@@ -38,6 +38,7 @@ class TimezoneSubsystem extends AbstractSubsystem
     public function apply(array $config): array
     {
         $errors = [];
+        $priv = $this->getPrivilegedExecutor();
 
         $timezone = $this->getNestedValue($config, 'system.timezone', 'UTC');
         $zoneFile = "/usr/share/zoneinfo/{$timezone}";
@@ -47,18 +48,16 @@ class TimezoneSubsystem extends AbstractSubsystem
             return $this->failure('Invalid timezone', ["Timezone not found: {$timezone}"]);
         }
 
-        // Update /etc/localtime symlink
-        @unlink('/etc/localtime');
-        if (!@symlink($zoneFile, '/etc/localtime')) {
-            // Try copying if symlink fails (some filesystems)
-            if (!@copy($zoneFile, '/etc/localtime')) {
-                $errors[] = 'Failed to set /etc/localtime';
-            }
+        // Update /etc/localtime symlink via privileged executor
+        $result = $priv->writeSymlink('/etc/localtime', $zoneFile);
+        if (!$result['success']) {
+            $errors[] = 'Failed to set /etc/localtime: ' . $result['output'];
         }
 
-        // Write /etc/timezone
-        if (file_put_contents('/etc/timezone', $timezone . "\n") === false) {
-            $errors[] = 'Failed to write /etc/timezone';
+        // Write /etc/timezone via privileged executor
+        $result = $priv->writeFile('/etc/timezone', $timezone . "\n");
+        if (!$result['success']) {
+            $errors[] = 'Failed to write /etc/timezone: ' . $result['output'];
         }
 
         if (!empty($errors)) {

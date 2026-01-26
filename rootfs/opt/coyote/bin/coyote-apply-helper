@@ -1,0 +1,257 @@
+#!/bin/sh
+#
+# coyote-apply-helper - Privileged helper for configuration apply operations
+#
+# This script is intended to be called via doas by the web server user.
+# It performs specific privileged operations needed to apply system configuration.
+#
+# Usage: coyote-apply-helper <command> [args...]
+#
+# Commands:
+#   write-file <dest> <src>     Copy src to dest (dest must be in allowlist)
+#   write-symlink <dest> <target>  Create symlink at dest pointing to target
+#   set-hostname <hostname>     Set the system hostname
+#   ip <args...>                Run ip command
+#   sysctl <args...>            Run sysctl command
+#   modprobe <module>           Load kernel module
+#   udhcpc <args...>            Start DHCP client
+#   pppd <args...>              Start PPPoE client
+#   kill-pid <pid>              Kill process by PID
+#   pkill-pattern <pattern>     Kill processes matching pattern
+#
+
+set -e
+
+# Allowlist of files that can be written
+ALLOWED_WRITE_FILES="
+/etc/hostname
+/etc/hosts
+/etc/resolv.conf
+/etc/timezone
+/etc/ppp/peers/pppoe-*
+"
+
+# Allowlist of symlink destinations
+ALLOWED_SYMLINKS="
+/etc/localtime
+"
+
+# Allowlist of kernel modules that can be loaded
+ALLOWED_MODULES="
+8021q
+"
+
+log_action() {
+    logger -t coyote-apply-helper "$@"
+}
+
+die() {
+    echo "ERROR: $*" >&2
+    log_action "ERROR: $*"
+    exit 1
+}
+
+# Check if a path matches any pattern in a list
+path_allowed() {
+    local path="$1"
+    local allowlist="$2"
+
+    for pattern in $allowlist; do
+        case "$path" in
+            $pattern) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# Command: write-file <dest> <src>
+# Copy a file from src to dest, validating dest is in allowlist
+cmd_write_file() {
+    local dest="$1"
+    local src="$2"
+
+    [ -z "$dest" ] && die "write-file: destination path required"
+    [ -z "$src" ] && die "write-file: source path required"
+    [ ! -f "$src" ] && die "write-file: source file does not exist: $src"
+
+    # Validate destination is in allowlist
+    if ! path_allowed "$dest" "$ALLOWED_WRITE_FILES"; then
+        die "write-file: destination not allowed: $dest"
+    fi
+
+    # Ensure parent directory exists
+    mkdir -p "$(dirname "$dest")"
+
+    # Copy the file
+    cp "$src" "$dest"
+    chmod 644 "$dest"
+
+    # Remove the source temp file
+    rm -f "$src"
+
+    log_action "write-file: $dest"
+    echo "OK"
+}
+
+# Command: write-symlink <dest> <target>
+# Create a symlink at dest pointing to target
+cmd_write_symlink() {
+    local dest="$1"
+    local target="$2"
+
+    [ -z "$dest" ] && die "write-symlink: destination path required"
+    [ -z "$target" ] && die "write-symlink: target path required"
+
+    # Validate destination is in allowlist
+    if ! path_allowed "$dest" "$ALLOWED_SYMLINKS"; then
+        die "write-symlink: destination not allowed: $dest"
+    fi
+
+    # Remove existing file/symlink
+    rm -f "$dest"
+
+    # Create symlink
+    ln -s "$target" "$dest"
+
+    log_action "write-symlink: $dest -> $target"
+    echo "OK"
+}
+
+# Command: set-hostname <hostname>
+cmd_set_hostname() {
+    local hostname="$1"
+
+    [ -z "$hostname" ] && die "set-hostname: hostname required"
+
+    # Validate hostname (alphanumeric, hyphens, max 63 chars)
+    if ! echo "$hostname" | grep -qE '^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'; then
+        die "set-hostname: invalid hostname format: $hostname"
+    fi
+
+    hostname "$hostname"
+
+    log_action "set-hostname: $hostname"
+    echo "OK"
+}
+
+# Command: ip <args...>
+cmd_ip() {
+    [ $# -eq 0 ] && die "ip: arguments required"
+
+    log_action "ip: $*"
+    ip "$@"
+}
+
+# Command: sysctl <args...>
+cmd_sysctl() {
+    [ $# -eq 0 ] && die "sysctl: arguments required"
+
+    log_action "sysctl: $*"
+    sysctl "$@"
+}
+
+# Command: modprobe <module>
+cmd_modprobe() {
+    local module="$1"
+
+    [ -z "$module" ] && die "modprobe: module name required"
+
+    # Validate module is in allowlist
+    local allowed=0
+    for m in $ALLOWED_MODULES; do
+        [ "$module" = "$m" ] && allowed=1 && break
+    done
+
+    [ $allowed -eq 0 ] && die "modprobe: module not allowed: $module"
+
+    log_action "modprobe: $module"
+    modprobe "$module" 2>/dev/null || true
+    echo "OK"
+}
+
+# Command: udhcpc <args...>
+cmd_udhcpc() {
+    [ $# -eq 0 ] && die "udhcpc: arguments required"
+
+    log_action "udhcpc: $*"
+    udhcpc "$@"
+}
+
+# Command: pppd <args...>
+cmd_pppd() {
+    [ $# -eq 0 ] && die "pppd: arguments required"
+
+    log_action "pppd: $*"
+    pppd "$@"
+}
+
+# Command: kill-pid <pid>
+cmd_kill_pid() {
+    local pid="$1"
+
+    [ -z "$pid" ] && die "kill-pid: PID required"
+
+    # Validate PID is numeric
+    if ! echo "$pid" | grep -qE '^[0-9]+$'; then
+        die "kill-pid: invalid PID: $pid"
+    fi
+
+    log_action "kill-pid: $pid"
+    kill "$pid" 2>/dev/null || true
+    echo "OK"
+}
+
+# Command: pkill-pattern <pattern>
+cmd_pkill_pattern() {
+    local pattern="$1"
+
+    [ -z "$pattern" ] && die "pkill-pattern: pattern required"
+
+    log_action "pkill-pattern: $pattern"
+    pkill -f "$pattern" 2>/dev/null || true
+    echo "OK"
+}
+
+# Main entry point
+main() {
+    local cmd="$1"
+    shift || die "No command specified"
+
+    case "$cmd" in
+        write-file)
+            cmd_write_file "$@"
+            ;;
+        write-symlink)
+            cmd_write_symlink "$@"
+            ;;
+        set-hostname)
+            cmd_set_hostname "$@"
+            ;;
+        ip)
+            cmd_ip "$@"
+            ;;
+        sysctl)
+            cmd_sysctl "$@"
+            ;;
+        modprobe)
+            cmd_modprobe "$@"
+            ;;
+        udhcpc)
+            cmd_udhcpc "$@"
+            ;;
+        pppd)
+            cmd_pppd "$@"
+            ;;
+        kill-pid)
+            cmd_kill_pid "$@"
+            ;;
+        pkill-pattern)
+            cmd_pkill_pattern "$@"
+            ;;
+        *)
+            die "Unknown command: $cmd"
+            ;;
+    esac
+}
+
+main "$@"

@@ -40,6 +40,8 @@ class DnsSubsystem extends AbstractSubsystem
 
     public function apply(array $config): array
     {
+        $priv = $this->getPrivilegedExecutor();
+
         // Get nameservers from either location (system.nameservers or network.dns)
         $dns = $this->getNestedValue($config, 'system.nameservers')
             ?? $this->getNestedValue($config, 'network.dns', []);
@@ -72,8 +74,10 @@ class DnsSubsystem extends AbstractSubsystem
             return $this->success('No DNS configuration to apply');
         }
 
-        if (file_put_contents('/etc/resolv.conf', $resolv) === false) {
-            return $this->failure('Failed to write /etc/resolv.conf');
+        // Write /etc/resolv.conf via privileged executor
+        $result = $priv->writeFile('/etc/resolv.conf', $resolv);
+        if (!$result['success']) {
+            return $this->failure('Failed to write /etc/resolv.conf: ' . $result['output']);
         }
 
         $count = count($dnsServers);
