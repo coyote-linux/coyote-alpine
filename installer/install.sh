@@ -261,15 +261,91 @@ configure_network() {
         return 1
     fi
 
-    # Use a form for network configuration
-    local default_ip="192.168.99.2/24"
-    local default_dns="1.1.1.1"
+    # Ask user to choose between DHCP and Static IP
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Network Configuration Method" \
+        --menu "How should $NET_INTERFACE obtain its IP address?" 12 60 2 \
+        "dhcp"   "Automatic (DHCP) - recommended for most setups" \
+        "static" "Manual (Static IP) - for servers and fixed addresses" \
+        2>$DIALOG_TEMP
+
+    local ret=$?
+    if [ $ret -ne $DIALOG_OK ]; then
+        return 1
+    fi
+
+    NET_TYPE=$(cat $DIALOG_TEMP)
+
     local default_hostname="coyote"
     local default_domain="local.lan"
 
+    if [ "$NET_TYPE" = "dhcp" ]; then
+        # DHCP configuration - just need hostname
+        while true; do
+            $DIALOG --backtitle "$BACKTITLE" \
+                --title "DHCP Configuration for $NET_INTERFACE" \
+                --form "Enter system identification:" 12 70 2 \
+                "Hostname:"      1 1 "$default_hostname" 1 18 30 63 \
+                "Search Domain:" 2 1 "$default_domain" 2 18 30 255 \
+                2>$DIALOG_TEMP
+
+            ret=$?
+            if [ $ret -ne $DIALOG_OK ]; then
+                return 1
+            fi
+
+            NET_HOSTNAME=$(sed -n '1p' $DIALOG_TEMP)
+            NET_DOMAIN=$(sed -n '2p' $DIALOG_TEMP)
+
+            [ -z "$NET_HOSTNAME" ] && NET_HOSTNAME="$default_hostname"
+            [ -z "$NET_DOMAIN" ] && NET_DOMAIN="$default_domain"
+
+            local errors=""
+            if ! validate_hostname "$NET_HOSTNAME"; then
+                errors="${errors}Invalid hostname\n"
+            fi
+            if ! validate_domain "$NET_DOMAIN"; then
+                errors="${errors}Invalid domain name\n"
+            fi
+
+            if [ -n "$errors" ]; then
+                $DIALOG --backtitle "$BACKTITLE" \
+                    --title "Validation Error" \
+                    --msgbox "$errors" 10 50
+                continue
+            fi
+            break
+        done
+
+        # Clear static IP variables
+        NET_IP_CIDR=""
+        NET_GATEWAY=""
+        NET_DNS1=""
+        NET_DNS2=""
+
+        # Confirm DHCP configuration
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Confirm Network Configuration" \
+            --yesno "Interface:      $NET_INTERFACE ($NET_MAC)
+Configuration:  DHCP (automatic)
+Hostname:       $NET_HOSTNAME
+Search Domain:  $NET_DOMAIN
+
+The system will obtain its IP address, gateway, and DNS
+servers automatically from a DHCP server on the network.
+
+Is this configuration correct?" 14 65
+
+        return $?
+    fi
+
+    # Static IP configuration
+    local default_ip="192.168.99.2/24"
+    local default_dns="1.1.1.1"
+
     while true; do
         $DIALOG --backtitle "$BACKTITLE" \
-            --title "Network Configuration for $NET_INTERFACE" \
+            --title "Static IP Configuration for $NET_INTERFACE" \
             --form "Enter network settings (Tab to move between fields):" 18 70 6 \
             "IP Address (CIDR):" 1 1 "$default_ip" 1 22 20 20 \
             "Default Gateway:"   2 1 "" 2 22 20 20 \
@@ -279,7 +355,7 @@ configure_network() {
             "Search Domain:"     6 1 "$default_domain" 6 22 30 255 \
             2>$DIALOG_TEMP
 
-        local ret=$?
+        ret=$?
         if [ $ret -ne $DIALOG_OK ]; then
             return 1
         fi
@@ -677,13 +753,36 @@ LABEL rescue
 SYSLINUX_CFG
 
         echo "85"; echo "Creating system configuration..."
-        # Build DNS array
-        local dns_servers="\"$NET_DNS1\""
-        [ -n "$NET_DNS2" ] && dns_servers="$dns_servers, \"$NET_DNS2\""
-
-        # Build interface JSON
-        if [ -n "$NET_GATEWAY" ]; then
+        # Build configuration JSON based on network type
+        if [ "$NET_TYPE" = "dhcp" ]; then
+            # DHCP configuration
             cat > "$target_config/system.json" << EOF
+{
+    "system": {
+        "hostname": "$NET_HOSTNAME",
+        "domain": "$NET_DOMAIN",
+        "timezone": "UTC"
+    },
+    "network": {
+        "search": ["$NET_DOMAIN"],
+        "interfaces": [
+            {
+                "name": "$NET_INTERFACE",
+                "type": "dhcp",
+                "enabled": true,
+                "dhcp_hostname": "$NET_HOSTNAME"
+            }
+        ]
+    }
+}
+EOF
+        else
+            # Static IP configuration
+            local dns_servers="\"$NET_DNS1\""
+            [ -n "$NET_DNS2" ] && dns_servers="$dns_servers, \"$NET_DNS2\""
+
+            if [ -n "$NET_GATEWAY" ]; then
+                cat > "$target_config/system.json" << EOF
 {
     "system": {
         "hostname": "$NET_HOSTNAME",
@@ -711,8 +810,8 @@ SYSLINUX_CFG
     }
 }
 EOF
-        else
-            cat > "$target_config/system.json" << EOF
+            else
+                cat > "$target_config/system.json" << EOF
 {
     "system": {
         "hostname": "$NET_HOSTNAME",
@@ -733,6 +832,7 @@ EOF
     }
 }
 EOF
+            fi
         fi
 
         echo "90"; echo "Unmounting partitions..."
