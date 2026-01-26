@@ -243,6 +243,12 @@ input:focus, select:focus, textarea:focus {
     cursor: pointer;
     text-decoration: none;
     transition: background 0.2s;
+    background: var(--bg-light);
+    color: var(--text-primary);
+}
+
+.btn:hover {
+    background: #1a4a70;
 }
 
 .btn-primary {

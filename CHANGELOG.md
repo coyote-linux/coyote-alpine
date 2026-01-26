@@ -4,6 +4,20 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.33] - 2026-01-26
+
+### Added
+
+#### Network Interface Editor
+- Web admin interface for configuring network interfaces
+- Edit individual interfaces with static IP, DHCP, or disabled modes
+- CIDR notation validation for IP addresses (e.g., 192.168.1.1/24)
+- Gateway configuration per interface
+- Configuration badges showing interface state (Static/DHCP/Disabled/Unconfigured)
+- Loopback interface excluded from list (not user-configurable)
+- Apply configuration with 60-second countdown for network changes
+- NetworkSubsystem updated to handle DHCP via udhcpc
+
 ## [4.0.32] - 2026-01-26
 
 ### Added

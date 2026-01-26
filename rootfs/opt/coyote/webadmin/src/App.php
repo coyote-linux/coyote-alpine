@@ -80,6 +80,9 @@ class App
         $this->router->get('/network', [Controller\NetworkController::class, 'index']);
         $this->router->get('/network/interfaces', [Controller\NetworkController::class, 'interfaces']);
         $this->router->post('/network/interfaces', [Controller\NetworkController::class, 'saveInterfaces']);
+        $this->router->get('/network/interface/{name}', [Controller\NetworkController::class, 'editInterface']);
+        $this->router->post('/network/interface/{name}', [Controller\NetworkController::class, 'saveInterface']);
+        $this->router->post('/network/interface/{name}/delete', [Controller\NetworkController::class, 'deleteInterface']);
 
         // Firewall
         $this->router->get('/firewall', [Controller\FirewallController::class, 'index']);

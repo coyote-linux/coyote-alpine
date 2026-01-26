@@ -96,6 +96,7 @@ class NetworkSubsystem extends AbstractSubsystem
     private function configureInterface(array $ifaceConfig, array &$errors): void
     {
         $name = $ifaceConfig['name'] ?? null;
+        $type = $ifaceConfig['type'] ?? 'disabled';
         $address = $ifaceConfig['address'] ?? null;
         $gateway = $ifaceConfig['gateway'] ?? null;
 
@@ -109,47 +110,114 @@ class NetworkSubsystem extends AbstractSubsystem
             return;
         }
 
-        // Get current interface state
-        $currentAddress = $this->getCurrentAddress($name);
-
-        // Only reconfigure if address is different
-        if ($address && $currentAddress !== $address) {
-            // Flush existing addresses
+        // Handle disabled interfaces
+        if ($type === 'disabled') {
+            // Stop any DHCP client running on this interface
+            $this->stopDhcp($name);
+            // Flush addresses and bring interface down
             $this->exec("ip addr flush dev " . escapeshellarg($name), true);
-
-            // Add new address
-            $result = $this->exec(
-                "ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name),
-                true
-            );
-
-            if (!$result['success']) {
-                $errors[] = "Failed to set address on {$name}: " . $result['output'];
-            }
+            $this->exec("ip link set " . escapeshellarg($name) . " down", true);
+            return;
         }
 
-        // Bring interface up
-        $this->exec("ip link set " . escapeshellarg($name) . " up", true);
+        // Handle DHCP configuration
+        if ($type === 'dhcp') {
+            // Flush any static addresses
+            $this->exec("ip addr flush dev " . escapeshellarg($name), true);
+            // Bring interface up
+            $this->exec("ip link set " . escapeshellarg($name) . " up", true);
+            // Start DHCP client
+            $this->startDhcp($name, $errors);
+            return;
+        }
 
-        // Set default gateway if specified
-        if ($gateway) {
-            $currentGateway = $this->getCurrentGateway();
+        // Handle static configuration
+        if ($type === 'static') {
+            // Stop any DHCP client first
+            $this->stopDhcp($name);
 
-            if ($currentGateway !== $gateway) {
-                // Remove existing default route
-                $this->exec('ip route del default', true);
+            // Get current interface state
+            $currentAddress = $this->getCurrentAddress($name);
 
-                // Add new default route
+            // Only reconfigure if address is different
+            if ($address && $currentAddress !== $address) {
+                // Flush existing addresses
+                $this->exec("ip addr flush dev " . escapeshellarg($name), true);
+
+                // Add new address
                 $result = $this->exec(
-                    "ip route add default via " . escapeshellarg($gateway) . " dev " . escapeshellarg($name),
+                    "ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name),
                     true
                 );
 
                 if (!$result['success']) {
-                    $errors[] = "Failed to set gateway: " . $result['output'];
+                    $errors[] = "Failed to set address on {$name}: " . $result['output'];
+                }
+            }
+
+            // Bring interface up
+            $this->exec("ip link set " . escapeshellarg($name) . " up", true);
+
+            // Set default gateway if specified
+            if ($gateway) {
+                $currentGateway = $this->getCurrentGateway();
+
+                if ($currentGateway !== $gateway) {
+                    // Remove existing default route
+                    $this->exec('ip route del default', true);
+
+                    // Add new default route
+                    $result = $this->exec(
+                        "ip route add default via " . escapeshellarg($gateway) . " dev " . escapeshellarg($name),
+                        true
+                    );
+
+                    if (!$result['success']) {
+                        $errors[] = "Failed to set gateway: " . $result['output'];
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Start DHCP client on an interface.
+     */
+    private function startDhcp(string $iface, array &$errors): void
+    {
+        // First stop any existing instance
+        $this->stopDhcp($iface);
+
+        // Use udhcpc (busybox DHCP client) - common on Alpine
+        // -i interface, -b background, -p pidfile, -q quit after obtaining lease
+        $pidFile = "/var/run/udhcpc.{$iface}.pid";
+        $result = $this->exec(
+            "udhcpc -i " . escapeshellarg($iface) . " -b -p " . escapeshellarg($pidFile) . " -S",
+            true
+        );
+
+        if (!$result['success']) {
+            $errors[] = "Failed to start DHCP on {$iface}: " . $result['output'];
+        }
+    }
+
+    /**
+     * Stop DHCP client on an interface.
+     */
+    private function stopDhcp(string $iface): void
+    {
+        $pidFile = "/var/run/udhcpc.{$iface}.pid";
+
+        if (file_exists($pidFile)) {
+            $pid = trim(file_get_contents($pidFile));
+            if ($pid && is_numeric($pid)) {
+                $this->exec("kill " . escapeshellarg($pid), true);
+            }
+            @unlink($pidFile);
+        }
+
+        // Also try to kill by process name pattern (backup method)
+        $this->exec("pkill -f 'udhcpc.*-i " . escapeshellarg($iface) . "'", true);
     }
 
     /**
