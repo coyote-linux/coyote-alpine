@@ -43,6 +43,8 @@
     "firewall": {
         "enabled": true,
         "default_policy": "drop",
+        "acls": [],
+        "applied": [],
         "nat": [],
         "rules": [],
         "port_forwards": []

@@ -4,6 +4,20 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.37] - 2026-01-26
+
+### Added
+
+#### Firewall ACL Management UI
+- Web admin interface for creating and managing firewall Access Control Lists (ACLs)
+- ACL list page showing all defined ACLs with rule counts and applied interfaces
+- ACL editor with rule list, reordering, and CRUD operations
+- Rule editor with protocol, source/destination, port, and comment fields
+- Real-time rule preview showing approximate iptables representation
+- ACL applications page to apply ACLs to interface pairs (forwarded traffic)
+- First-match rule processing with default deny policy
+- JSON configuration structure: `firewall.acls[]` and `firewall.applied[]`
+
 ## [4.0.36] - 2026-01-26
 
 ### Added

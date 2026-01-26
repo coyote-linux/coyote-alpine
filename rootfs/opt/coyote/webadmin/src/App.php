@@ -89,6 +89,25 @@ class App
         $this->router->get('/firewall/rules', [Controller\FirewallController::class, 'rules']);
         $this->router->post('/firewall/rules', [Controller\FirewallController::class, 'saveRules']);
 
+        // Firewall ACLs
+        $this->router->get('/firewall/acl/new', [Controller\FirewallController::class, 'createAcl']);
+        $this->router->post('/firewall/acl/new', [Controller\FirewallController::class, 'saveNewAcl']);
+        $this->router->get('/firewall/acl/{name}', [Controller\FirewallController::class, 'editAcl']);
+        $this->router->post('/firewall/acl/{name}', [Controller\FirewallController::class, 'updateAcl']);
+        $this->router->post('/firewall/acl/{name}/delete', [Controller\FirewallController::class, 'deleteAcl']);
+
+        // Firewall ACL Rules
+        $this->router->get('/firewall/acl/{name}/rule/new', [Controller\FirewallController::class, 'addRule']);
+        $this->router->get('/firewall/acl/{name}/rule/{index}', [Controller\FirewallController::class, 'editRule']);
+        $this->router->post('/firewall/acl/{name}/rule', [Controller\FirewallController::class, 'saveRule']);
+        $this->router->post('/firewall/acl/{name}/rule/{index}/delete', [Controller\FirewallController::class, 'deleteRule']);
+        $this->router->post('/firewall/acl/{name}/rule/{index}/move', [Controller\FirewallController::class, 'moveRule']);
+
+        // Firewall ACL Applications
+        $this->router->get('/firewall/apply', [Controller\FirewallController::class, 'applications']);
+        $this->router->post('/firewall/apply', [Controller\FirewallController::class, 'addApplication']);
+        $this->router->post('/firewall/apply/{index}/delete', [Controller\FirewallController::class, 'removeApplication']);
+
         // NAT
         $this->router->get('/nat', [Controller\NatController::class, 'index']);
         $this->router->post('/nat/forwards', [Controller\NatController::class, 'saveForwards']);
