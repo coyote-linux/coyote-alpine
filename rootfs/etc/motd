@@ -1,0 +1,18 @@
+
+    _____                  _          _     _
+   / ____|                | |        | |   (_)
+  | |     ___  _   _  ___ | |_ ___   | |    _ _ __  _   ___  __
+  | |    / _ \| | | |/ _ \| __/ _ \  | |   | | '_ \| | | \ \/ /
+  | |___| (_) | |_| | (_) | ||  __/  | |___| | | | | |_| |>  <
+   \_____\___/ \__, |\___/ \__\___|  |_____|_|_| |_|\__,_/_/\_\
+                __/ |
+               |___/   Edge Firewall & Network Appliance
+
+  Web Admin:    https://<this-host>/
+  Documentation: https://coyotelinux.com/docs/
+
+  Useful commands:
+    coyote-config   - View/edit system configuration
+    rc-status       - Show service status
+    ip addr         - Show network interfaces
+
