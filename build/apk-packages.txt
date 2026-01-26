@@ -94,3 +94,4 @@ parted
 # Installer tools
 syslinux
 mtools
+dialog

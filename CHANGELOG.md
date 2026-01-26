@@ -116,10 +116,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Common NIC kernel module loading during early boot
 
 #### Installer
-- Text-based installation wizard
-- Automatic hardware detection
-- Disk selection with size display
-- Network interface configuration with sensible defaults
+- Dialog-based TUI with professional menu-driven interface
+- Main menu with New Installation, Upgrade, and Exit to Shell options
+- Automatic hardware detection with progress indicator
+- Disk selection menu with size display
+- Network interface selection menu showing MAC, driver, and link state
+- Network configuration form with all fields on one screen
+- Input validation for IP addresses (CIDR notation), hostnames, and domains
+- Progress gauges for partitioning, formatting, and installation phases
+- Confirmation dialogs before destructive operations
 - Default values: hostname "coyote", domain "local.lan", DNS "1.1.1.1"
 - Optional gateway configuration
 - 2GB boot partition (FAT32) + remaining space config partition (ext4)
@@ -130,6 +135,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed separate add-on architecture in favor of built-in components
 - Boot partition increased from 512MB to 2GB for firmware storage
 - Installer writes config to `/mnt/config/system.json` (was nested path)
+- Installer rewritten to use `dialog` utility for professional TUI experience
+- Added `dialog` package to base system for installer and future TUI tools
 
 ### Fixed
 
@@ -142,6 +149,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Config partition mounting with explicit `-t ext4` for busybox compatibility
 - PHP symlink (`/usr/bin/php` -> `php83`)
 - Circular dependency in root init script
+- Suppressed kernel module loading errors during boot (missing symbols, invalid ELF)
+- Added `quiet` kernel parameter to all bootloader configurations
+- Persistent directory setup moved to `coyote-config` service (runs after config partition mount)
+- Removed `/var/run` migration warning by disabling `bootmisc` service
+- Installer utility output suppressed for clean dialog progress display
 
 ### Optimized
 
