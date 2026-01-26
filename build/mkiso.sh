@@ -13,7 +13,16 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/../output"
-VERSION="4.0.0"
+
+# Detect version from firmware filename (firmware-X.Y.Z.squashfs)
+FIRMWARE_FILE=$(ls -t "${BUILD_DIR}"/firmware-*.squashfs 2>/dev/null | head -1)
+if [ -n "$FIRMWARE_FILE" ]; then
+    VERSION=$(basename "$FIRMWARE_FILE" | sed 's/firmware-\(.*\)\.squashfs/\1/')
+else
+    VERSION="4.0.0"
+    echo "Warning: No firmware found, using default version $VERSION"
+fi
+echo "Building ISO for Coyote Linux $VERSION"
 
 # Check for ISO creation tool (prefer xorriso, fall back to genisoimage/mkisofs)
 ISO_TOOL=""

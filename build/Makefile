@@ -1,6 +1,13 @@
 # Coyote Linux 4 Build Makefile
 
-VERSION := 4.0.0
+# Version with auto-incrementing build number
+# Major.Minor are fixed, build number increments with each build
+VERSION_MAJOR := 4
+VERSION_MINOR := 0
+BUILD_NUMBER_FILE := .build-number
+BUILD_NUMBER := $(shell cat $(BUILD_NUMBER_FILE) 2>/dev/null || echo 0)
+VERSION := $(VERSION_MAJOR).$(VERSION_MINOR).$(BUILD_NUMBER)
+
 BUILD_DIR := ../output
 ROOTFS_SRC := ../rootfs
 ROOTFS_BUILD := ../output/rootfs
@@ -15,17 +22,30 @@ ROOTFS_FILES := $(shell find $(ROOTFS_SRC) -type f 2>/dev/null)
 INITRAMFS_FILES := $(shell find $(INITRAMFS_DIR) -type f 2>/dev/null)
 INITRAMFS_INSTALLER_FILES := $(shell find $(INITRAMFS_INSTALLER_DIR) -type f 2>/dev/null)
 
-.PHONY: all clean firmware installer iso initramfs initramfs-installer kernel rootfs distclean help rebuild-firmware rebuild-iso sign
+.PHONY: all clean firmware installer iso initramfs initramfs-installer kernel rootfs distclean help rebuild-firmware rebuild-iso sign bump-version show-version
 
 all: firmware
+
+# Show current version
+show-version:
+	@echo "Current version: $(VERSION)"
+	@echo "Next build will be: $(VERSION_MAJOR).$(VERSION_MINOR).$$(($(BUILD_NUMBER) + 1))"
+
+# Increment build number (called automatically by firmware target)
+bump-version:
+	@NEW_BUILD=$$(($(BUILD_NUMBER) + 1)); \
+	echo $$NEW_BUILD > $(BUILD_NUMBER_FILE); \
+	echo "Build number incremented to $$NEW_BUILD"
 
 help:
 	@echo "Coyote Linux Build System"
 	@echo ""
+	@echo "Current version: $(VERSION)"
+	@echo ""
 	@echo "Targets:"
 	@echo "  rootfs              - Download Alpine and build rootfs"
-	@echo "  firmware            - Build firmware squashfs image (requires rootfs)"
-	@echo "  sign                - Sign the firmware image (requires COYOTE_SIGNING_KEY)"
+	@echo "  firmware            - Build firmware squashfs image (increments build number)"
+	@echo "  sign                - Sign the latest firmware image"
 	@echo "  kernel              - Download Alpine kernel"
 	@echo "  initramfs           - Build initramfs for running system"
 	@echo "  initramfs-installer - Build initramfs for installer (simplified)"
@@ -33,6 +53,7 @@ help:
 	@echo "  iso                 - Build ISO installer image (for CD/VM boot)"
 	@echo "  rebuild-firmware    - Force rebuild firmware (preserves rootfs)"
 	@echo "  rebuild-iso         - Force rebuild firmware and ISO"
+	@echo "  show-version        - Show current and next version numbers"
 	@echo "  clean               - Remove build outputs"
 	@echo "  distclean           - Remove build outputs and cached downloads"
 	@echo ""
@@ -41,7 +62,7 @@ help:
 	@echo "  make iso        # Build bootable ISO installer"
 	@echo ""
 	@echo "After editing rootfs/ files:"
-	@echo "  make firmware   # Detects changes automatically"
+	@echo "  make firmware   # Detects changes, increments build number"
 	@echo "  make sign       # Sign firmware (if COYOTE_SIGNING_KEY set in .local-config)"
 	@echo "  make iso        # Rebuild ISO with new firmware"
 
@@ -54,31 +75,39 @@ $(ROOTFS_BUILD)/.stamp: $(ROOTFS_FILES) apk-packages.txt mkrootfs.sh
 	@touch $@
 
 # Build the main firmware squashfs image
-firmware: $(BUILD_DIR)/firmware-$(VERSION).squashfs
-
-# Firmware depends on rootfs stamp AND all source files (for overlay changes)
-$(BUILD_DIR)/firmware-$(VERSION).squashfs: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
-	@echo "Building firmware image..."
-	@mkdir -p $(BUILD_DIR)
-	./mksquashfs.sh $(ROOTFS_BUILD) $@ "$(SQUASHFS_OPTS)"
-	sha256sum $@ > $@.sha256
-	@# Auto-sign if signing key is configured
-	@if [ -f .local-config ]; then \
+# This target increments the build number and creates the firmware
+firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
+	@# Increment build number
+	@NEW_BUILD=$$(($(BUILD_NUMBER) + 1)); \
+	echo $$NEW_BUILD > $(BUILD_NUMBER_FILE); \
+	NEW_VERSION="$(VERSION_MAJOR).$(VERSION_MINOR).$$NEW_BUILD"; \
+	FIRMWARE_FILE="$(BUILD_DIR)/firmware-$$NEW_VERSION.squashfs"; \
+	echo "Building firmware version $$NEW_VERSION..."; \
+	mkdir -p $(BUILD_DIR); \
+	./mksquashfs.sh $(ROOTFS_BUILD) "$$FIRMWARE_FILE" "$(SQUASHFS_OPTS)"; \
+	sha256sum "$$FIRMWARE_FILE" > "$$FIRMWARE_FILE.sha256"; \
+	if [ -f .local-config ]; then \
 		. ./.local-config; \
 		if [ -n "$$COYOTE_SIGNING_KEY" ] && [ -f "$$COYOTE_SIGNING_KEY" ]; then \
 			echo "Signing firmware..."; \
-			./sign-firmware.sh $@; \
+			./sign-firmware.sh "$$FIRMWARE_FILE"; \
 		else \
 			echo "Note: Firmware not signed (COYOTE_SIGNING_KEY not configured)"; \
 		fi \
 	else \
 		echo "Note: Firmware not signed (no .local-config)"; \
-	fi
-	@echo "Firmware image created: $@"
+	fi; \
+	echo ""; \
+	echo "Firmware image created: $$FIRMWARE_FILE"
 
-# Sign firmware image (manual target)
-sign: $(BUILD_DIR)/firmware-$(VERSION).squashfs
-	@./sign-firmware.sh $<
+# Sign firmware image (manual target - signs the latest firmware)
+sign:
+	@FIRMWARE_FILE=$$(ls -t $(BUILD_DIR)/firmware-*.squashfs 2>/dev/null | head -1); \
+	if [ -z "$$FIRMWARE_FILE" ]; then \
+		echo "Error: No firmware image found. Run 'make firmware' first."; \
+		exit 1; \
+	fi; \
+	./sign-firmware.sh "$$FIRMWARE_FILE"
 
 # Build the kernel and initramfs (mkinitramfs.sh creates both)
 kernel: $(BUILD_DIR)/.initramfs-stamp
@@ -131,14 +160,14 @@ distclean: clean
 	rm -rf $(CACHE_DIR)
 	@echo "Cache directory cleaned"
 
-# Force rebuild of firmware (removes only squashfs, preserves rootfs)
+# Force rebuild of firmware (removes all firmware files, preserves rootfs)
 rebuild-firmware:
-	rm -f $(BUILD_DIR)/firmware-$(VERSION).squashfs $(BUILD_DIR)/firmware-$(VERSION).squashfs.sha256 $(BUILD_DIR)/firmware-$(VERSION).squashfs.sig
+	rm -f $(BUILD_DIR)/firmware-*.squashfs $(BUILD_DIR)/firmware-*.squashfs.sha256 $(BUILD_DIR)/firmware-*.squashfs.sig
 	$(MAKE) firmware
 
-# Force rebuild of ISO (removes squashfs, installer initramfs, and ISO)
+# Force rebuild of ISO (removes firmware, installer initramfs, and ISO)
 rebuild-iso:
-	rm -f $(BUILD_DIR)/firmware-$(VERSION).squashfs $(BUILD_DIR)/firmware-$(VERSION).squashfs.sha256 $(BUILD_DIR)/firmware-$(VERSION).squashfs.sig
+	rm -f $(BUILD_DIR)/firmware-*.squashfs $(BUILD_DIR)/firmware-*.squashfs.sha256 $(BUILD_DIR)/firmware-*.squashfs.sig
 	rm -f $(BUILD_DIR)/.initramfs-installer-stamp $(BUILD_DIR)/initramfs-installer.cpio.gz
 	rm -f $(BUILD_DIR)/coyote-*.iso $(BUILD_DIR)/coyote-*.iso.sha256
 	$(MAKE) iso

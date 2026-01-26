@@ -27,7 +27,17 @@ for tool in parted mformat mcopy mmd syslinux; do
     fi
 done
 
-INSTALLER_IMG="${BUILD_DIR}/coyote-installer.img"
+# Detect version from firmware filename (firmware-X.Y.Z.squashfs)
+FIRMWARE_FILE=$(ls -t "${BUILD_DIR}"/firmware-*.squashfs 2>/dev/null | head -1)
+if [ -n "$FIRMWARE_FILE" ]; then
+    VERSION=$(basename "$FIRMWARE_FILE" | sed 's/firmware-\(.*\)\.squashfs/\1/')
+else
+    VERSION="4.0.0"
+    echo "Warning: No firmware found, using default version $VERSION"
+fi
+echo "Building USB installer for Coyote Linux $VERSION"
+
+INSTALLER_IMG="${BUILD_DIR}/coyote-installer-${VERSION}.img"
 # Size must accommodate: kernel (~10MB) + initramfs (~11MB) + firmware (~220MB) + syslinux
 INSTALLER_SIZE="300M"
 PARTITION_START=1048576      # 1MiB in bytes
