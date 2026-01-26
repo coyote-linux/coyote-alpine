@@ -4,6 +4,18 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.38] - 2026-01-26
+
+### Added
+
+#### Version Display Throughout System
+- Full version number (e.g., 4.0.43) now displayed in:
+  - `/etc/issue` - login prompt
+  - Installer wizard title bar
+  - Web admin sidebar
+- Version file written to `/etc/coyote/version` during firmware build
+- Version file also copied to installer media for installer to read
+
 ## [4.0.37] - 2026-01-26
 
 ### Added

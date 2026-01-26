@@ -146,6 +146,10 @@ if [ -n "$FIRMWARE_SRC" ] && [ -f "$FIRMWARE_SRC" ]; then
     else
         echo "Note: No firmware signature found (unsigned build)"
     fi
+    # Write version file for installer to read
+    echo "$VERSION" > "${BUILD_DIR}/version.tmp"
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${BUILD_DIR}/version.tmp" ::/firmware/version
+    rm -f "${BUILD_DIR}/version.tmp"
 else
     echo "Warning: No firmware image found in ${BUILD_DIR}/"
 fi

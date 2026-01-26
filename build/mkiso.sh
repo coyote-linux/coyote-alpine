@@ -121,6 +121,8 @@ if [ -n "$FIRMWARE_SRC" ] && [ -f "$FIRMWARE_SRC" ]; then
     else
         echo "Note: No firmware signature found (unsigned build)"
     fi
+    # Write version file for installer to read
+    echo "$VERSION" > "${ISO_BUILD}/firmware/version"
 else
     echo "Error: No firmware image found in ${BUILD_DIR}/"
     echo "Run 'make firmware' first"

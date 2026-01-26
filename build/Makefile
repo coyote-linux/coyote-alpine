@@ -84,6 +84,10 @@ firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	FIRMWARE_FILE="$(BUILD_DIR)/firmware-$$NEW_VERSION.squashfs"; \
 	echo "Building firmware version $$NEW_VERSION..."; \
 	mkdir -p $(BUILD_DIR); \
+	mkdir -p $(ROOTFS_BUILD)/etc/coyote; \
+	echo "$$NEW_VERSION" > $(ROOTFS_BUILD)/etc/coyote/version; \
+	echo "Coyote Linux $$NEW_VERSION" > $(ROOTFS_BUILD)/etc/issue; \
+	echo "" >> $(ROOTFS_BUILD)/etc/issue; \
 	./mksquashfs.sh $(ROOTFS_BUILD) "$$FIRMWARE_FILE" "$(SQUASHFS_OPTS)"; \
 	sha256sum "$$FIRMWARE_FILE" > "$$FIRMWARE_FILE.sha256"; \
 	if [ -f .local-config ]; then \

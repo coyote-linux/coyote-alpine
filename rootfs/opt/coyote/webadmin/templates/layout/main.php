@@ -11,6 +11,7 @@
         <div class="logo">
             <span class="logo-icon">🐺</span>
             <span class="logo-text">Coyote Linux</span>
+            <span class="logo-version"><?= trim(@file_get_contents('/etc/coyote/version') ?: '4.0') ?></span>
         </div>
         <ul class="nav-menu">
             <li><a href="/dashboard" class="<?= ($page ?? '') === 'dashboard' ? 'active' : '' ?>">Dashboard</a></li>

@@ -11,7 +11,19 @@ DIALOG=${DIALOG:-dialog}
 DIALOG_OK=0
 DIALOG_CANCEL=1
 DIALOG_ESC=255
-BACKTITLE="Coyote Linux 4 - Installation Wizard"
+
+# Detect version from firmware
+detect_version() {
+    local version_file="/mnt/boot/firmware/version"
+    if [ -f "$version_file" ]; then
+        cat "$version_file"
+    else
+        echo "4.0"
+    fi
+}
+
+COYOTE_VERSION=$(detect_version)
+BACKTITLE="Coyote Linux $COYOTE_VERSION - Installation Wizard"
 
 # Temp file for dialog output
 DIALOG_TEMP=$(mktemp)
