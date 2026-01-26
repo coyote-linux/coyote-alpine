@@ -48,12 +48,22 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
 
 <div class="dashboard-grid">
     <?php if ($applyStatus['hasChanges'] && !$applyStatus['pending']): ?>
-    <div class="card apply-config-card">
+    <div class="card apply-config-card <?= $applyStatus['requiresCountdown'] ? 'countdown-required' : 'no-countdown' ?>">
         <h3>Pending Configuration Changes</h3>
+        <?php if ($applyStatus['requiresCountdown']): ?>
+        <p>You have uncommitted changes that include <strong>network settings</strong>.</p>
+        <p class="countdown-warning">These changes could affect remote access. After applying, you will have <strong>60 seconds</strong> to confirm before automatic rollback.</p>
+        <?php else: ?>
         <p>You have uncommitted changes that have not been applied to the system.</p>
+        <p class="safe-apply-note">These changes are safe and will be applied immediately.</p>
+        <?php endif; ?>
         <div class="apply-actions">
             <form method="post" action="/system/config/apply" style="display: inline;">
+                <?php if ($applyStatus['requiresCountdown']): ?>
                 <button type="submit" class="btn btn-primary btn-large" data-confirm="Apply configuration changes? You will have 60 seconds to confirm before automatic rollback.">Apply Configuration</button>
+                <?php else: ?>
+                <button type="submit" class="btn btn-primary btn-large" data-confirm="Apply configuration changes?">Apply Configuration</button>
+                <?php endif; ?>
             </form>
             <form method="post" action="/system/config/discard" style="display: inline;">
                 <button type="submit" class="btn btn-danger" data-confirm="Discard all uncommitted changes?">Discard Changes</button>
@@ -177,8 +187,26 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
     border: 2px solid #f0ad4e;
 }
 
+.apply-config-card.no-countdown {
+    border-color: #5cb85c;
+}
+
 .apply-config-card h3 {
     color: #f0ad4e;
+}
+
+.apply-config-card.no-countdown h3 {
+    color: #5cb85c;
+}
+
+.countdown-warning {
+    color: #f0ad4e;
+    font-style: italic;
+}
+
+.safe-apply-note {
+    color: #5cb85c;
+    font-style: italic;
 }
 
 .apply-actions {
