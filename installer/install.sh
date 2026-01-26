@@ -824,10 +824,17 @@ partition_disk() {
         blockdev --rereadpt "$TARGET_DISK" 2>/dev/null || \
         true
 
+    # Trigger mdev to create device nodes for new partitions
+    if [ -x /sbin/mdev ]; then
+        mdev -s
+    fi
+
     # Wait for partitions to appear
     printf "  Waiting for partition devices...\n"
     local tries=0
     while [ ! -b "$BOOT_PART" ] && [ $tries -lt 10 ]; do
+        # Try triggering mdev again if partition hasn't appeared
+        [ -x /sbin/mdev ] && mdev -s
         sleep 1
         tries=$((tries + 1))
     done

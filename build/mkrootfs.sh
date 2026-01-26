@@ -394,7 +394,8 @@ EOF
     mkdir -p "${ROOTFS_DIR}/etc/runlevels/boot"
 
     # Link standard services (excluding networking - handled by coyote-config)
-    for svc in bootmisc hostname hwclock modules sysctl urandom; do
+    # Note: bootmisc is excluded because it tries to migrate /var/run on read-only rootfs
+    for svc in hostname hwclock modules sysctl urandom; do
         if [ -f "${ROOTFS_DIR}/etc/init.d/${svc}" ]; then
             ln -sf "/etc/init.d/${svc}" "${ROOTFS_DIR}/etc/runlevels/boot/" 2>/dev/null || true
         fi
