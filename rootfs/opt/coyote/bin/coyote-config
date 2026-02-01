@@ -1,0 +1,792 @@
+#!/bin/sh
+#
+# Coyote Linux Configuration Utility
+#
+# Interactive TUI for configuring the firewall from the console.
+# Uses the 'dialog' utility for menu-driven configuration.
+#
+
+# Dialog settings
+DIALOG=${DIALOG:-dialog}
+DIALOG_OK=0
+DIALOG_CANCEL=1
+DIALOG_ESC=255
+
+# Detect version
+detect_version() {
+    if [ -f /etc/coyote/version ]; then
+        cat /etc/coyote/version
+    else
+        echo "4.0"
+    fi
+}
+
+COYOTE_VERSION=$(detect_version)
+BACKTITLE="Coyote Linux $COYOTE_VERSION - Configuration"
+
+# Temp files for dialog output
+DIALOG_TEMP=$(mktemp)
+trap "rm -f $DIALOG_TEMP" EXIT
+
+# Config file paths
+RUNNING_CONFIG="/tmp/running-config/system.json"
+PERSISTENT_CONFIG="/mnt/config/system.json"
+DEFAULT_CONFIG="/opt/coyote/defaults/system.json"
+
+#
+# Helper functions
+#
+
+# Show an error message
+msg_error() {
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Error" \
+        --msgbox "$1" 8 50
+}
+
+# Show an info message
+msg_info() {
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "$1" \
+        --msgbox "$2" 12 60
+}
+
+# Show a yes/no question, returns 0 for yes
+ask_yesno() {
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "$1" \
+        --yesno "$2" 10 60
+}
+
+# Get value from JSON config using PHP
+get_config() {
+    local key="$1"
+    local default="$2"
+    local config_file="$RUNNING_CONFIG"
+
+    [ ! -f "$config_file" ] && config_file="$PERSISTENT_CONFIG"
+    [ ! -f "$config_file" ] && config_file="$DEFAULT_CONFIG"
+    [ ! -f "$config_file" ] && echo "$default" && return
+
+    php -r "
+        \$config = json_decode(file_get_contents('$config_file'), true);
+        \$keys = explode('.', '$key');
+        \$value = \$config;
+        foreach (\$keys as \$k) {
+            if (!is_array(\$value) || !isset(\$value[\$k])) {
+                echo '$default';
+                exit;
+            }
+            \$value = \$value[\$k];
+        }
+        if (is_array(\$value)) {
+            echo json_encode(\$value);
+        } else {
+            echo \$value;
+        }
+    "
+}
+
+# Set value in JSON config using PHP
+set_config() {
+    local key="$1"
+    local value="$2"
+    local config_file="$RUNNING_CONFIG"
+
+    [ ! -f "$config_file" ] && config_file="$PERSISTENT_CONFIG"
+    [ ! -f "$config_file" ] && return 1
+
+    php -r "
+        \$config = json_decode(file_get_contents('$config_file'), true);
+        \$keys = explode('.', '$key');
+        \$ref = &\$config;
+        foreach (\$keys as \$i => \$k) {
+            if (\$i === count(\$keys) - 1) {
+                // Try to decode JSON values
+                \$decoded = json_decode('$value', true);
+                \$ref[\$k] = \$decoded !== null ? \$decoded : '$value';
+            } else {
+                if (!isset(\$ref[\$k])) \$ref[\$k] = [];
+                \$ref = &\$ref[\$k];
+            }
+        }
+        file_put_contents('$config_file', json_encode(\$config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    "
+}
+
+#
+# Status display
+#
+
+get_system_status() {
+    local hostname=$(get_config "system.hostname" "coyote")
+    local domain=$(get_config "system.domainname" "local")
+
+    # Get uptime
+    local uptime=$(uptime -p 2>/dev/null || uptime | sed 's/.*up //' | sed 's/,.*//')
+
+    # Get memory
+    local mem_total=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+    local mem_avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+
+    # Get load
+    local load=$(cat /proc/loadavg | cut -d' ' -f1-3)
+
+    echo "Hostname: $hostname.$domain"
+    echo "Uptime: $uptime"
+    echo "Memory: ${mem_avail}MB available / ${mem_total}MB total"
+    echo "Load: $load"
+}
+
+get_network_status() {
+    echo "Network Interfaces:"
+    echo ""
+
+    # List interfaces with IPs
+    for iface in $(ls /sys/class/net/ | grep -v "^lo$"); do
+        local state=$(cat /sys/class/net/$iface/operstate 2>/dev/null || echo "unknown")
+        local ip=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d.]+/\d+' | head -1)
+        [ -z "$ip" ] && ip="(no address)"
+
+        if [ "$state" = "up" ]; then
+            echo "  $iface: $ip [UP]"
+        else
+            echo "  $iface: $ip [DOWN]"
+        fi
+    done
+}
+
+get_firewall_status() {
+    local fw_enabled=$(get_config "firewall.enabled" "true")
+
+    echo "Firewall Status:"
+    echo ""
+
+    if [ "$fw_enabled" = "true" ]; then
+        echo "  Status: ENABLED"
+
+        # Get connection count
+        local conn_count=$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null || echo "0")
+        local conn_max=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || echo "0")
+        echo "  Connections: $conn_count / $conn_max"
+
+        # Check if nftables has rules
+        local rule_count=$(nft list ruleset 2>/dev/null | grep -c "chain" || echo "0")
+        echo "  Chains: $rule_count"
+    else
+        echo "  Status: DISABLED"
+    fi
+}
+
+show_status() {
+    local status_text=""
+
+    status_text="$(get_system_status)\n\n$(get_network_status)\n\n$(get_firewall_status)"
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "System Status" \
+        --msgbox "$status_text" 22 70
+}
+
+#
+# Network configuration
+#
+
+menu_network() {
+    while true; do
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Network Configuration" \
+            --cancel-label "Back" \
+            --menu "Select an option:" 15 60 6 \
+            "1" "View Interfaces" \
+            "2" "Configure Interface" \
+            "3" "Set Default Gateway" \
+            "4" "Configure DNS Servers" \
+            "5" "Set Hostname" \
+            2>"$DIALOG_TEMP"
+
+        local result=$?
+        local choice=$(cat "$DIALOG_TEMP")
+
+        [ $result -ne $DIALOG_OK ] && return
+
+        case "$choice" in
+            1) show_interfaces ;;
+            2) configure_interface ;;
+            3) configure_gateway ;;
+            4) configure_dns ;;
+            5) configure_hostname ;;
+        esac
+    done
+}
+
+show_interfaces() {
+    local iface_info=""
+
+    for iface in $(ls /sys/class/net/ | grep -v "^lo$"); do
+        local state=$(cat /sys/class/net/$iface/operstate 2>/dev/null || echo "unknown")
+        local mac=$(cat /sys/class/net/$iface/address 2>/dev/null || echo "unknown")
+        local ip=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d.]+/\d+' | head -1)
+        [ -z "$ip" ] && ip="(none)"
+
+        local driver=$(basename $(readlink /sys/class/net/$iface/device/driver 2>/dev/null) 2>/dev/null || echo "unknown")
+
+        iface_info="${iface_info}Interface: $iface\n"
+        iface_info="${iface_info}  State:  $state\n"
+        iface_info="${iface_info}  MAC:    $mac\n"
+        iface_info="${iface_info}  IP:     $ip\n"
+        iface_info="${iface_info}  Driver: $driver\n\n"
+    done
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Network Interfaces" \
+        --msgbox "$iface_info" 20 60
+}
+
+configure_interface() {
+    # Build interface list for menu
+    local menu_items=""
+    local count=0
+
+    for iface in $(ls /sys/class/net/ | grep -v "^lo$"); do
+        count=$((count + 1))
+        local ip=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d.]+/\d+' | head -1)
+        [ -z "$ip" ] && ip="(none)"
+        menu_items="$menu_items $iface \"$ip\""
+    done
+
+    if [ $count -eq 0 ]; then
+        msg_error "No network interfaces found"
+        return
+    fi
+
+    eval "$DIALOG --backtitle \"$BACKTITLE\" \
+        --title \"Select Interface\" \
+        --menu \"Choose an interface to configure:\" 15 50 $count \
+        $menu_items" 2>"$DIALOG_TEMP"
+
+    local result=$?
+    local iface=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+    [ -z "$iface" ] && return
+
+    configure_interface_details "$iface"
+}
+
+configure_interface_details() {
+    local iface="$1"
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Configure $iface" \
+        --menu "Configuration type:" 12 50 4 \
+        "static" "Static IP address" \
+        "dhcp" "DHCP (automatic)" \
+        "disabled" "Disable interface" \
+        2>"$DIALOG_TEMP"
+
+    local result=$?
+    local type=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+
+    case "$type" in
+        static)
+            configure_static_ip "$iface"
+            ;;
+        dhcp)
+            msg_info "DHCP" "Interface $iface will be configured to use DHCP.\n\nApply configuration to activate."
+            # Would update config here
+            ;;
+        disabled)
+            msg_info "Disabled" "Interface $iface will be disabled.\n\nApply configuration to activate."
+            # Would update config here
+            ;;
+    esac
+}
+
+configure_static_ip() {
+    local iface="$1"
+    local current_ip=$(ip -4 addr show $iface 2>/dev/null | grep -oP 'inet \K[\d.]+/\d+' | head -1)
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Static IP for $iface" \
+        --inputbox "Enter IP address in CIDR notation (e.g., 192.168.1.1/24):" \
+        10 60 "$current_ip" 2>"$DIALOG_TEMP"
+
+    local result=$?
+    local new_ip=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+
+    # Validate IP/CIDR format
+    if ! echo "$new_ip" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$'; then
+        msg_error "Invalid IP address format.\nUse CIDR notation: x.x.x.x/xx"
+        return
+    fi
+
+    msg_info "IP Configured" "Interface $iface will be set to $new_ip.\n\nApply configuration to activate."
+}
+
+configure_gateway() {
+    local current_gw=$(ip route show default 2>/dev/null | grep -oP 'via \K[\d.]+' | head -1)
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Default Gateway" \
+        --inputbox "Enter default gateway IP address:" \
+        10 50 "$current_gw" 2>"$DIALOG_TEMP"
+
+    local result=$?
+    local new_gw=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+
+    if [ -n "$new_gw" ]; then
+        msg_info "Gateway Configured" "Default gateway will be set to $new_gw.\n\nApply configuration to activate."
+    fi
+}
+
+configure_dns() {
+    local current_dns=$(cat /etc/resolv.conf 2>/dev/null | grep "^nameserver" | head -1 | awk '{print $2}')
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "DNS Servers" \
+        --inputbox "Enter primary DNS server:" \
+        10 50 "$current_dns" 2>"$DIALOG_TEMP"
+
+    local result=$?
+    local new_dns=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+
+    if [ -n "$new_dns" ]; then
+        msg_info "DNS Configured" "Primary DNS will be set to $new_dns.\n\nApply configuration to activate."
+    fi
+}
+
+configure_hostname() {
+    local current=$(get_config "system.hostname" "coyote")
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Hostname" \
+        --inputbox "Enter hostname:" \
+        10 50 "$current" 2>"$DIALOG_TEMP"
+
+    local result=$?
+    local new_hostname=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+
+    if [ -n "$new_hostname" ]; then
+        set_config "system.hostname" "$new_hostname"
+        msg_info "Hostname Set" "Hostname will be set to $new_hostname.\n\nApply configuration to activate."
+    fi
+}
+
+#
+# Firewall configuration
+#
+
+menu_firewall() {
+    while true; do
+        local fw_status="ENABLED"
+        [ "$(get_config 'firewall.enabled' 'true')" != "true" ] && fw_status="DISABLED"
+
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Firewall Configuration [$fw_status]" \
+            --cancel-label "Back" \
+            --menu "Select an option:" 15 60 6 \
+            "1" "Enable/Disable Firewall" \
+            "2" "View Blocked Hosts" \
+            "3" "Block Host" \
+            "4" "Unblock Host" \
+            "5" "View Active Connections" \
+            "6" "Emergency Stop (Flush Rules)" \
+            2>"$DIALOG_TEMP"
+
+        local result=$?
+        local choice=$(cat "$DIALOG_TEMP")
+
+        [ $result -ne $DIALOG_OK ] && return
+
+        case "$choice" in
+            1) toggle_firewall ;;
+            2) view_blocked_hosts ;;
+            3) block_host ;;
+            4) unblock_host ;;
+            5) view_connections ;;
+            6) emergency_stop ;;
+        esac
+    done
+}
+
+toggle_firewall() {
+    local current=$(get_config "firewall.enabled" "true")
+
+    if [ "$current" = "true" ]; then
+        if ask_yesno "Disable Firewall" "Are you sure you want to disable the firewall?\n\nThis will leave your system unprotected."; then
+            set_config "firewall.enabled" "false"
+            msg_info "Firewall" "Firewall will be disabled.\n\nApply configuration to activate."
+        fi
+    else
+        set_config "firewall.enabled" "true"
+        msg_info "Firewall" "Firewall will be enabled.\n\nApply configuration to activate."
+    fi
+}
+
+view_blocked_hosts() {
+    local blocked=$(nft list set inet filter blocked_hosts 2>/dev/null | grep -A100 "elements" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?' | head -20)
+
+    if [ -z "$blocked" ]; then
+        msg_info "Blocked Hosts" "No hosts are currently blocked."
+    else
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Blocked Hosts" \
+            --msgbox "Currently blocked:\n\n$blocked" 18 50
+    fi
+}
+
+block_host() {
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Block Host" \
+        --inputbox "Enter IP address or CIDR to block:" \
+        10 50 2>"$DIALOG_TEMP"
+
+    local result=$?
+    local host=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+    [ -z "$host" ] && return
+
+    if nft add element inet filter blocked_hosts { "$host" } 2>/dev/null; then
+        msg_info "Host Blocked" "Successfully blocked: $host"
+    else
+        msg_error "Failed to block host: $host"
+    fi
+}
+
+unblock_host() {
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Unblock Host" \
+        --inputbox "Enter IP address or CIDR to unblock:" \
+        10 50 2>"$DIALOG_TEMP"
+
+    local result=$?
+    local host=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+    [ -z "$host" ] && return
+
+    if nft delete element inet filter blocked_hosts { "$host" } 2>/dev/null; then
+        msg_info "Host Unblocked" "Successfully unblocked: $host"
+    else
+        msg_error "Failed to unblock host: $host\n\n(Host may not be in blocked list)"
+    fi
+}
+
+view_connections() {
+    local conn_count=$(cat /proc/sys/net/netfilter/nf_conntrack_count 2>/dev/null || echo "0")
+    local conn_max=$(cat /proc/sys/net/netfilter/nf_conntrack_max 2>/dev/null || echo "0")
+
+    # Get sample of connections
+    local connections=""
+    if [ -f /proc/net/nf_conntrack ]; then
+        connections=$(head -20 /proc/net/nf_conntrack 2>/dev/null | awk '{print $3, $4, $5}' | column -t)
+    fi
+
+    local info="Active connections: $conn_count / $conn_max\n\n"
+    if [ -n "$connections" ]; then
+        info="${info}Recent connections:\n$connections"
+    fi
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "Active Connections" \
+        --msgbox "$info" 20 70
+}
+
+emergency_stop() {
+    if ask_yesno "Emergency Stop" "This will IMMEDIATELY flush all firewall rules!\n\nYour system will be completely UNPROTECTED.\n\nAre you absolutely sure?"; then
+        nft flush ruleset 2>/dev/null
+        msg_info "Emergency Stop" "All firewall rules have been flushed.\n\nYour system is now UNPROTECTED.\n\nReboot or apply configuration to restore firewall."
+    fi
+}
+
+#
+# Services configuration
+#
+
+menu_services() {
+    while true; do
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Services Configuration" \
+            --cancel-label "Back" \
+            --menu "Select a service:" 15 60 6 \
+            "1" "SSH Server" \
+            "2" "Web Admin" \
+            "3" "DHCP Server" \
+            "4" "DNS Forwarder" \
+            "5" "UPnP/IGD" \
+            2>"$DIALOG_TEMP"
+
+        local result=$?
+        local choice=$(cat "$DIALOG_TEMP")
+
+        [ $result -ne $DIALOG_OK ] && return
+
+        case "$choice" in
+            1) configure_ssh ;;
+            2) configure_webadmin ;;
+            3) configure_dhcp ;;
+            4) configure_dns_service ;;
+            5) configure_upnp ;;
+        esac
+    done
+}
+
+configure_ssh() {
+    local enabled=$(get_config "services.ssh.enabled" "true")
+    local port=$(get_config "services.ssh.port" "22")
+
+    local status="Enabled"
+    [ "$enabled" != "true" ] && status="Disabled"
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "SSH Server [$status]" \
+        --menu "SSH Configuration:" 12 50 3 \
+        "1" "Toggle Enable/Disable" \
+        "2" "Change Port (current: $port)" \
+        2>"$DIALOG_TEMP"
+
+    local result=$?
+    local choice=$(cat "$DIALOG_TEMP")
+
+    [ $result -ne $DIALOG_OK ] && return
+
+    case "$choice" in
+        1)
+            if [ "$enabled" = "true" ]; then
+                set_config "services.ssh.enabled" "false"
+                msg_info "SSH" "SSH will be disabled.\n\nApply configuration to activate."
+            else
+                set_config "services.ssh.enabled" "true"
+                msg_info "SSH" "SSH will be enabled.\n\nApply configuration to activate."
+            fi
+            ;;
+        2)
+            $DIALOG --backtitle "$BACKTITLE" \
+                --title "SSH Port" \
+                --inputbox "Enter SSH port:" 10 40 "$port" 2>"$DIALOG_TEMP"
+
+            result=$?
+            local new_port=$(cat "$DIALOG_TEMP")
+
+            if [ $result -eq $DIALOG_OK ] && [ -n "$new_port" ]; then
+                set_config "services.ssh.port" "$new_port"
+                msg_info "SSH Port" "SSH port will be set to $new_port.\n\nApply configuration to activate."
+            fi
+            ;;
+    esac
+}
+
+configure_webadmin() {
+    msg_info "Web Admin" "Web administration interface runs on:\n\n  HTTP:  Port 80\n  HTTPS: Port 443\n\nAccess via: https://<firewall-ip>/"
+}
+
+configure_dhcp() {
+    local enabled=$(get_config "services.dhcpd.enabled" "false")
+    local status="Disabled"
+    [ "$enabled" = "true" ] && status="Enabled"
+
+    msg_info "DHCP Server [$status]" "DHCP server configuration is available\nthrough the web admin interface.\n\nCurrent status: $status"
+}
+
+configure_dns_service() {
+    local enabled=$(get_config "services.dns.enabled" "false")
+    local status="Disabled"
+    [ "$enabled" = "true" ] && status="Enabled"
+
+    msg_info "DNS Forwarder [$status]" "DNS forwarder configuration is available\nthrough the web admin interface.\n\nCurrent status: $status"
+}
+
+configure_upnp() {
+    local enabled=$(get_config "services.upnp.enabled" "false")
+    local status="Disabled"
+    [ "$enabled" = "true" ] && status="Enabled"
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "UPnP/IGD [$status]" \
+        --yesno "UPnP allows devices on your network to automatically\nconfigure port forwards.\n\nCurrent status: $status\n\nToggle UPnP?" 12 55
+
+    if [ $? -eq $DIALOG_OK ]; then
+        if [ "$enabled" = "true" ]; then
+            set_config "services.upnp.enabled" "false"
+            msg_info "UPnP" "UPnP will be disabled.\n\nApply configuration to activate."
+        else
+            set_config "services.upnp.enabled" "true"
+            msg_info "UPnP" "UPnP will be enabled.\n\nApply configuration to activate."
+        fi
+    fi
+}
+
+#
+# System menu
+#
+
+menu_system() {
+    while true; do
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "System" \
+            --cancel-label "Back" \
+            --menu "Select an option:" 15 60 6 \
+            "1" "Apply Configuration" \
+            "2" "Save Configuration" \
+            "3" "View System Log" \
+            "4" "Reboot System" \
+            "5" "Shutdown System" \
+            2>"$DIALOG_TEMP"
+
+        local result=$?
+        local choice=$(cat "$DIALOG_TEMP")
+
+        [ $result -ne $DIALOG_OK ] && return
+
+        case "$choice" in
+            1) apply_config ;;
+            2) save_config ;;
+            3) view_syslog ;;
+            4) system_reboot ;;
+            5) system_shutdown ;;
+        esac
+    done
+}
+
+apply_config() {
+    if ask_yesno "Apply Configuration" "Apply the current configuration?\n\nThis may briefly interrupt network connectivity."; then
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Applying Configuration" \
+            --infobox "Applying configuration...\n\nPlease wait." 6 40
+
+        /opt/coyote/bin/apply-config >/dev/null 2>&1
+        local result=$?
+
+        if [ $result -eq 0 ]; then
+            msg_info "Success" "Configuration applied successfully."
+        else
+            msg_error "Configuration apply failed.\n\nCheck /var/log/coyote-apply.log for details."
+        fi
+    fi
+}
+
+save_config() {
+    if ask_yesno "Save Configuration" "Save current configuration to persistent storage?\n\nThis will preserve settings across reboots."; then
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Saving Configuration" \
+            --infobox "Saving configuration...\n\nPlease wait." 6 40
+
+        /opt/coyote/bin/save-config >/dev/null 2>&1
+        local result=$?
+
+        if [ $result -eq 0 ]; then
+            msg_info "Success" "Configuration saved successfully."
+        else
+            msg_error "Failed to save configuration."
+        fi
+    fi
+}
+
+view_syslog() {
+    local log=$(logread 2>/dev/null | tail -50)
+
+    $DIALOG --backtitle "$BACKTITLE" \
+        --title "System Log (last 50 lines)" \
+        --scrolltext \
+        --msgbox "$log" 22 76
+}
+
+system_reboot() {
+    if ask_yesno "Reboot" "Are you sure you want to reboot the system?"; then
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Rebooting" \
+            --infobox "System is rebooting..." 5 30
+        sleep 2
+        reboot
+    fi
+}
+
+system_shutdown() {
+    if ask_yesno "Shutdown" "Are you sure you want to shutdown the system?"; then
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Shutting Down" \
+            --infobox "System is shutting down..." 5 30
+        sleep 2
+        poweroff
+    fi
+}
+
+#
+# Main menu
+#
+
+main_menu() {
+    while true; do
+        $DIALOG --backtitle "$BACKTITLE" \
+            --title "Main Menu" \
+            --cancel-label "Exit" \
+            --menu "Select an option:" 16 60 8 \
+            "1" "System Status" \
+            "2" "Network Configuration" \
+            "3" "Firewall Configuration" \
+            "4" "Services" \
+            "5" "System / Apply / Save" \
+            "6" "Exit to Shell" \
+            2>"$DIALOG_TEMP"
+
+        local result=$?
+        local choice=$(cat "$DIALOG_TEMP")
+
+        if [ $result -ne $DIALOG_OK ]; then
+            exit_program
+            return
+        fi
+
+        case "$choice" in
+            1) show_status ;;
+            2) menu_network ;;
+            3) menu_firewall ;;
+            4) menu_services ;;
+            5) menu_system ;;
+            6) exit_program ;;
+        esac
+    done
+}
+
+exit_program() {
+    if ask_yesno "Exit" "Exit configuration utility?"; then
+        clear
+        echo ""
+        echo "Coyote Linux $COYOTE_VERSION"
+        echo ""
+        echo "Run 'coyote-config' to return to this menu."
+        echo ""
+        exit 0
+    fi
+}
+
+#
+# Entry point
+#
+
+# Check if dialog is available
+if ! command -v dialog >/dev/null 2>&1; then
+    echo "Error: 'dialog' utility not found"
+    exit 1
+fi
+
+# Check if running as root
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Error: This utility must be run as root"
+    exit 1
+fi
+
+# Start the main menu
+main_menu

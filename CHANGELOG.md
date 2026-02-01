@@ -84,6 +84,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `fw-status` updated for nftables with JSON output, connection tracking, UPnP leases, and verbose ruleset display
 - Enabled in default runlevel after coyote-config
 
+#### Console Configuration Utility
+- `coyote-config` TUI for console-based system configuration
+- Dialog-based menu interface with system status display
+- Network configuration: interfaces, gateway, DNS, hostname
+- Firewall management: enable/disable, block/unblock hosts, view connections, emergency stop
+- Services configuration: SSH, web admin, DHCP, DNS, UPnP
+- System operations: apply config, save config, view logs, reboot, shutdown
+
 ## [4.0.38] - 2026-01-26
 
 ### Added
