@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+#### Alpine Linux Update
+- Updated base system to Alpine Linux 3.23.3
+
 #### Firewall Backend Migration to nftables
 - Replaced iptables-based firewall with nftables for modern packet filtering
 - Atomic ruleset application prevents partial rule states during configuration changes
@@ -25,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `IcmpService.php` - Granular ICMP/ICMPv6 rule generation with rate limiting and presets
 - `InterfaceResolver.php` - Maps interface roles (wan, lan, dmz), aliases, and groups to physical interfaces
 - `AclBindingService.php` - Enhanced ACL binding with interface resolution, wildcards, and bidirectional support
+- `NftNatService.php` - NAT service with masquerade, SNAT, DNAT, bypass rules, and source restrictions
 - `nftables.rules.tpl` - Reference template showing base ruleset structure
 - Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
 - Convenience methods for dynamic host blocking/unblocking via sets

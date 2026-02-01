@@ -33,6 +33,9 @@ class FirewallManager
     /** @var AclBindingService */
     private AclBindingService $aclBinding;
 
+    /** @var NftNatService */
+    private NftNatService $natService;
+
     /** @var Logger */
     private Logger $logger;
 
@@ -60,6 +63,7 @@ class FirewallManager
         $this->icmpService = new IcmpService();
         $this->interfaceResolver = new InterfaceResolver();
         $this->aclBinding = new AclBindingService($this->interfaceResolver);
+        $this->natService = new NftNatService($this->interfaceResolver);
         $this->logger = new Logger('coyote-firewall');
         $this->currentRuleset = $this->stateDir . '/current.nft';
         $this->previousRuleset = $this->stateDir . '/previous.nft';
@@ -154,11 +158,8 @@ class FirewallManager
         // Build ICMP rules
         $this->buildIcmpRules($firewallConfig);
 
-        // Build NAT rules
-        $this->buildNatRules($firewallConfig);
-
-        // Build port forward rules
-        $this->buildPortForwardRules($firewallConfig);
+        // Build NAT rules (includes masquerade, SNAT, DNAT/port forwards)
+        $this->buildNatRules($firewallConfig, $networkConfig);
 
         // Build user-defined ACLs with interface resolution
         $this->buildUserAcls($firewallConfig, $networkConfig);
@@ -228,107 +229,36 @@ class FirewallManager
      *
      * @param array $firewallConfig Firewall configuration
      */
-    private function buildNatRules(array $firewallConfig): void
+    private function buildNatRules(array $firewallConfig, array $networkConfig = []): void
     {
-        $natConfig = $firewallConfig['nat'] ?? [];
+        // Delegate to NftNatService for NAT rule generation
+        $this->natService->loadConfig($firewallConfig, $networkConfig);
 
-        // NAT bypass rules
-        $bypassRules = [];
-        foreach ($natConfig['bypass'] ?? [] as $bypass) {
-            $src = $bypass['source'] ?? '';
-            $dst = $bypass['destination'] ?? '';
-            if ($src && $dst) {
-                $bypassRules[] = "ip saddr {$src} ip daddr {$dst} return";
+        // Get all NAT chain rules
+        $chainRules = $this->natService->buildNatRules();
+
+        // Add all chain rules to the builder
+        foreach ($chainRules as $chainKey => $rules) {
+            // Parse chain key (e.g., "inet nat/postrouting-masq")
+            $parts = explode('/', $chainKey);
+            if (count($parts) === 2) {
+                $this->builder->addChainRules($parts[0], $parts[1], $rules);
             }
-        }
-        if (!empty($bypassRules)) {
-            $this->builder->addChainRules('inet nat', 'postrouting-bypass', $bypassRules);
-        }
-
-        // Masquerade rules
-        $masqRules = [];
-        foreach ($natConfig['masquerade'] ?? [] as $masq) {
-            $interface = $masq['interface'] ?? '';
-            $source = $masq['source'] ?? '';
-
-            if ($interface) {
-                $rule = "oifname \"{$interface}\"";
-                if ($source) {
-                    $rule .= " ip saddr {$source}";
-                }
-                $rule .= ' masquerade';
-                $masqRules[] = $rule;
-            }
-        }
-
-        // Legacy format support (array of interface=>source)
-        if (empty($masqRules) && is_array($natConfig) && !isset($natConfig['masquerade'])) {
-            foreach ($natConfig as $nat) {
-                if (is_array($nat) && isset($nat['interface'])) {
-                    $interface = $nat['interface'];
-                    $source = $nat['source'] ?? '';
-
-                    $rule = "oifname \"{$interface}\"";
-                    if ($source) {
-                        $rule .= " ip saddr {$source}";
-                    }
-                    $rule .= ' masquerade';
-                    $masqRules[] = $rule;
-                }
-            }
-        }
-
-        if (!empty($masqRules)) {
-            $this->builder->addChainRules('inet nat', 'postrouting-masq', $masqRules);
         }
     }
 
     /**
      * Build port forwarding rules.
      *
+     * Note: Port forwards are now handled by NftNatService in buildNatRules().
+     * This method is kept for backward compatibility but delegates to the NAT service.
+     *
      * @param array $firewallConfig Firewall configuration
      */
     private function buildPortForwardRules(array $firewallConfig): void
     {
-        $portForwards = $firewallConfig['port_forwards'] ?? [];
-
-        $dnatRules = [];
-        $filterRules = [];
-
-        foreach ($portForwards as $fwd) {
-            $protocol = $fwd['protocol'] ?? 'tcp';
-            $extPort = $fwd['external_port'] ?? null;
-            $intIp = $fwd['internal_ip'] ?? null;
-            $intPort = $fwd['internal_port'] ?? $extPort;
-            $interface = $fwd['interface'] ?? null;
-
-            if (!$extPort || !$intIp) {
-                continue;
-            }
-
-            // Build DNAT rule
-            $dnatRule = '';
-            if ($interface) {
-                $dnatRule .= "iifname \"{$interface}\" ";
-            }
-            $dnatRule .= "{$protocol} dport {$extPort} dnat to {$intIp}";
-            if ($intPort !== $extPort) {
-                $dnatRule .= ":{$intPort}";
-            }
-            $dnatRules[] = $dnatRule;
-
-            // Build filter ACL to allow forwarded traffic
-            $filterRule = "{$protocol} dport {$intPort} ip daddr {$intIp} accept";
-            $filterRules[] = $filterRule;
-        }
-
-        if (!empty($dnatRules)) {
-            $this->builder->addChainRules('inet nat', 'port-forward', $dnatRules);
-        }
-
-        if (!empty($filterRules)) {
-            $this->builder->addChainRules('inet filter', 'auto-forward-acl', $filterRules);
-        }
+        // Port forwards are now processed by NftNatService in buildNatRules()
+        // This method is kept for explicit calls but the rules are already built
     }
 
     /**
@@ -576,6 +506,56 @@ class FirewallManager
     public function getAclBindingService(): AclBindingService
     {
         return $this->aclBinding;
+    }
+
+    /**
+     * Get the NAT service instance.
+     *
+     * @return NftNatService
+     */
+    public function getNatService(): NftNatService
+    {
+        return $this->natService;
+    }
+
+    /**
+     * Add a masquerade rule.
+     *
+     * Convenience method for quick NAT setup.
+     *
+     * @param string $interface Output interface (or role like 'wan')
+     * @param string|null $source Source network to masquerade
+     * @return bool True (rule added to pending config)
+     */
+    public function addMasquerade(string $interface, ?string $source = null): bool
+    {
+        $this->natService->addMasquerade($interface, $source);
+        $this->logger->info("Added masquerade rule for interface: {$interface}");
+        return true;
+    }
+
+    /**
+     * Add a port forward rule.
+     *
+     * Convenience method for quick port forward setup.
+     *
+     * @param string $protocol Protocol (tcp, udp)
+     * @param int $externalPort External port
+     * @param string $internalIp Internal IP address
+     * @param int|null $internalPort Internal port (defaults to external)
+     * @param string|null $interface Input interface
+     * @return bool True (rule added to pending config)
+     */
+    public function addPortForward(
+        string $protocol,
+        int $externalPort,
+        string $internalIp,
+        ?int $internalPort = null,
+        ?string $interface = null
+    ): bool {
+        $this->natService->addPortForward($protocol, $externalPort, $internalIp, $internalPort, $interface);
+        $this->logger->info("Added port forward: {$protocol}/{$externalPort} -> {$internalIp}");
+        return true;
     }
 
     /**
