@@ -39,6 +39,9 @@ class FirewallManager
     /** @var LoggingService */
     private LoggingService $loggingService;
 
+    /** @var QosManager */
+    private QosManager $qosManager;
+
     /** @var Logger */
     private Logger $logger;
 
@@ -68,6 +71,7 @@ class FirewallManager
         $this->aclBinding = new AclBindingService($this->interfaceResolver);
         $this->natService = new NftNatService($this->interfaceResolver);
         $this->loggingService = new LoggingService();
+        $this->qosManager = new QosManager($this->interfaceResolver);
         $this->logger = new Logger('coyote-firewall');
         $this->currentRuleset = $this->stateDir . '/current.nft';
         $this->previousRuleset = $this->stateDir . '/previous.nft';
@@ -176,7 +180,32 @@ class FirewallManager
         // Build user-defined ACLs with interface resolution
         $this->buildUserAcls($firewallConfig, $networkConfig);
 
+        // Build QoS rules if enabled
+        $this->buildQosRules($firewallConfig, $networkConfig);
+
         return $this->builder->buildFromConfig($config);
+    }
+
+    /**
+     * Build QoS (Quality of Service) rules.
+     *
+     * @param array $firewallConfig Firewall configuration
+     * @param array $networkConfig Network configuration
+     */
+    private function buildQosRules(array $firewallConfig, array $networkConfig = []): void
+    {
+        $qosConfig = $firewallConfig['qos'] ?? [];
+
+        // Load QoS configuration
+        $this->qosManager->loadConfig($qosConfig, $networkConfig);
+
+        // Check if QoS requires mangle table
+        if ($this->qosManager->requiresMangleTable()) {
+            $mangleRules = $this->qosManager->buildMangleRules();
+            if (!empty($mangleRules)) {
+                $this->builder->enableMangle($mangleRules);
+            }
+        }
     }
 
     /**
@@ -541,6 +570,16 @@ class FirewallManager
     }
 
     /**
+     * Get the QoS manager instance.
+     *
+     * @return QosManager
+     */
+    public function getQosManager(): QosManager
+    {
+        return $this->qosManager;
+    }
+
+    /**
      * Set logging preset.
      *
      * Convenience method to quickly configure logging level.
@@ -701,5 +740,66 @@ class FirewallManager
     public function getBlockedHosts(): array
     {
         return $this->setManager->getElements('blocked_hosts');
+    }
+
+    /**
+     * Set QoS preset.
+     *
+     * Convenience method to quickly configure QoS profile.
+     *
+     * @param string $preset Preset name (voip, gaming, streaming, general)
+     * @return self
+     */
+    public function setQosPreset(string $preset): self
+    {
+        $config = QosManager::getPreset($preset);
+        $this->qosManager->loadConfig($config);
+        $this->logger->info("QoS preset set to: {$preset}");
+        return $this;
+    }
+
+    /**
+     * Enable or disable QoS.
+     *
+     * @param bool $enabled
+     * @return self
+     */
+    public function setQosEnabled(bool $enabled): self
+    {
+        $this->qosManager->setEnabled($enabled);
+        $this->logger->info("QoS " . ($enabled ? 'enabled' : 'disabled'));
+        return $this;
+    }
+
+    /**
+     * Add a QoS classification rule.
+     *
+     * Convenience method for adding traffic classification rules.
+     *
+     * @param string $name Rule name
+     * @param string $class Traffic class (realtime, interactive, default, bulk, background)
+     * @param array $match Match criteria (protocol, port, source, destination)
+     * @param int $priority Rule priority (lower = higher priority)
+     * @return self
+     */
+    public function addQosRule(string $name, string $class, array $match, int $priority = 100): self
+    {
+        $this->qosManager->addRule($name, $class, $match, $priority);
+        $this->logger->info("Added QoS rule: {$name} -> {$class}");
+        return $this;
+    }
+
+    /**
+     * Generate tc commands for QoS on an interface.
+     *
+     * Returns the commands to configure Linux traffic control for bandwidth management.
+     *
+     * @param string $interface Interface name
+     * @param int $bandwidth Bandwidth in kbps
+     * @return array Array of tc commands to execute
+     */
+    public function generateQosTcCommands(string $interface, int $bandwidth): array
+    {
+        return $this->qosManager->generateTcCommands($interface, $bandwidth);
     }
 }

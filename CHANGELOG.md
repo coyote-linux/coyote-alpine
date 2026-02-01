@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `AclBindingService.php` - Enhanced ACL binding with interface resolution, wildcards, and bidirectional support
 - `NftNatService.php` - NAT service with masquerade, SNAT, DNAT, bypass rules, and source restrictions
 - `LoggingService.php` - Configurable firewall logging with rate limiting, presets, and log groups
+- `QosManager.php` - Traffic classification and packet marking for Quality of Service
 - `nftables.rules.tpl` - Reference template showing base ruleset structure
 - Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
 - Convenience methods for dynamic host blocking/unblocking via sets
@@ -44,6 +45,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `services.ssh.allowed_hosts` - SSH access control via nftables set
 - `services.snmp.allowed_hosts` - SNMP access control via nftables set
 - `services.upnp` - UPnP/IGD service configuration
+- `firewall.qos` - Quality of Service with traffic classification, packet marking, and tc integration
+
+#### QoS (Quality of Service) Features
+- Traffic classification via nftables mangle table with packet marking
+- Default traffic classes: realtime (VoIP), interactive (SSH/DNS), default, bulk, background
+- DSCP-based classification for standards-compliant QoS
+- HTB (Hierarchical Token Bucket) tc command generation for bandwidth management
+- Per-interface bandwidth limiting with SFQ leaf queuing
+- QoS presets: voip, gaming, streaming, general
 
 ## [4.0.38] - 2026-01-26
 
