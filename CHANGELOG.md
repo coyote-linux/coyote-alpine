@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `NftNatService.php` - NAT service with masquerade, SNAT, DNAT, bypass rules, and source restrictions
 - `LoggingService.php` - Configurable firewall logging with rate limiting, presets, and log groups
 - `QosManager.php` - Traffic classification and packet marking for Quality of Service
+- `UpnpService.php` - UPnP/IGD service management with miniupnpd and nftables integration
 - `nftables.rules.tpl` - Reference template showing base ruleset structure
 - Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
 - Convenience methods for dynamic host blocking/unblocking via sets
@@ -54,6 +55,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - HTB (Hierarchical Token Bucket) tc command generation for bandwidth management
 - Per-interface bandwidth limiting with SFQ leaf queuing
 - QoS presets: voip, gaming, streaming, general
+
+#### UPnP/IGD Service Integration
+- miniupnpd configuration generation with nftables backend
+- Automatic port forwarding via UPnP IGD protocol
+- NAT-PMP and PCP protocol support
+- Secure mode restricts clients to forward only to themselves
+- Stable UUID generation based on machine identity
+- Lease tracking and status reporting
+- Permission rules for allowed/denied port ranges
+- Service presets: disabled, basic, full
 
 ## [4.0.38] - 2026-01-26
 

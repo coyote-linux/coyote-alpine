@@ -42,6 +42,9 @@ class FirewallManager
     /** @var QosManager */
     private QosManager $qosManager;
 
+    /** @var UpnpService */
+    private UpnpService $upnpService;
+
     /** @var Logger */
     private Logger $logger;
 
@@ -72,6 +75,7 @@ class FirewallManager
         $this->natService = new NftNatService($this->interfaceResolver);
         $this->loggingService = new LoggingService();
         $this->qosManager = new QosManager($this->interfaceResolver);
+        $this->upnpService = new UpnpService($this->interfaceResolver);
         $this->logger = new Logger('coyote-firewall');
         $this->currentRuleset = $this->stateDir . '/current.nft';
         $this->previousRuleset = $this->stateDir . '/previous.nft';
@@ -183,6 +187,9 @@ class FirewallManager
         // Build QoS rules if enabled
         $this->buildQosRules($firewallConfig, $networkConfig);
 
+        // Configure UPnP service
+        $this->configureUpnp($servicesConfig, $networkConfig);
+
         return $this->builder->buildFromConfig($config);
     }
 
@@ -206,6 +213,20 @@ class FirewallManager
                 $this->builder->enableMangle($mangleRules);
             }
         }
+    }
+
+    /**
+     * Configure UPnP service.
+     *
+     * @param array $servicesConfig Services configuration
+     * @param array $networkConfig Network configuration
+     */
+    private function configureUpnp(array $servicesConfig, array $networkConfig = []): void
+    {
+        $upnpConfig = $servicesConfig['upnp'] ?? [];
+
+        // Load UPnP configuration (service management handled separately)
+        $this->upnpService->loadConfig($upnpConfig, $networkConfig);
     }
 
     /**
@@ -580,6 +601,16 @@ class FirewallManager
     }
 
     /**
+     * Get the UPnP service instance.
+     *
+     * @return UpnpService
+     */
+    public function getUpnpService(): UpnpService
+    {
+        return $this->upnpService;
+    }
+
+    /**
      * Set logging preset.
      *
      * Convenience method to quickly configure logging level.
@@ -801,5 +832,66 @@ class FirewallManager
     public function generateQosTcCommands(string $interface, int $bandwidth): array
     {
         return $this->qosManager->generateTcCommands($interface, $bandwidth);
+    }
+
+    /**
+     * Set UPnP preset.
+     *
+     * Convenience method to quickly configure UPnP profile.
+     *
+     * @param string $preset Preset name (disabled, basic, full)
+     * @return self
+     */
+    public function setUpnpPreset(string $preset): self
+    {
+        $config = UpnpService::getPreset($preset);
+        $this->upnpService->loadConfig($config);
+        $this->logger->info("UPnP preset set to: {$preset}");
+        return $this;
+    }
+
+    /**
+     * Enable or disable UPnP.
+     *
+     * @param bool $enabled
+     * @return self
+     */
+    public function setUpnpEnabled(bool $enabled): self
+    {
+        $this->upnpService->setEnabled($enabled);
+        $this->logger->info("UPnP " . ($enabled ? 'enabled' : 'disabled'));
+        return $this;
+    }
+
+    /**
+     * Apply UPnP configuration and manage service.
+     *
+     * Writes configuration and starts/stops miniupnpd as needed.
+     *
+     * @return bool True if successful
+     */
+    public function applyUpnp(): bool
+    {
+        return $this->upnpService->apply();
+    }
+
+    /**
+     * Get UPnP service status.
+     *
+     * @return array Status information including active leases
+     */
+    public function getUpnpStatus(): array
+    {
+        return $this->upnpService->getStatus();
+    }
+
+    /**
+     * Get active UPnP port forward leases.
+     *
+     * @return array Array of lease information
+     */
+    public function getUpnpLeases(): array
+    {
+        return $this->upnpService->getLeases();
     }
 }
