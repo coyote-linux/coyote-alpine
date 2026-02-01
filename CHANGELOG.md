@@ -4,6 +4,36 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.47] - 2026-02-01
+
+### Changed
+
+#### Firewall Backend Migration to nftables
+- Replaced iptables-based firewall with nftables for modern packet filtering
+- Atomic ruleset application prevents partial rule states during configuration changes
+- Native nftables sets replace ipset for efficient address/port matching
+- Unified IPv4/IPv6 handling via inet family tables
+- Automatic rollback support - previous ruleset saved before applying new configuration
+
+### Added
+
+#### nftables Infrastructure
+- `NftablesService.php` - Core nft command interface for ruleset operations
+- `RulesetBuilder.php` - Generates complete .nft ruleset files from configuration
+- `nftables.rules.tpl` - Reference template showing base ruleset structure
+- Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
+
+#### Enhanced Firewall Configuration Schema
+- `firewall.options` - MSS clamping, invalid packet logging
+- `firewall.logging` - Configurable logging with prefix and level
+- `firewall.icmp` - Granular ICMP control
+- `firewall.sets` - User-defined nftables sets for ACLs
+- `firewall.nat.bypass` - NAT bypass rules for site-to-site traffic
+- `firewall.nat.masquerade` - Structured masquerade configuration
+- `services.ssh.allowed_hosts` - SSH access control via nftables set
+- `services.snmp.allowed_hosts` - SNMP access control via nftables set
+- `services.upnp` - UPnP/IGD service configuration
+
 ## [4.0.38] - 2026-01-26
 
 ### Added

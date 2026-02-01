@@ -50,7 +50,8 @@ dnsmasq
 ppp
 ppp-pppoe
 
-# Firewall (coyote-firewall addon)
+# Firewall (nftables-based)
+nftables
 iptables
 ip6tables
 conntrack-tools

@@ -17,7 +17,8 @@
     "services": {
         "ssh": {
             "enabled": true,
-            "port": 22
+            "port": 22,
+            "allowed_hosts": []
         },
         "dhcpd": {
             "enabled": false,
@@ -37,15 +38,40 @@
             "enabled": false,
             "community": "public",
             "location": "",
-            "contact": ""
+            "contact": "",
+            "allowed_hosts": []
+        },
+        "upnp": {
+            "enabled": false,
+            "interface": "lan",
+            "external_interface": "wan",
+            "secure_mode": true
         }
     },
     "firewall": {
         "enabled": true,
         "default_policy": "drop",
+        "options": {
+            "clamp_mss": null,
+            "log_invalid": false
+        },
+        "logging": {
+            "enabled": true,
+            "prefix": "COYOTE",
+            "level": "info",
+            "local_deny": true,
+            "forward_deny": true
+        },
+        "icmp": {
+            "allow_ping": true
+        },
+        "sets": {},
         "acls": [],
         "applied": [],
-        "nat": [],
+        "nat": {
+            "bypass": [],
+            "masquerade": []
+        },
         "rules": [],
         "port_forwards": []
     },
