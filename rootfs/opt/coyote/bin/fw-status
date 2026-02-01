@@ -2,38 +2,140 @@
 <?php
 /**
  * Coyote Linux - Firewall Status
+ *
+ * Displays nftables firewall status and statistics.
  */
 
 require_once '/opt/coyote/lib/autoload.php';
 
 use Coyote\Firewall\FirewallManager;
 
-$manager = new FirewallManager();
+$verbose = in_array('--verbose', $argv) || in_array('-v', $argv);
+$json = in_array('--json', $argv) || in_array('-j', $argv);
 
+$manager = new FirewallManager();
+$status = $manager->getStatus();
+
+if ($json) {
+    // JSON output for scripts
+    $output = [
+        'firewall' => $status,
+        'upnp' => $manager->getUpnpStatus(),
+        'blocked_hosts' => $manager->getBlockedHosts(),
+    ];
+    echo json_encode($output, JSON_PRETTY_PRINT) . "\n";
+    exit(0);
+}
+
+// Human-readable output
 echo "Coyote Firewall Status\n";
 echo "======================\n\n";
 
-$status = $manager->getStatus();
-
+// Basic status
+echo "Backend:          " . ($status['backend'] ?? 'nftables') . "\n";
+echo "Version:          " . ($status['version'] ?? 'unknown') . "\n";
 echo "Firewall Enabled: " . ($status['enabled'] ? "Yes" : "No") . "\n";
-echo "Active Connections: " . ($status['connections']['count'] ?? 0) . "\n\n";
+echo "\n";
 
-$iptables = $manager->getIptablesService();
-$counts = $iptables->getRuleCounts();
+// Connection tracking
+$connCount = $status['connections']['count'] ?? 0;
+$connMax = $status['connections']['max'] ?? 0;
+$connPercent = $connMax > 0 ? round(($connCount / $connMax) * 100, 1) : 0;
+echo "Connection Tracking:\n";
+echo "  Active:  {$connCount}\n";
+echo "  Maximum: {$connMax}\n";
+echo "  Usage:   {$connPercent}%\n";
+echo "\n";
 
-echo "Rules by Chain:\n";
-foreach ($counts as $chain => $count) {
-    echo "  {$chain}: {$count}\n";
+// Packet counters
+if (!empty($status['counters'])) {
+    echo "Packet Counters:\n";
+    foreach ($status['counters'] as $chain => $counts) {
+        $packets = $counts['packets'] ?? 0;
+        $bytes = formatBytes($counts['bytes'] ?? 0);
+        echo "  {$chain}: {$packets} packets, {$bytes}\n";
+    }
+    echo "\n";
 }
 
-echo "\nNAT Rules:\n";
-$nat = $manager->getNatService();
-echo "IP Forwarding: " . ($nat->isForwardingEnabled() ? "Enabled" : "Disabled") . "\n";
-
-if (in_array('--verbose', $argv) || in_array('-v', $argv)) {
-    echo "\n\n=== Full Rule List ===\n\n";
-    $rules = $iptables->listRules();
-    foreach ($rules as $line) {
-        echo $line . "\n";
+// Blocked hosts
+$blocked = $manager->getBlockedHosts();
+if (!empty($blocked)) {
+    echo "Blocked Hosts (" . count($blocked) . "):\n";
+    foreach (array_slice($blocked, 0, 10) as $host) {
+        echo "  - {$host}\n";
     }
+    if (count($blocked) > 10) {
+        echo "  ... and " . (count($blocked) - 10) . " more\n";
+    }
+    echo "\n";
+}
+
+// UPnP status
+$upnp = $manager->getUpnpStatus();
+echo "UPnP/IGD:\n";
+echo "  Enabled: " . ($upnp['enabled'] ? "Yes" : "No") . "\n";
+echo "  Running: " . ($upnp['running'] ? "Yes" : "No") . "\n";
+if ($upnp['enabled']) {
+    echo "  Internal: " . ($upnp['internal_interface'] ?? 'N/A') . "\n";
+    echo "  External: " . ($upnp['external_interface'] ?? 'N/A') . "\n";
+    $leaseCount = $upnp['lease_count'] ?? 0;
+    echo "  Active Leases: {$leaseCount}\n";
+
+    if ($leaseCount > 0 && $verbose) {
+        echo "\n  Port Forwards:\n";
+        foreach ($upnp['leases'] as $lease) {
+            $proto = strtoupper($lease['protocol']);
+            $ext = $lease['external_port'];
+            $int = $lease['internal_ip'] . ':' . $lease['internal_port'];
+            $desc = $lease['description'] ?: '(no description)';
+            echo "    {$proto}/{$ext} -> {$int} - {$desc}\n";
+        }
+    }
+}
+echo "\n";
+
+// QoS status
+$qosManager = $manager->getQosManager();
+echo "QoS:\n";
+echo "  Enabled: " . ($qosManager->isEnabled() ? "Yes" : "No") . "\n";
+if ($qosManager->isEnabled()) {
+    $classes = $qosManager->getClasses();
+    echo "  Traffic Classes: " . count($classes) . "\n";
+    $rules = $qosManager->getRules();
+    echo "  Classification Rules: " . count($rules) . "\n";
+}
+echo "\n";
+
+// Verbose: show full nft ruleset
+if ($verbose) {
+    echo "=== nftables Ruleset ===\n\n";
+    $nft = $manager->getNftablesService();
+
+    // List tables
+    exec('nft list tables 2>/dev/null', $tables);
+    if (!empty($tables)) {
+        foreach ($tables as $table) {
+            echo "--- {$table} ---\n";
+            exec("nft list {$table} 2>/dev/null", $rules);
+            echo implode("\n", $rules) . "\n\n";
+            $rules = [];
+        }
+    } else {
+        echo "(No nftables rules loaded)\n";
+    }
+}
+
+/**
+ * Format bytes to human-readable string.
+ */
+function formatBytes(int $bytes): string
+{
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $i = 0;
+    while ($bytes >= 1024 && $i < count($units) - 1) {
+        $bytes /= 1024;
+        $i++;
+    }
+    return round($bytes, 2) . ' ' . $units[$i];
 }

@@ -1,0 +1,133 @@
+#!/sbin/openrc-run
+#
+# Coyote Linux firewall service
+#
+# Manages the nftables firewall, including:
+# - Loading firewall rules from configuration
+# - UPnP/miniupnpd service
+# - QoS traffic control
+#
+
+description="Coyote Linux nftables firewall"
+
+extra_commands="reload panic status"
+extra_started_commands="reload"
+description_reload="Reload firewall rules from configuration"
+description_panic="Emergency stop - flush all rules"
+description_status="Show firewall status"
+
+depend() {
+    need coyote-config
+    before coyote-webadmin
+    use logger
+}
+
+start() {
+    ebegin "Starting Coyote firewall"
+
+    # Ensure state directory exists
+    mkdir -p /var/lib/coyote/firewall
+
+    # Apply firewall configuration
+    /opt/coyote/bin/firewall-apply start
+    local ret=$?
+
+    if [ $ret -eq 0 ]; then
+        # Start UPnP if enabled
+        start_upnp
+    fi
+
+    eend $ret
+}
+
+stop() {
+    ebegin "Stopping Coyote firewall"
+
+    # Stop UPnP service
+    stop_upnp
+
+    # Clear QoS rules
+    clear_qos
+
+    # Flush firewall rules
+    /opt/coyote/bin/firewall-apply stop
+
+    eend $?
+}
+
+reload() {
+    ebegin "Reloading Coyote firewall"
+
+    /opt/coyote/bin/firewall-apply reload
+    local ret=$?
+
+    if [ $ret -eq 0 ]; then
+        # Reload UPnP configuration
+        reload_upnp
+    fi
+
+    eend $ret
+}
+
+panic() {
+    ebegin "Emergency firewall stop"
+
+    # Stop all related services immediately
+    stop_upnp
+    clear_qos
+
+    # Flush all nftables rules
+    nft flush ruleset 2>/dev/null
+
+    ewarn "All firewall rules flushed - system is unprotected!"
+    eend 0
+}
+
+status() {
+    /opt/coyote/bin/fw-status
+}
+
+# Start miniupnpd if enabled
+start_upnp() {
+    # Check if UPnP is enabled in configuration
+    if [ -f /etc/miniupnpd/miniupnpd.conf ]; then
+        if grep -q "^enable_upnp=yes" /etc/miniupnpd/miniupnpd.conf 2>/dev/null; then
+            einfo "Starting UPnP service..."
+            start-stop-daemon --start --quiet \
+                --exec /usr/sbin/miniupnpd \
+                --pidfile /var/run/miniupnpd.pid \
+                -- -f /etc/miniupnpd/miniupnpd.conf
+        fi
+    fi
+}
+
+# Stop miniupnpd
+stop_upnp() {
+    if [ -f /var/run/miniupnpd.pid ]; then
+        einfo "Stopping UPnP service..."
+        start-stop-daemon --stop --quiet \
+            --pidfile /var/run/miniupnpd.pid \
+            --exec /usr/sbin/miniupnpd 2>/dev/null
+        rm -f /var/run/miniupnpd.pid
+    fi
+    # Also try killing any orphan processes
+    pkill -9 miniupnpd 2>/dev/null || true
+}
+
+# Reload miniupnpd configuration
+reload_upnp() {
+    if [ -f /var/run/miniupnpd.pid ]; then
+        einfo "Reloading UPnP configuration..."
+        kill -HUP $(cat /var/run/miniupnpd.pid) 2>/dev/null || start_upnp
+    else
+        start_upnp
+    fi
+}
+
+# Clear QoS traffic control rules
+clear_qos() {
+    # Find interfaces with HTB qdisc and remove it
+    for iface in $(tc qdisc show 2>/dev/null | grep "htb" | awk '{print $5}'); do
+        tc qdisc del dev "$iface" root 2>/dev/null || true
+    done
+}

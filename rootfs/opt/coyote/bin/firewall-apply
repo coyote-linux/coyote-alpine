@@ -1,0 +1,96 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Coyote Linux - Firewall Apply
+ *
+ * Applies firewall configuration from system.json using nftables.
+ * Called by the coyote-firewall init script.
+ */
+
+require_once '/opt/coyote/lib/autoload.php';
+
+use Coyote\Config\ConfigService;
+use Coyote\System\Subsystem\FirewallSubsystem;
+use Coyote\Util\Logger;
+
+$logger = new Logger('firewall-apply');
+
+// Parse command
+$command = $argv[1] ?? 'start';
+
+// Load configuration
+$configService = new ConfigService();
+$config = $configService->getRunningConfig();
+
+if (empty($config)) {
+    // Try loading from persistent storage
+    $config = $configService->loadConfig();
+}
+
+if (empty($config)) {
+    $logger->error('No configuration available');
+    fwrite(STDERR, "Error: No configuration available\n");
+    exit(1);
+}
+
+$firewall = new FirewallSubsystem();
+
+switch ($command) {
+    case 'start':
+    case 'reload':
+        $result = $firewall->apply($config);
+
+        if ($result['success']) {
+            $logger->info('Firewall configuration applied');
+            echo "Firewall configuration applied\n";
+            exit(0);
+        } else {
+            $logger->error('Firewall apply failed: ' . $result['message']);
+            fwrite(STDERR, "Error: " . $result['message'] . "\n");
+            if (!empty($result['errors'])) {
+                foreach ($result['errors'] as $error) {
+                    fwrite(STDERR, "  - {$error}\n");
+                }
+            }
+            exit(1);
+        }
+        break;
+
+    case 'stop':
+        $result = $firewall->emergencyDisable();
+
+        if ($result) {
+            $logger->info('Firewall stopped');
+            echo "Firewall stopped\n";
+            exit(0);
+        } else {
+            $logger->error('Failed to stop firewall');
+            fwrite(STDERR, "Error: Failed to stop firewall\n");
+            exit(1);
+        }
+        break;
+
+    case 'rollback':
+        $result = $firewall->rollback();
+
+        if ($result) {
+            $logger->info('Firewall rolled back to previous configuration');
+            echo "Firewall rolled back to previous configuration\n";
+            exit(0);
+        } else {
+            $logger->error('Firewall rollback failed');
+            fwrite(STDERR, "Error: No previous configuration available for rollback\n");
+            exit(1);
+        }
+        break;
+
+    case 'status':
+        $status = $firewall->getStatus();
+        echo json_encode($status, JSON_PRETTY_PRINT) . "\n";
+        exit(0);
+        break;
+
+    default:
+        fwrite(STDERR, "Usage: firewall-apply {start|stop|reload|rollback|status}\n");
+        exit(1);
+}

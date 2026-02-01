@@ -4,7 +4,7 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [4.0.47] - 2026-02-01
+## [4.0.51] - 2026-02-01
 
 ### Changed
 
@@ -74,6 +74,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Emergency disable and rollback support
 - 60-second countdown for firewall changes (can cause lockout)
 - Registered in SubsystemManager for automatic configuration application
+
+#### Firewall Init Script and CLI Tools
+- `coyote-firewall` OpenRC init script for firewall service management
+- Service commands: start, stop, reload, panic (emergency flush), status
+- Automatic UPnP/miniupnpd lifecycle management
+- QoS traffic control rule cleanup on stop
+- `firewall-apply` CLI tool for applying firewall configuration
+- `fw-status` updated for nftables with JSON output, connection tracking, UPnP leases, and verbose ruleset display
+- Enabled in default runlevel after coyote-config
 
 ## [4.0.38] - 2026-01-26
 
