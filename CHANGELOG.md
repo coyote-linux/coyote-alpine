@@ -66,6 +66,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Permission rules for allowed/denied port ranges
 - Service presets: disabled, basic, full
 
+#### Firewall Subsystem Integration
+- `FirewallSubsystem.php` integrates firewall with configuration apply workflow
+- Automatic nftables ruleset application on configuration changes
+- UPnP service lifecycle management during apply
+- QoS tc rules application for bandwidth management
+- Emergency disable and rollback support
+- 60-second countdown for firewall changes (can cause lockout)
+- Registered in SubsystemManager for automatic configuration application
+
 ## [4.0.38] - 2026-01-26
 
 ### Added

@@ -34,6 +34,7 @@ class SubsystemManager
         $this->register(new TimezoneSubsystem());
         $this->register(new DnsSubsystem());
         $this->register(new NetworkSubsystem());
+        $this->register(new FirewallSubsystem());
     }
 
     /**
