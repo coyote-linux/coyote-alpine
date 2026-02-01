@@ -20,8 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 #### nftables Infrastructure
 - `NftablesService.php` - Core nft command interface for ruleset operations
 - `RulesetBuilder.php` - Generates complete .nft ruleset files from configuration
+- `SetManager.php` - High-level nftables set management with live element add/remove
+- `ServiceAclService.php` - Service-specific ACL rule generation (SSH, SNMP, DHCP, DNS, UPnP, web admin)
 - `nftables.rules.tpl` - Reference template showing base ruleset structure
 - Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
+- Convenience methods for dynamic host blocking/unblocking via sets
 
 #### Enhanced Firewall Configuration Schema
 - `firewall.options` - MSS clamping, invalid packet logging

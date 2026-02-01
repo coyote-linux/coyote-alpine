@@ -18,6 +18,12 @@ class FirewallManager
     /** @var RulesetBuilder */
     private RulesetBuilder $builder;
 
+    /** @var SetManager */
+    private SetManager $setManager;
+
+    /** @var ServiceAclService */
+    private ServiceAclService $serviceAcl;
+
     /** @var Logger */
     private Logger $logger;
 
@@ -40,6 +46,8 @@ class FirewallManager
     {
         $this->nftables = new NftablesService();
         $this->builder = new RulesetBuilder();
+        $this->setManager = new SetManager($this->nftables);
+        $this->serviceAcl = new ServiceAclService();
         $this->logger = new Logger('coyote-firewall');
         $this->currentRuleset = $this->stateDir . '/current.nft';
         $this->previousRuleset = $this->stateDir . '/previous.nft';
@@ -125,7 +133,7 @@ class FirewallManager
         $this->buildSets($firewallConfig, $servicesConfig);
 
         // Build service ACL rules
-        $this->buildServiceAcls($servicesConfig);
+        $this->buildServiceAcls($servicesConfig, $firewallConfig);
 
         // Build ICMP rules
         $this->buildIcmpRules($firewallConfig);
@@ -150,34 +158,20 @@ class FirewallManager
      */
     private function buildSets(array $firewallConfig, array $servicesConfig): void
     {
-        // SSH allowed hosts set
-        $sshHosts = $servicesConfig['ssh']['allowed_hosts'] ?? [];
-        if (!empty($sshHosts)) {
-            $this->builder->addSet('ssh_allowed', 'ipv4_addr', ['interval'], $sshHosts);
-        }
+        // Delegate to SetManager for set definitions
+        $sets = $this->setManager->buildSetDefinitions([
+            'services' => $servicesConfig,
+            'firewall' => $firewallConfig,
+        ]);
 
-        // SNMP allowed hosts set
-        $snmpHosts = $servicesConfig['snmp']['allowed_hosts'] ?? [];
-        if (!empty($snmpHosts)) {
-            $this->builder->addSet('snmp_allowed', 'ipv4_addr', ['interval'], $snmpHosts);
-        }
-
-        // Blocked hosts set
-        $blockedHosts = $firewallConfig['sets']['blocked_hosts'] ?? [];
-        if (!empty($blockedHosts)) {
-            $this->builder->addSet('blocked_hosts', 'ipv4_addr', ['interval'], $blockedHosts);
-        }
-
-        // User-defined sets
-        $userSets = $firewallConfig['sets'] ?? [];
-        foreach ($userSets as $name => $setConfig) {
-            if ($name === 'blocked_hosts') {
-                continue; // Already handled
-            }
-            $type = $setConfig['type'] ?? 'ipv4_addr';
-            $flags = $setConfig['flags'] ?? ['interval'];
-            $elements = $setConfig['elements'] ?? [];
-            $this->builder->addSet($name, $type, $flags, $elements);
+        // Add sets to the ruleset builder
+        foreach ($sets as $name => $setDef) {
+            $this->builder->addSet(
+                $name,
+                $setDef['type'],
+                $setDef['flags'] ?? ['interval'],
+                $setDef['elements'] ?? []
+            );
         }
     }
 
@@ -185,66 +179,17 @@ class FirewallManager
      * Build service-specific ACL rules.
      *
      * @param array $servicesConfig Services configuration
+     * @param array $firewallConfig Firewall configuration
      */
-    private function buildServiceAcls(array $servicesConfig): void
+    private function buildServiceAcls(array $servicesConfig, array $firewallConfig = []): void
     {
-        $localAclRules = [];
+        // Delegate to ServiceAclService
+        $chainRules = $this->serviceAcl->buildServiceAcls($servicesConfig, $firewallConfig);
 
-        // SSH access
-        $ssh = $servicesConfig['ssh'] ?? [];
-        if ($ssh['enabled'] ?? false) {
-            $port = $ssh['port'] ?? 22;
-            $localAclRules[] = "tcp dport {$port} jump ssh-hosts";
-
-            // Build ssh-hosts chain rules
-            $sshRules = [];
-            if (!empty($ssh['allowed_hosts'] ?? [])) {
-                $sshRules[] = 'ip saddr @ssh_allowed accept';
-            } else {
-                // No restrictions - accept all
-                $sshRules[] = 'accept';
-            }
-            $this->builder->addChainRules('inet filter', 'ssh-hosts', $sshRules);
+        // Add all chain rules to the builder
+        foreach ($chainRules as $chainName => $rules) {
+            $this->builder->addChainRules('inet filter', $chainName, $rules);
         }
-
-        // SNMP access
-        $snmp = $servicesConfig['snmp'] ?? [];
-        if ($snmp['enabled'] ?? false) {
-            $localAclRules[] = 'udp dport 161 jump snmp-hosts';
-
-            // Build snmp-hosts chain rules
-            $snmpRules = [];
-            if (!empty($snmp['allowed_hosts'] ?? [])) {
-                $snmpRules[] = 'ip saddr @snmp_allowed accept';
-            }
-            // SNMP requires explicit host list - no fallback accept
-            $this->builder->addChainRules('inet filter', 'snmp-hosts', $snmpRules);
-        }
-
-        // ICMP
-        $localAclRules[] = 'ip protocol icmp jump icmp-rules';
-        $localAclRules[] = 'ip6 nexthdr icmpv6 jump icmp-rules';
-
-        // DHCP server access
-        $dhcpd = $servicesConfig['dhcpd'] ?? [];
-        if ($dhcpd['enabled'] ?? false) {
-            $localAclRules[] = 'udp dport { 67, 68 } jump dhcp-server';
-
-            // Build dhcp-server chain rules
-            $interface = $dhcpd['interface'] ?? 'lan';
-            $dhcpRules = [
-                "iifname \"{$interface}\" accept",
-            ];
-            $this->builder->addChainRules('inet filter', 'dhcp-server', $dhcpRules);
-        }
-
-        // UPnP
-        $upnp = $servicesConfig['upnp'] ?? [];
-        if ($upnp['enabled'] ?? false) {
-            $localAclRules[] = 'jump igd-input';
-        }
-
-        $this->builder->addChainRules('inet filter', 'coyote-local-acls', $localAclRules);
     }
 
     /**
@@ -613,5 +558,87 @@ class FirewallManager
     public function getRulesetBuilder(): RulesetBuilder
     {
         return $this->builder;
+    }
+
+    /**
+     * Get the set manager instance.
+     *
+     * @return SetManager
+     */
+    public function getSetManager(): SetManager
+    {
+        return $this->setManager;
+    }
+
+    /**
+     * Get the service ACL service instance.
+     *
+     * @return ServiceAclService
+     */
+    public function getServiceAclService(): ServiceAclService
+    {
+        return $this->serviceAcl;
+    }
+
+    /**
+     * Add an element to a live set.
+     *
+     * Convenience method for dynamic set updates.
+     *
+     * @param string $setName Set name
+     * @param string $element Element to add
+     * @return bool True if successful
+     */
+    public function addToSet(string $setName, string $element): bool
+    {
+        return $this->setManager->addElement($setName, $element);
+    }
+
+    /**
+     * Remove an element from a live set.
+     *
+     * Convenience method for dynamic set updates.
+     *
+     * @param string $setName Set name
+     * @param string $element Element to remove
+     * @return bool True if successful
+     */
+    public function removeFromSet(string $setName, string $element): bool
+    {
+        return $this->setManager->removeElement($setName, $element);
+    }
+
+    /**
+     * Block a host by adding to blocked_hosts set.
+     *
+     * @param string $host IP address or CIDR to block
+     * @return bool True if successful
+     */
+    public function blockHost(string $host): bool
+    {
+        $this->logger->info("Blocking host: {$host}");
+        return $this->setManager->addElement('blocked_hosts', $host);
+    }
+
+    /**
+     * Unblock a host by removing from blocked_hosts set.
+     *
+     * @param string $host IP address or CIDR to unblock
+     * @return bool True if successful
+     */
+    public function unblockHost(string $host): bool
+    {
+        $this->logger->info("Unblocking host: {$host}");
+        return $this->setManager->removeElement('blocked_hosts', $host);
+    }
+
+    /**
+     * Get list of blocked hosts.
+     *
+     * @return array Blocked host addresses
+     */
+    public function getBlockedHosts(): array
+    {
+        return $this->setManager->getElements('blocked_hosts');
     }
 }
