@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `SetManager.php` - High-level nftables set management with live element add/remove
 - `ServiceAclService.php` - Service-specific ACL rule generation (SSH, SNMP, DHCP, DNS, UPnP, web admin)
 - `IcmpService.php` - Granular ICMP/ICMPv6 rule generation with rate limiting and presets
+- `InterfaceResolver.php` - Maps interface roles (wan, lan, dmz), aliases, and groups to physical interfaces
+- `AclBindingService.php` - Enhanced ACL binding with interface resolution, wildcards, and bidirectional support
 - `nftables.rules.tpl` - Reference template showing base ruleset structure
 - Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
 - Convenience methods for dynamic host blocking/unblocking via sets

@@ -27,6 +27,12 @@ class FirewallManager
     /** @var IcmpService */
     private IcmpService $icmpService;
 
+    /** @var InterfaceResolver */
+    private InterfaceResolver $interfaceResolver;
+
+    /** @var AclBindingService */
+    private AclBindingService $aclBinding;
+
     /** @var Logger */
     private Logger $logger;
 
@@ -52,6 +58,8 @@ class FirewallManager
         $this->setManager = new SetManager($this->nftables);
         $this->serviceAcl = new ServiceAclService();
         $this->icmpService = new IcmpService();
+        $this->interfaceResolver = new InterfaceResolver();
+        $this->aclBinding = new AclBindingService($this->interfaceResolver);
         $this->logger = new Logger('coyote-firewall');
         $this->currentRuleset = $this->stateDir . '/current.nft';
         $this->previousRuleset = $this->stateDir . '/previous.nft';
@@ -128,6 +136,10 @@ class FirewallManager
 
         $firewallConfig = $config['firewall'] ?? [];
         $servicesConfig = $config['services'] ?? [];
+        $networkConfig = $config['network'] ?? [];
+
+        // Initialize interface resolver with network config
+        $this->interfaceResolver->loadConfig($networkConfig);
 
         // Set default policy
         $defaultPolicy = $firewallConfig['default_policy'] ?? 'drop';
@@ -148,8 +160,8 @@ class FirewallManager
         // Build port forward rules
         $this->buildPortForwardRules($firewallConfig);
 
-        // Build user-defined ACLs
-        $this->buildUserAcls($firewallConfig);
+        // Build user-defined ACLs with interface resolution
+        $this->buildUserAcls($firewallConfig, $networkConfig);
 
         return $this->builder->buildFromConfig($config);
     }
@@ -324,53 +336,17 @@ class FirewallManager
      *
      * @param array $firewallConfig Firewall configuration
      */
-    private function buildUserAcls(array $firewallConfig): void
+    private function buildUserAcls(array $firewallConfig, array $networkConfig = []): void
     {
-        $acls = $firewallConfig['acls'] ?? [];
-        $applied = $firewallConfig['applied'] ?? [];
+        // Load configuration into ACL binding service
+        $this->aclBinding->loadConfig($firewallConfig, $networkConfig);
 
-        // First, create ACL chains
-        foreach ($acls as $aclName => $aclRules) {
-            $chainName = "acl-{$aclName}";
-            $rules = [];
+        // Build ACL chains and bindings with interface resolution
+        $chainRules = $this->aclBinding->buildAclBindings();
 
-            foreach ($aclRules as $rule) {
-                $rules[] = $this->buildAclRule($rule);
-            }
-
-            // Add return at end of ACL chain
-            $rules[] = 'return';
-
+        // Add all chain rules to the builder
+        foreach ($chainRules as $chainName => $rules) {
             $this->builder->addChainRules('inet filter', $chainName, $rules);
-        }
-
-        // Apply ACL bindings (interface pairs)
-        $userAclRules = [];
-        foreach ($applied as $binding) {
-            $inIf = $binding['in_interface'] ?? '';
-            $outIf = $binding['out_interface'] ?? '';
-            $acl = $binding['acl'] ?? '';
-
-            if (!$acl) {
-                continue;
-            }
-
-            $chainName = "acl-{$acl}";
-            $rule = '';
-
-            if ($inIf) {
-                $rule .= "iifname \"{$inIf}\" ";
-            }
-            if ($outIf) {
-                $rule .= "oifname \"{$outIf}\" ";
-            }
-
-            $rule .= "jump {$chainName}";
-            $userAclRules[] = $rule;
-        }
-
-        if (!empty($userAclRules)) {
-            $this->builder->addChainRules('inet filter', 'coyote-user-acls', $userAclRules);
         }
 
         // Direct firewall rules (not ACL-based)
@@ -580,6 +556,59 @@ class FirewallManager
     public function getIcmpService(): IcmpService
     {
         return $this->icmpService;
+    }
+
+    /**
+     * Get the interface resolver instance.
+     *
+     * @return InterfaceResolver
+     */
+    public function getInterfaceResolver(): InterfaceResolver
+    {
+        return $this->interfaceResolver;
+    }
+
+    /**
+     * Get the ACL binding service instance.
+     *
+     * @return AclBindingService
+     */
+    public function getAclBindingService(): AclBindingService
+    {
+        return $this->aclBinding;
+    }
+
+    /**
+     * Resolve an interface name to physical interface(s).
+     *
+     * Convenience method for interface resolution.
+     *
+     * @param string $name Interface identifier (role, alias, or physical name)
+     * @return array Array of physical interface names
+     */
+    public function resolveInterface(string $name): array
+    {
+        return $this->interfaceResolver->resolve($name);
+    }
+
+    /**
+     * Get WAN interface(s).
+     *
+     * @return array WAN interface names
+     */
+    public function getWanInterfaces(): array
+    {
+        return $this->interfaceResolver->getExternalInterfaces();
+    }
+
+    /**
+     * Get LAN interface(s).
+     *
+     * @return array LAN/internal interface names
+     */
+    public function getLanInterfaces(): array
+    {
+        return $this->interfaceResolver->getInternalInterfaces();
     }
 
     /**
