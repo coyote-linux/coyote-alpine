@@ -29,6 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `InterfaceResolver.php` - Maps interface roles (wan, lan, dmz), aliases, and groups to physical interfaces
 - `AclBindingService.php` - Enhanced ACL binding with interface resolution, wildcards, and bidirectional support
 - `NftNatService.php` - NAT service with masquerade, SNAT, DNAT, bypass rules, and source restrictions
+- `LoggingService.php` - Configurable firewall logging with rate limiting, presets, and log groups
 - `nftables.rules.tpl` - Reference template showing base ruleset structure
 - Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
 - Convenience methods for dynamic host blocking/unblocking via sets

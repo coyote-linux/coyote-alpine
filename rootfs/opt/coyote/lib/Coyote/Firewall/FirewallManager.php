@@ -36,6 +36,9 @@ class FirewallManager
     /** @var NftNatService */
     private NftNatService $natService;
 
+    /** @var LoggingService */
+    private LoggingService $loggingService;
+
     /** @var Logger */
     private Logger $logger;
 
@@ -64,6 +67,7 @@ class FirewallManager
         $this->interfaceResolver = new InterfaceResolver();
         $this->aclBinding = new AclBindingService($this->interfaceResolver);
         $this->natService = new NftNatService($this->interfaceResolver);
+        $this->loggingService = new LoggingService();
         $this->logger = new Logger('coyote-firewall');
         $this->currentRuleset = $this->stateDir . '/current.nft';
         $this->previousRuleset = $this->stateDir . '/previous.nft';
@@ -145,9 +149,17 @@ class FirewallManager
         // Initialize interface resolver with network config
         $this->interfaceResolver->loadConfig($networkConfig);
 
+        // Configure logging
+        $loggingConfig = $firewallConfig['logging'] ?? [];
+        $this->loggingService->loadConfig($loggingConfig);
+
         // Set default policy
         $defaultPolicy = $firewallConfig['default_policy'] ?? 'drop';
         $this->builder->setPolicies($defaultPolicy, $defaultPolicy, 'accept');
+
+        // Configure final chain rules based on logging settings
+        $this->builder->setInputFinal($this->loggingService->getInputFinalRules());
+        $this->builder->setForwardFinal($this->loggingService->getForwardFinalRules());
 
         // Build sets for ACLs
         $this->buildSets($firewallConfig, $servicesConfig);
@@ -516,6 +528,44 @@ class FirewallManager
     public function getNatService(): NftNatService
     {
         return $this->natService;
+    }
+
+    /**
+     * Get the logging service instance.
+     *
+     * @return LoggingService
+     */
+    public function getLoggingService(): LoggingService
+    {
+        return $this->loggingService;
+    }
+
+    /**
+     * Set logging preset.
+     *
+     * Convenience method to quickly configure logging level.
+     *
+     * @param string $preset Preset name (minimal, standard, verbose, debug)
+     * @return self
+     */
+    public function setLoggingPreset(string $preset): self
+    {
+        $config = LoggingService::getPreset($preset);
+        $this->loggingService->loadConfig($config);
+        $this->logger->info("Logging preset set to: {$preset}");
+        return $this;
+    }
+
+    /**
+     * Enable or disable firewall logging.
+     *
+     * @param bool $enabled
+     * @return self
+     */
+    public function setLoggingEnabled(bool $enabled): self
+    {
+        $this->loggingService->setEnabled($enabled);
+        return $this;
     }
 
     /**
