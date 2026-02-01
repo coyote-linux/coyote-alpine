@@ -9,7 +9,7 @@
 
 require_once '/opt/coyote/lib/autoload.php';
 
-use Coyote\Config\ConfigService;
+use Coyote\Config\ConfigLoader;
 use Coyote\System\Subsystem\FirewallSubsystem;
 use Coyote\Util\Logger;
 
@@ -18,13 +18,26 @@ $logger = new Logger('firewall-apply');
 // Parse command
 $command = $argv[1] ?? 'start';
 
-// Load configuration
-$configService = new ConfigService();
-$config = $configService->getRunningConfig();
+// Configuration file paths
+$runningConfigPath = '/tmp/running-config/system.json';
+$persistentConfigPath = '/mnt/config/system.json';
+$defaultConfigPath = '/opt/coyote/defaults/system.json';
 
-if (empty($config)) {
-    // Try loading from persistent storage
-    $config = $configService->loadConfig();
+// Load configuration
+$config = null;
+$loader = new ConfigLoader();
+
+// Try running config first, then persistent, then defaults
+foreach ([$runningConfigPath, $persistentConfigPath, $defaultConfigPath] as $path) {
+    if (file_exists($path)) {
+        try {
+            $config = $loader->load($path);
+            $logger->info("Loaded configuration from {$path}");
+            break;
+        } catch (\Exception $e) {
+            $logger->warning("Failed to load {$path}: " . $e->getMessage());
+        }
+    }
 }
 
 if (empty($config)) {

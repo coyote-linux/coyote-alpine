@@ -35,7 +35,7 @@
         </header>
 
         <?php foreach ($this->getFlashMessages() as $flash): ?>
-            <div class="alert alert-<?= htmlspecialchars($flash['type']) ?>">
+            <div class="alert alert-<?= htmlspecialchars($flash['type']) ?>" data-auto-dismiss="5000">
                 <?= htmlspecialchars($flash['message']) ?>
             </div>
         <?php endforeach; ?>

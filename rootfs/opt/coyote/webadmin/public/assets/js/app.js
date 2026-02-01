@@ -3,14 +3,16 @@
  */
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Auto-dismiss alerts after 5 seconds
-    document.querySelectorAll('.alert').forEach(function(alert) {
+    // Auto-dismiss only transient flash alerts (those with data-auto-dismiss attribute)
+    // Static informational alerts should NOT be auto-dismissed
+    document.querySelectorAll('.alert[data-auto-dismiss]').forEach(function(alert) {
+        var delay = parseInt(alert.dataset.autoDismiss, 10) || 5000;
         setTimeout(function() {
             alert.style.opacity = '0';
             setTimeout(function() {
                 alert.remove();
             }, 300);
-        }, 5000);
+        }, delay);
     });
 
     // Confirm dangerous actions

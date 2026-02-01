@@ -194,6 +194,7 @@ th {
     padding: 1rem;
     border-radius: 4px;
     margin-bottom: 1rem;
+    transition: opacity 0.3s ease-out;
 }
 
 .alert-success {
