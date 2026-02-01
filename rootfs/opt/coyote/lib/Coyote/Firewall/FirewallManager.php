@@ -24,6 +24,9 @@ class FirewallManager
     /** @var ServiceAclService */
     private ServiceAclService $serviceAcl;
 
+    /** @var IcmpService */
+    private IcmpService $icmpService;
+
     /** @var Logger */
     private Logger $logger;
 
@@ -48,6 +51,7 @@ class FirewallManager
         $this->builder = new RulesetBuilder();
         $this->setManager = new SetManager($this->nftables);
         $this->serviceAcl = new ServiceAclService();
+        $this->icmpService = new IcmpService();
         $this->logger = new Logger('coyote-firewall');
         $this->currentRuleset = $this->stateDir . '/current.nft';
         $this->previousRuleset = $this->stateDir . '/previous.nft';
@@ -201,20 +205,8 @@ class FirewallManager
     {
         $icmpConfig = $firewallConfig['icmp'] ?? [];
 
-        $icmpRules = [];
-
-        // Ping (echo-request)
-        if ($icmpConfig['allow_ping'] ?? true) {
-            $icmpRules[] = 'ip protocol icmp icmp type echo-request accept';
-        }
-
-        // Standard allowed types
-        $icmpRules[] = 'ip protocol icmp icmp type destination-unreachable accept';
-        $icmpRules[] = 'ip protocol icmp icmp type time-exceeded accept';
-        $icmpRules[] = 'ip protocol icmp icmp type parameter-problem accept';
-
-        // ICMPv6 (essential for IPv6 operation)
-        $icmpRules[] = 'ip6 nexthdr icmpv6 icmpv6 type { echo-request, echo-reply, nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert, destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept';
+        // Delegate to IcmpService for granular rule generation
+        $icmpRules = $this->icmpService->buildIcmpRules($icmpConfig);
 
         $this->builder->addChainRules('inet filter', 'icmp-rules', $icmpRules);
     }
@@ -578,6 +570,16 @@ class FirewallManager
     public function getServiceAclService(): ServiceAclService
     {
         return $this->serviceAcl;
+    }
+
+    /**
+     * Get the ICMP service instance.
+     *
+     * @return IcmpService
+     */
+    public function getIcmpService(): IcmpService
+    {
+        return $this->icmpService;
     }
 
     /**

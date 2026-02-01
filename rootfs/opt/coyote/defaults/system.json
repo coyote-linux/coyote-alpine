@@ -63,7 +63,19 @@
             "forward_deny": true
         },
         "icmp": {
-            "allow_ping": true
+            "allow_ping": true,
+            "allow_ping_reply": true,
+            "rate_limit": null,
+            "rate_burst": 5,
+            "log_dropped": false,
+            "ipv4": {
+                "enabled": true,
+                "types": []
+            },
+            "ipv6": {
+                "enabled": true,
+                "types": []
+            }
         },
         "sets": {},
         "acls": [],

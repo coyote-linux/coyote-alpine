@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `RulesetBuilder.php` - Generates complete .nft ruleset files from configuration
 - `SetManager.php` - High-level nftables set management with live element add/remove
 - `ServiceAclService.php` - Service-specific ACL rule generation (SSH, SNMP, DHCP, DNS, UPnP, web admin)
+- `IcmpService.php` - Granular ICMP/ICMPv6 rule generation with rate limiting and presets
 - `nftables.rules.tpl` - Reference template showing base ruleset structure
 - Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
 - Convenience methods for dynamic host blocking/unblocking via sets
@@ -29,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 #### Enhanced Firewall Configuration Schema
 - `firewall.options` - MSS clamping, invalid packet logging
 - `firewall.logging` - Configurable logging with prefix and level
-- `firewall.icmp` - Granular ICMP control
+- `firewall.icmp` - Granular ICMP control with rate limiting, per-type allow/deny, IPv4/IPv6 separation, and presets (strict, permissive, server, gateway)
 - `firewall.sets` - User-defined nftables sets for ACLs
 - `firewall.nat.bypass` - NAT bypass rules for site-to-site traffic
 - `firewall.nat.masquerade` - Structured masquerade configuration
