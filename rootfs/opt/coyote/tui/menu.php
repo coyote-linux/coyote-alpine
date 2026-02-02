@@ -23,15 +23,39 @@ function clearScreen(): void
 }
 
 /**
+ * Get version from /etc/os-release.
+ */
+function getVersion(): string
+{
+    $osRelease = @parse_ini_file('/etc/os-release');
+    if ($osRelease && isset($osRelease['VERSION'])) {
+        return $osRelease['VERSION'];
+    }
+    // Fallback to /etc/coyote/version
+    $versionFile = '/etc/coyote/version';
+    if (file_exists($versionFile)) {
+        return trim(file_get_contents($versionFile));
+    }
+    return '4.0.0';
+}
+
+/**
  * Display a header.
  */
 function showHeader(): void
 {
+    $version = getVersion();
+    $title = "Coyote Linux {$version}";
+    $subtitle = "Console Configuration";
+    $width = 60;
+    $titlePad = (int)(($width - strlen($title)) / 2);
+    $subtitlePad = (int)(($width - strlen($subtitle)) / 2);
+
     echo "\033[1;36m";
-    echo "╔════════════════════════════════════════════════════════════╗\n";
-    echo "║                    Coyote Linux 4.0.0                      ║\n";
-    echo "║                   Console Configuration                    ║\n";
-    echo "╚════════════════════════════════════════════════════════════╝\n";
+    echo "╔" . str_repeat("═", $width) . "╗\n";
+    echo "║" . str_repeat(" ", $titlePad) . $title . str_repeat(" ", $width - $titlePad - strlen($title)) . "║\n";
+    echo "║" . str_repeat(" ", $subtitlePad) . $subtitle . str_repeat(" ", $width - $subtitlePad - strlen($subtitle)) . "║\n";
+    echo "╚" . str_repeat("═", $width) . "╝\n";
     echo "\033[0m\n";
 }
 
