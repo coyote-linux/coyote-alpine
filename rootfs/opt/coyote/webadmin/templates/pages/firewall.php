@@ -36,7 +36,7 @@ $status = $status ?? ['enabled' => true, 'defaultPolicy' => 'drop'];
         <div class="button-group">
             <a href="/firewall/acl/new" class="btn btn-primary">Create ACL</a>
             <a href="/firewall/apply" class="btn btn-primary">Apply ACLs to Interfaces</a>
-            <a href="/firewall/access" class="btn">Access Controls</a>
+            <a href="/firewall/access" class="btn btn-primary">Access Controls</a>
         </div>
     </div>
 

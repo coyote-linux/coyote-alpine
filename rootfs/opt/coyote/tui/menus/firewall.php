@@ -826,7 +826,8 @@ function applyFirewallChanges(): void
         // On console - safe to save immediately
         echo "\nSaving to persistent storage...\n";
         $configManager = new ConfigManager();
-        $configManager->load();
+        // Load from running-config (RAM), not persistent - changes were saved there via saveRunning()
+        $configManager->loadRunning();
         if ($configManager->save()) {
             showSuccess("Configuration saved to persistent storage.");
         } else {
@@ -868,7 +869,8 @@ function applyFirewallChanges(): void
         if ($confirmed) {
             echo "\nSaving to persistent storage...\n";
             $configManager = new ConfigManager();
-            $configManager->load();
+            // Load from running-config (RAM), not persistent - changes were saved there via saveRunning()
+            $configManager->loadRunning();
             if ($configManager->save()) {
                 showSuccess("Configuration saved to persistent storage.");
             } else {

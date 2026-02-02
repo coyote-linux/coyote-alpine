@@ -579,7 +579,7 @@ class RulesetBuilder
         $builtinChains = [
             'input', 'forward', 'output',
             'coyote-local-acls', 'coyote-user-acls',
-            'ssh-hosts', 'snmp-hosts', 'icmp-rules', 'dhcp-server',
+            'ssh-hosts', 'webadmin-hosts', 'snmp-hosts', 'icmp-rules', 'dhcp-server',
             'igd-forward', 'igd-input', 'auto-forward-acl',
         ];
 

@@ -56,14 +56,7 @@ $sshPort = $sshPort ?? 22;
     <!-- SSH Hosts -->
     <div class="card">
         <h3>SSH Access</h3>
-        <p class="text-muted">
-            Control which hosts can access SSH on this firewall.
-            <?php if ($sshEnabled): ?>
-            <span class="status-badge status-up">SSH Enabled (port <?= $sshPort ?>)</span>
-            <?php else: ?>
-            <span class="status-badge status-down">SSH Disabled</span>
-            <?php endif; ?>
-        </p>
+        <p class="text-muted">Control which hosts can access SSH on this firewall.</p>
 
         <?php if (empty($sshHosts)): ?>
         <div class="alert alert-error">

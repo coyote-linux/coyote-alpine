@@ -158,20 +158,30 @@ function showServicesStatus(): void
     echo "Services Status\n\n";
 
     $services = new Services();
-    $allServices = $services->listAll();
 
-    $relevantServices = ['sshd', 'lighttpd', 'dnsmasq', 'dhcpcd', 'haproxy', 'strongswan', 'coyote-init', 'coyote-config'];
+    // Service name => display name mapping
+    $relevantServices = [
+        'dropbear' => 'SSH Server',
+        'lighttpd' => 'Web Server',
+        'dnsmasq' => 'DNS/DHCP',
+        'dhcpcd' => 'DHCP Client',
+        'haproxy' => 'Load Balancer',
+        'strongswan' => 'VPN Server',
+        'coyote-init' => 'Coyote Init',
+        'coyote-config' => 'Coyote Config',
+    ];
 
     printf("%-20s %-12s %-12s\n", "Service", "Running", "Enabled");
     echo str_repeat('-', 50) . "\n";
 
-    foreach ($relevantServices as $name) {
-        if (isset($allServices[$name])) {
-            $info = $allServices[$name];
-            $running = $info['running'] ? "\033[32mYes\033[0m" : "\033[31mNo\033[0m";
-            $enabled = $info['enabled'] ? "Yes" : "No";
-            printf("%-20s %-12s %-12s\n", $name, $running, $enabled);
-        }
+    foreach ($relevantServices as $name => $displayName) {
+        $isCore = $services->isCoreService($name);
+        $running = $services->isRunning($name);
+        $enabled = $isCore ? true : $services->isEnabled($name);
+
+        $runningStr = $running ? "\033[32mYes\033[0m" : "\033[31mNo\033[0m";
+        $enabledStr = $isCore ? "Always" : ($enabled ? "Yes" : "No");
+        printf("%-20s %-12s %-12s\n", $displayName, $runningStr, $enabledStr);
     }
 
     waitForEnter();

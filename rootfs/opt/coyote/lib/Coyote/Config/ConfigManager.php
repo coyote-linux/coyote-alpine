@@ -140,6 +140,29 @@ class ConfigManager
     }
 
     /**
+     * Load configuration from running config in RAM (not persistent storage).
+     *
+     * Use this when you need to persist changes that were already saved
+     * to running config via saveRunning(). This loads from /tmp/running-config
+     * instead of /mnt/config.
+     *
+     * @return RunningConfig|null The loaded configuration, or null if not found
+     */
+    public function loadRunning(): ?RunningConfig
+    {
+        $configFile = $this->runningPath . '/system.json';
+
+        if (!file_exists($configFile)) {
+            return null;
+        }
+
+        $data = $this->loader->load($configFile);
+        $this->runningConfig = new RunningConfig($data);
+
+        return $this->runningConfig;
+    }
+
+    /**
      * Remount the config partition.
      *
      * @param bool $writable True for read-write, false for read-only

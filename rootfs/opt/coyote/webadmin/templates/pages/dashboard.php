@@ -64,9 +64,9 @@
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($services ?? [] as $name => $status): ?>
+                <?php foreach ($services ?? [] as $id => $status): ?>
                 <tr>
-                    <td><?= htmlspecialchars($name) ?></td>
+                    <td><?= htmlspecialchars($status['name'] ?? $id) ?></td>
                     <td>
                         <span class="status-badge status-<?= $status['running'] ? 'up' : 'down' ?>">
                             <?= $status['running'] ? 'Running' : 'Stopped' ?>

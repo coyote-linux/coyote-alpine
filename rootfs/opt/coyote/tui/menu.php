@@ -30,7 +30,7 @@ function showHeader(): void
     echo "\033[1;36m";
     echo "╔════════════════════════════════════════════════════════════╗\n";
     echo "║                    Coyote Linux 4.0.0                      ║\n";
-    echo "║                 Console Configuration                       ║\n";
+    echo "║                   Console Configuration                    ║\n";
     echo "╚════════════════════════════════════════════════════════════╝\n";
     echo "\033[0m\n";
 }

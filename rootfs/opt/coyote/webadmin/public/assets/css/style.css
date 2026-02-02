@@ -333,6 +333,19 @@ dd {
     font-size: 0.9rem;
 }
 
+/* Links (excluding buttons) */
+a:not(.btn) {
+    color: var(--accent);
+}
+
+a:not(.btn):hover {
+    text-decoration: underline;
+}
+
+a:not(.btn):visited {
+    color: #7cb8ff;
+}
+
 /* Small Buttons */
 .btn-small {
     padding: 0.4rem 0.8rem;

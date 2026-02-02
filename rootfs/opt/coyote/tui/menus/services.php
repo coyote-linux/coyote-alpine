@@ -6,26 +6,38 @@
 use Coyote\System\Services;
 
 /**
+ * Core services that are always running and cannot be managed.
+ * Access is controlled via firewall ACLs.
+ */
+const CORE_SERVICES = ['dropbear', 'lighttpd'];
+
+/**
  * Display the services menu.
  */
 function servicesMenu(): void
 {
     $services = new Services();
-    $allServices = $services->listAll();
 
-    // Filter to Coyote-relevant services
-    $relevantServices = ['sshd', 'lighttpd', 'dnsmasq', 'dhcpcd', 'haproxy', 'strongswan', 'iptables'];
-
-    $items = [];
-    foreach ($relevantServices as $name) {
-        if (isset($allServices[$name])) {
-            $info = $allServices[$name];
-            $status = $info['running'] ? "\033[32mrunning\033[0m" : "\033[31mstopped\033[0m";
-            $items[$name] = ['label' => "{$name} - {$status}"];
-        }
-    }
+    // Service name => display name mapping
+    $relevantServices = [
+        'dropbear' => 'SSH Server',
+        'lighttpd' => 'Web Server',
+        'dnsmasq' => 'DNS/DHCP',
+        'dhcpcd' => 'DHCP Client',
+        'haproxy' => 'Load Balancer',
+        'strongswan' => 'VPN Server',
+    ];
 
     while (true) {
+        $items = [];
+        foreach ($relevantServices as $name => $displayName) {
+            $isCore = in_array($name, CORE_SERVICES);
+            $running = $services->isRunning($name);
+            $status = $running ? "\033[32mrunning\033[0m" : "\033[31mstopped\033[0m";
+            $coreLabel = $isCore ? " [Core]" : "";
+            $items[$name] = ['label' => "{$displayName}{$coreLabel} - {$status}"];
+        }
+
         $choice = showMenu($items, 'Services Management');
 
         if ($choice === null) {
@@ -33,16 +45,7 @@ function servicesMenu(): void
         }
 
         if (isset($items[$choice])) {
-            manageService($choice, $services);
-            // Refresh status
-            $allServices = $services->listAll();
-            foreach ($relevantServices as $name) {
-                if (isset($allServices[$name])) {
-                    $info = $allServices[$name];
-                    $status = $info['running'] ? "\033[32mrunning\033[0m" : "\033[31mstopped\033[0m";
-                    $items[$name] = ['label' => "{$name} - {$status}"];
-                }
-            }
+            manageService($choice, $services, $relevantServices[$choice] ?? $choice);
         }
     }
 }
@@ -50,33 +53,48 @@ function servicesMenu(): void
 /**
  * Manage a single service.
  */
-function manageService(string $name, Services $services): void
+function manageService(string $name, Services $services, string $displayName = ''): void
 {
-    $status = $services->status($name);
+    $isCore = in_array($name, CORE_SERVICES);
+    $running = $services->isRunning($name);
+    $enabled = $isCore ? true : $services->isEnabled($name);
+
+    if ($displayName === '') {
+        $displayName = $name;
+    }
 
     clearScreen();
     showHeader();
-    echo "Service: {$name}\n\n";
-    echo "Status: " . ($status['running'] ? 'Running' : 'Stopped') . "\n";
-    echo "Enabled at boot: " . ($services->isEnabled($name) ? 'Yes' : 'No') . "\n\n";
-
-    $items = [];
-    if ($status['running']) {
-        $items['stop'] = ['label' => 'Stop Service'];
-        $items['restart'] = ['label' => 'Restart Service'];
+    echo "Service: {$displayName}\n\n";
+    echo "Status: " . ($running ? 'Running' : 'Stopped') . "\n";
+    if ($isCore) {
+        echo "Type: Core Service (always enabled)\n";
+        echo "\nCore services cannot be stopped or disabled.\n";
+        echo "Use Firewall > Access Controls to manage access.\n\n";
     } else {
-        $items['start'] = ['label' => 'Start Service'];
+        echo "Enabled at boot: " . ($enabled ? 'Yes' : 'No') . "\n\n";
     }
 
-    if ($services->isEnabled($name)) {
-        $items['disable'] = ['label' => 'Disable at Boot'];
-    } else {
-        $items['enable'] = ['label' => 'Enable at Boot'];
+    $items = [];
+
+    if (!$isCore) {
+        if ($running) {
+            $items['stop'] = ['label' => 'Stop Service'];
+            $items['restart'] = ['label' => 'Restart Service'];
+        } else {
+            $items['start'] = ['label' => 'Start Service'];
+        }
+
+        if ($enabled) {
+            $items['disable'] = ['label' => 'Disable at Boot'];
+        } else {
+            $items['enable'] = ['label' => 'Enable at Boot'];
+        }
     }
 
     $items['logs'] = ['label' => 'View Logs'];
 
-    $choice = showMenu($items, "Manage {$name}");
+    $choice = showMenu($items, "Manage {$displayName}");
 
     if ($choice === null) {
         return;
@@ -85,48 +103,48 @@ function manageService(string $name, Services $services): void
     switch ($choice) {
         case 'start':
             if ($services->start($name)) {
-                showSuccess("Service {$name} started");
+                showSuccess("Service {$displayName} started");
             } else {
-                showError("Failed to start {$name}");
+                showError("Failed to start {$displayName}");
             }
             break;
 
         case 'stop':
             if ($services->stop($name)) {
-                showSuccess("Service {$name} stopped");
+                showSuccess("Service {$displayName} stopped");
             } else {
-                showError("Failed to stop {$name}");
+                showError("Failed to stop {$displayName}");
             }
             break;
 
         case 'restart':
             if ($services->restart($name)) {
-                showSuccess("Service {$name} restarted");
+                showSuccess("Service {$displayName} restarted");
             } else {
-                showError("Failed to restart {$name}");
+                showError("Failed to restart {$displayName}");
             }
             break;
 
         case 'enable':
             if ($services->enable($name)) {
-                showSuccess("Service {$name} enabled at boot");
+                showSuccess("Service {$displayName} enabled at boot");
             } else {
-                showError("Failed to enable {$name}");
+                showError("Failed to enable {$displayName}");
             }
             break;
 
         case 'disable':
             if ($services->disable($name)) {
-                showSuccess("Service {$name} disabled at boot");
+                showSuccess("Service {$displayName} disabled at boot");
             } else {
-                showError("Failed to disable {$name}");
+                showError("Failed to disable {$displayName}");
             }
             break;
 
         case 'logs':
             clearScreen();
             showHeader();
-            echo "Recent logs for {$name}:\n\n";
+            echo "Recent logs for {$displayName}:\n\n";
             passthru("tail -50 /var/log/messages 2>/dev/null | grep -i {$name} | tail -20");
             waitForEnter();
             return;

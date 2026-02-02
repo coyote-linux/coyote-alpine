@@ -22,6 +22,12 @@ class ServicesController extends BaseController
     ];
 
     /**
+     * Core services that are always running and managed by Coyote.
+     * Access is controlled via firewall ACLs, not by stopping the service.
+     */
+    private array $coreServices = ['lighttpd', 'dropbear'];
+
+    /**
      * Display services overview.
      */
     public function index(array $params = []): void
@@ -30,10 +36,12 @@ class ServicesController extends BaseController
 
         $services = [];
         foreach ($this->allowedServices as $name => $desc) {
+            $isCoreService = in_array($name, $this->coreServices);
             $services[$name] = [
                 'description' => $desc,
                 'running' => $svc->isRunning($name),
-                'enabled' => $svc->isEnabled($name),
+                'enabled' => $isCoreService ? true : $svc->isEnabled($name),
+                'core' => $isCoreService,
             ];
         }
 
@@ -57,8 +65,12 @@ class ServicesController extends BaseController
             return;
         }
 
-        // Don't allow stopping the web server (would lock out user)
-        // But starting is fine
+        // Core services cannot be started/stopped - they're always running
+        if (in_array($service, $this->coreServices)) {
+            $this->flash('error', "Core services cannot be managed - use firewall ACLs to control access");
+            $this->redirect('/services');
+            return;
+        }
 
         $svc = new Services();
 
@@ -86,9 +98,9 @@ class ServicesController extends BaseController
             return;
         }
 
-        // Don't allow stopping the web server (would lock out user)
-        if ($service === 'lighttpd') {
-            $this->flash('error', "Cannot stop the web server - this would lock you out!");
+        // Core services cannot be started/stopped - they're always running
+        if (in_array($service, $this->coreServices)) {
+            $this->flash('error', "Core services cannot be managed - use firewall ACLs to control access");
             $this->redirect('/services');
             return;
         }
@@ -143,6 +155,13 @@ class ServicesController extends BaseController
             return;
         }
 
+        // Core services are always enabled
+        if (in_array($service, $this->coreServices)) {
+            $this->flash('error', "Core services are always enabled - use firewall ACLs to control access");
+            $this->redirect('/services');
+            return;
+        }
+
         $svc = new Services();
 
         if ($svc->isEnabled($service)) {
@@ -169,9 +188,15 @@ class ServicesController extends BaseController
             return;
         }
 
+        // Core services are always enabled
+        if (in_array($service, $this->coreServices)) {
+            $this->flash('error', "Core services are always enabled - use firewall ACLs to control access");
+            $this->redirect('/services');
+            return;
+        }
+
         // Don't allow disabling critical services
-        $critical = ['lighttpd', 'dropbear', 'syslogd'];
-        if (in_array($service, $critical)) {
+        if ($service === 'syslogd') {
             $this->flash('error', "Cannot disable critical service '{$service}'");
             $this->redirect('/services');
             return;

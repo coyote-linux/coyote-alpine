@@ -72,13 +72,23 @@ class DashboardController extends BaseController
      */
     private function getServiceStatus(Services $services): array
     {
-        $keyServices = ['sshd', 'lighttpd', 'dnsmasq', 'haproxy', 'strongswan'];
+        // Service name => display name mapping
+        $keyServices = [
+            'dropbear' => 'SSH',
+            'lighttpd' => 'Web Server',
+            'dnsmasq' => 'DNS/DHCP',
+            'haproxy' => 'Load Balancer',
+            'strongswan' => 'VPN',
+        ];
         $status = [];
 
-        foreach ($keyServices as $service) {
+        foreach ($keyServices as $service => $displayName) {
+            $isCoreService = $services->isCoreService($service);
             $status[$service] = [
+                'name' => $displayName,
                 'running' => $services->isRunning($service),
-                'enabled' => $services->isEnabled($service),
+                'enabled' => $isCoreService ? true : $services->isEnabled($service),
+                'core' => $isCoreService,
             ];
         }
 

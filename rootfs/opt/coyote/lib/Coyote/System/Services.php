@@ -84,8 +84,49 @@ class Services
      */
     public function isRunning(string $service): bool
     {
+        // Core services need process-based detection since they're started
+        // by Coyote's config system, not tracked by OpenRC
+        if ($this->isCoreService($service)) {
+            return $this->isProcessRunning($service);
+        }
+
         exec("rc-service " . escapeshellarg($service) . " status 2>&1", $output, $returnCode);
         return $returnCode === 0;
+    }
+
+    /**
+     * Check if a process is running by name.
+     *
+     * @param string $service Service name (maps to process name)
+     * @return bool True if process is running
+     */
+    public function isProcessRunning(string $service): bool
+    {
+        // Map service names to process names
+        $processMap = [
+            'lighttpd' => 'lighttpd',
+            'dropbear' => 'dropbear',
+        ];
+
+        $process = $processMap[$service] ?? $service;
+
+        // Use pidof to check if process is running
+        exec("pidof " . escapeshellarg($process) . " 2>/dev/null", $output, $returnCode);
+        return $returnCode === 0;
+    }
+
+    /**
+     * Check if a service is a core service.
+     *
+     * Core services are managed by Coyote's config system and cannot
+     * be started/stopped via the web admin. Access is controlled via ACLs.
+     *
+     * @param string $service Service name
+     * @return bool True if core service
+     */
+    public function isCoreService(string $service): bool
+    {
+        return in_array($service, ['lighttpd', 'dropbear']);
     }
 
     /**
