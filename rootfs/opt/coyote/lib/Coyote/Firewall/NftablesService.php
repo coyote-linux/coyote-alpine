@@ -21,12 +21,33 @@ class NftablesService
     /** @var Logger */
     private Logger $logger;
 
+    /** @var bool Whether to use doas for privilege escalation */
+    private bool $useDoas = false;
+
     /**
      * Create a new NftablesService instance.
      */
     public function __construct()
     {
         $this->logger = new Logger('coyote-nftables');
+
+        // Use doas if not running as root
+        if (posix_getuid() !== 0) {
+            $this->useDoas = true;
+        }
+    }
+
+    /**
+     * Get the nft command with optional doas prefix.
+     *
+     * @return string Command string
+     */
+    private function getNftCommand(): string
+    {
+        if ($this->useDoas) {
+            return 'doas ' . $this->nft;
+        }
+        return $this->nft;
     }
 
     /**
@@ -42,7 +63,7 @@ class NftablesService
             return false;
         }
 
-        $cmd = sprintf('%s -f %s 2>&1', $this->nft, escapeshellarg($path));
+        $cmd = sprintf('%s -f %s 2>&1', $this->getNftCommand(), escapeshellarg($path));
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
@@ -67,7 +88,7 @@ class NftablesService
         }
 
         // Use -c flag to check syntax without applying
-        $cmd = sprintf('%s -c -f %s 2>&1', $this->nft, escapeshellarg($path));
+        $cmd = sprintf('%s -c -f %s 2>&1', $this->getNftCommand(), escapeshellarg($path));
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
@@ -85,7 +106,7 @@ class NftablesService
      */
     public function flush(): bool
     {
-        $cmd = sprintf('%s flush ruleset 2>&1', $this->nft);
+        $cmd = sprintf('%s flush ruleset 2>&1', $this->getNftCommand());
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
@@ -104,7 +125,7 @@ class NftablesService
      */
     public function getRulesetJson(): array
     {
-        $cmd = sprintf('%s -j list ruleset 2>&1', $this->nft);
+        $cmd = sprintf('%s -j list ruleset 2>&1', $this->getNftCommand());
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
@@ -125,7 +146,7 @@ class NftablesService
      */
     public function getRulesetText(): string
     {
-        $cmd = sprintf('%s list ruleset 2>&1', $this->nft);
+        $cmd = sprintf('%s list ruleset 2>&1', $this->getNftCommand());
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
@@ -146,7 +167,7 @@ class NftablesService
             return false;
         }
 
-        $cmd = sprintf('%s -v 2>&1', $this->nft);
+        $cmd = sprintf('%s -v 2>&1', $this->getNftCommand());
         exec($cmd, $output, $returnCode);
 
         return $returnCode === 0;
@@ -159,7 +180,7 @@ class NftablesService
      */
     public function getVersion(): string
     {
-        $cmd = sprintf('%s -v 2>&1', $this->nft);
+        $cmd = sprintf('%s -v 2>&1', $this->getNftCommand());
         exec($cmd, $output, $returnCode);
 
         if ($returnCode === 0 && !empty($output)) {
@@ -336,7 +357,7 @@ class NftablesService
     {
         $cmd = sprintf(
             '%s -j list set %s %s %s 2>&1',
-            $this->nft,
+            $this->getNftCommand(),
             escapeshellarg($family),
             escapeshellarg($table),
             escapeshellarg($set)
@@ -377,7 +398,7 @@ class NftablesService
     {
         $cmd = sprintf(
             '%s add element %s %s %s { %s } 2>&1',
-            $this->nft,
+            $this->getNftCommand(),
             escapeshellarg($family),
             escapeshellarg($table),
             escapeshellarg($set),
@@ -402,7 +423,7 @@ class NftablesService
     {
         $cmd = sprintf(
             '%s delete element %s %s %s { %s } 2>&1',
-            $this->nft,
+            $this->getNftCommand(),
             escapeshellarg($family),
             escapeshellarg($table),
             escapeshellarg($set),

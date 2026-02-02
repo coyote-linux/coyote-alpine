@@ -117,7 +117,20 @@ class App
 
         // NAT
         $this->router->get('/nat', [Controller\NatController::class, 'index']);
-        $this->router->post('/nat/forwards', [Controller\NatController::class, 'saveForwards']);
+
+        // Port Forwards
+        $this->router->get('/nat/forward/new', [Controller\NatController::class, 'newForward']);
+        $this->router->post('/nat/forward/new', [Controller\NatController::class, 'saveForward']);
+        $this->router->get('/nat/forward/{id}', [Controller\NatController::class, 'editForward']);
+        $this->router->post('/nat/forward/{id}', [Controller\NatController::class, 'saveForward']);
+        $this->router->post('/nat/forward/{id}/delete', [Controller\NatController::class, 'deleteForward']);
+
+        // Masquerade Rules
+        $this->router->get('/nat/masquerade/new', [Controller\NatController::class, 'newMasquerade']);
+        $this->router->post('/nat/masquerade/new', [Controller\NatController::class, 'saveMasquerade']);
+        $this->router->get('/nat/masquerade/{id}', [Controller\NatController::class, 'editMasquerade']);
+        $this->router->post('/nat/masquerade/{id}', [Controller\NatController::class, 'saveMasquerade']);
+        $this->router->post('/nat/masquerade/{id}/delete', [Controller\NatController::class, 'deleteMasquerade']);
 
         // VPN
         $this->router->get('/vpn', [Controller\VpnController::class, 'index']);

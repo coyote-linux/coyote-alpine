@@ -152,13 +152,13 @@ class NftNatService
         // Destination network
         $parts[] = "ip daddr {$destination}";
 
-        // Comment
+        // Return (skip NAT)
+        $parts[] = 'return';
+
+        // Comment (must come after action in nftables)
         if ($comment) {
             $parts[] = "comment \"{$comment}\"";
         }
-
-        // Return (skip NAT)
-        $parts[] = 'return';
 
         return implode(' ', $parts);
     }
@@ -233,13 +233,13 @@ class NftNatService
                 $ruleParts[] = "ip saddr {$source}";
             }
 
-            // Comment
+            // Masquerade action
+            $ruleParts[] = 'masquerade';
+
+            // Comment (must come after action in nftables)
             if ($comment) {
                 $ruleParts[] = "comment \"{$comment}\"";
             }
-
-            // Masquerade action
-            $ruleParts[] = 'masquerade';
 
             $rules[] = implode(' ', $ruleParts);
         }
@@ -300,13 +300,13 @@ class NftNatService
             $parts[] = "ip saddr {$source}";
         }
 
-        // Comment
+        // SNAT action (use 'snat ip to' for inet table disambiguation)
+        $parts[] = "snat ip to {$toAddress}";
+
+        // Comment (must come after action in nftables)
         if ($comment) {
             $parts[] = "comment \"{$comment}\"";
         }
-
-        // SNAT action
-        $parts[] = "snat to {$toAddress}";
 
         return implode(' ', $parts);
     }
@@ -380,17 +380,17 @@ class NftNatService
         // Protocol and port
         $dnatParts[] = "{$protocol} dport {$externalPort}";
 
-        // Comment
-        if ($comment) {
-            $dnatParts[] = "comment \"{$comment}\"";
-        }
-
-        // DNAT action
+        // DNAT action (use 'dnat ip to' for inet table disambiguation)
         $dnatTarget = $internalIp;
         if ($internalPort != $externalPort) {
             $dnatTarget .= ":{$internalPort}";
         }
-        $dnatParts[] = "dnat to {$dnatTarget}";
+        $dnatParts[] = "dnat ip to {$dnatTarget}";
+
+        // Comment (must come after action in nftables)
+        if ($comment) {
+            $dnatParts[] = "comment \"{$comment}\"";
+        }
 
         $result['dnat'] = implode(' ', $dnatParts);
 

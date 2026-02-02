@@ -25,8 +25,11 @@ depend() {
 start() {
     ebegin "Starting Coyote firewall"
 
-    # Ensure state directory exists
+    # Ensure state directory exists with proper permissions
+    # Web admin (lighttpd) needs write access for applying config changes
     mkdir -p /var/lib/coyote/firewall
+    chown root:users /var/lib/coyote/firewall
+    chmod 775 /var/lib/coyote/firewall
 
     # Apply firewall configuration
     /opt/coyote/bin/firewall-apply start
