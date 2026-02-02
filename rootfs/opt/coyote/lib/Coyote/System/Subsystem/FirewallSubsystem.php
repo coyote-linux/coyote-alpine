@@ -68,6 +68,10 @@ class FirewallSubsystem extends AbstractSubsystem
             'services.dhcpd.interface',
             'services.dns.enabled',
             'services.upnp',
+            'services.webadmin.enabled',
+            'services.webadmin.allowed_hosts',
+            'services.webadmin.http_port',
+            'services.webadmin.https_port',
         ];
     }
 

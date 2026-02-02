@@ -139,22 +139,31 @@ class SetManager
             }
         }
 
-        // Admin hosts
-        $adminHosts = $firewallConfig['sets']['admin_hosts'] ?? [];
+        // Admin hosts - merge from firewall.sets.admin_hosts and services.webadmin.allowed_hosts
+        $adminHosts = [];
+
+        // Get from firewall sets config
+        $firewallAdminHosts = $firewallConfig['sets']['admin_hosts'] ?? [];
+        if (is_array($firewallAdminHosts) && !isset($firewallAdminHosts['elements'])) {
+            $adminHosts = array_merge($adminHosts, $firewallAdminHosts);
+        } elseif (isset($firewallAdminHosts['elements'])) {
+            $adminHosts = array_merge($adminHosts, $firewallAdminHosts['elements']);
+        }
+
+        // Get from services.webadmin.allowed_hosts (TUI configuration)
+        $webadminAllowedHosts = $servicesConfig['webadmin']['allowed_hosts'] ?? [];
+        if (!empty($webadminAllowedHosts)) {
+            $adminHosts = array_merge($adminHosts, $webadminAllowedHosts);
+        }
+
+        // Remove duplicates and create the set
+        $adminHosts = array_unique($adminHosts);
         if (!empty($adminHosts)) {
-            if (is_array($adminHosts) && !isset($adminHosts['elements'])) {
-                $sets['admin_hosts'] = [
-                    'type' => 'ipv4_addr',
-                    'flags' => ['interval'],
-                    'elements' => $this->normalizeAddresses($adminHosts),
-                ];
-            } elseif (isset($adminHosts['elements'])) {
-                $sets['admin_hosts'] = [
-                    'type' => $adminHosts['type'] ?? 'ipv4_addr',
-                    'flags' => $adminHosts['flags'] ?? ['interval'],
-                    'elements' => $this->normalizeAddresses($adminHosts['elements']),
-                ];
-            }
+            $sets['admin_hosts'] = [
+                'type' => 'ipv4_addr',
+                'flags' => ['interval'],
+                'elements' => $this->normalizeAddresses($adminHosts),
+            ];
         }
 
         // User-defined sets

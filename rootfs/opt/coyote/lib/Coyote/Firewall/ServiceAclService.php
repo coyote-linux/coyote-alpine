@@ -55,8 +55,8 @@ class ServiceAclService
         // UPnP (miniupnpd)
         $this->buildUpnpAcl($servicesConfig['upnp'] ?? []);
 
-        // Web admin interface
-        $this->buildWebAdminAcl($servicesConfig['webadmin'] ?? []);
+        // Web admin interface (pass firewall config for admin_hosts set)
+        $this->buildWebAdminAcl($servicesConfig['webadmin'] ?? [], $firewallConfig);
 
         // ICMP - always included
         $this->localAclRules[] = 'ip protocol icmp jump icmp-rules';
@@ -99,11 +99,9 @@ class ServiceAclService
         if (!empty($allowedHosts)) {
             // Restrict to allowed hosts via set
             $rules[] = 'ip saddr @ssh_allowed accept';
-            // No fallback - if not in set, continue to default drop
-        } else {
-            // No restrictions - accept all SSH
-            $rules[] = 'accept';
         }
+        // No hosts specified = empty chain = traffic falls through to default drop
+        // To allow public access, user must explicitly add 0.0.0.0/0
 
         $this->serviceChains['ssh-hosts'] = $rules;
     }
@@ -254,22 +252,32 @@ class ServiceAclService
      * Build web admin interface ACL.
      *
      * @param array $config Web admin configuration
+     * @param array $firewallConfig Firewall configuration for admin_hosts set
      */
-    private function buildWebAdminAcl(array $config): void
+    private function buildWebAdminAcl(array $config, array $firewallConfig = []): void
     {
         $enabled = $config['enabled'] ?? true; // Enabled by default
 
         if (!$enabled) {
+            // Web admin disabled - empty chain
+            $this->serviceChains['webadmin-hosts'] = [];
             return;
         }
 
         $httpPort = $config['http_port'] ?? 80;
         $httpsPort = $config['https_port'] ?? 443;
         $httpsOnly = $config['https_only'] ?? false;
-        $interfaces = $config['interfaces'] ?? [];
-        $allowedHosts = $config['allowed_hosts'] ?? [];
 
-        // Build access rules
+        // Check for allowed hosts from both services.webadmin.allowed_hosts and firewall.sets.admin_hosts
+        $allowedHosts = $config['allowed_hosts'] ?? [];
+        $firewallAdminHosts = $firewallConfig['sets']['admin_hosts'] ?? [];
+        if (is_array($firewallAdminHosts) && !isset($firewallAdminHosts['elements'])) {
+            $hasAdminHosts = !empty($allowedHosts) || !empty($firewallAdminHosts);
+        } else {
+            $hasAdminHosts = !empty($allowedHosts) || !empty($firewallAdminHosts['elements'] ?? []);
+        }
+
+        // Build port list
         $ports = [];
         if (!$httpsOnly) {
             $ports[] = $httpPort;
@@ -277,18 +285,20 @@ class ServiceAclService
         $ports[] = $httpsPort;
         $portList = implode(', ', $ports);
 
-        if (!empty($allowedHosts)) {
-            // Use admin_hosts set if defined
-            $this->localAclRules[] = "tcp dport { {$portList} } ip saddr @admin_hosts accept";
-        } elseif (!empty($interfaces)) {
-            // Restrict to specific interfaces
-            foreach ($interfaces as $iface) {
-                $this->localAclRules[] = "iifname \"{$iface}\" tcp dport { {$portList} } accept";
-            }
-        } else {
-            // Accept from anywhere (default for initial setup)
-            $this->localAclRules[] = "tcp dport { {$portList} } accept";
+        // Route web admin traffic to webadmin-hosts chain
+        $this->localAclRules[] = "tcp dport { {$portList} } jump webadmin-hosts";
+
+        // Build webadmin-hosts chain
+        $rules = [];
+
+        if ($hasAdminHosts) {
+            // Restrict to allowed hosts via set
+            $rules[] = 'ip saddr @admin_hosts accept';
         }
+        // No hosts specified = empty chain = traffic falls through to default drop
+        // To allow public access, user must explicitly add 0.0.0.0/0
+
+        $this->serviceChains['webadmin-hosts'] = $rules;
     }
 
     /**

@@ -4,7 +4,7 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [4.0.51] - 2026-02-01
+## [4.0.64] - 2026-02-01
 
 ### Changed
 
@@ -33,7 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `QosManager.php` - Traffic classification and packet marking for Quality of Service
 - `UpnpService.php` - UPnP/IGD service management with miniupnpd and nftables integration
 - `nftables.rules.tpl` - Reference template showing base ruleset structure
-- Chain structure: input, forward, output, service chains (ssh-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
+- Chain structure: input, forward, output, service chains (ssh-hosts, webadmin-hosts, snmp-hosts, icmp-rules, dhcp-server), UPnP chains (igd-forward, igd-input, igd-preroute)
 - Convenience methods for dynamic host blocking/unblocking via sets
 
 #### Enhanced Firewall Configuration Schema
@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `firewall.nat.masquerade` - Structured masquerade configuration
 - `services.ssh.allowed_hosts` - SSH access control via nftables set
 - `services.snmp.allowed_hosts` - SNMP access control via nftables set
+- `services.webadmin.allowed_hosts` - Web admin access control via nftables set
 - `services.upnp` - UPnP/IGD service configuration
 - `firewall.qos` - Quality of Service with traffic classification, packet marking, and tc integration
 
@@ -86,11 +87,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 #### Console Configuration Utility
 - `coyote-config` TUI for console-based system configuration
-- Dialog-based menu interface with system status display
-- Network configuration: interfaces, gateway, DNS, hostname
-- Firewall management: enable/disable, block/unblock hosts, view connections, emergency stop
-- Services configuration: SSH, web admin, DHCP, DNS, UPnP
-- System operations: apply config, save config, view logs, reboot, shutdown
+- Text-based menu interface accessible via console
+- Firewall settings menu with status, enable/disable, default policy
+- Web admin hosts management: add/remove hosts in CIDR format to control web admin access
+- SSH access hosts management: add/remove hosts in CIDR format to control SSH access
+- Blocked hosts management via nftables sets
+- View current nftables ruleset with pagination
+- 60-second safety rollback timer for SSH sessions when applying firewall changes
+- Console sessions can apply and save immediately (no lockout risk)
+- Automatic rollback if SSH user doesn't confirm within timeout
+
+#### Web Admin Access Controls
+- New Access Controls page at `/firewall/access` for managing service access
+- Web admin hosts: configure which hosts can access the web administration interface
+- SSH hosts: configure which hosts can access SSH on the firewall
+- Empty host lists block all access (explicit 0.0.0.0/0 required for public access)
+- CIDR notation support with automatic /32 for single IPs
+- Link to Access Controls from Firewall overview page
 
 ## [4.0.38] - 2026-01-26
 

@@ -114,6 +114,32 @@ class ConfigManager
     }
 
     /**
+     * Save running configuration to RAM only (not persistent storage).
+     *
+     * This is used for applying changes without persisting them to disk.
+     * Changes will be lost on reboot unless save() is called.
+     *
+     * @return bool True if saved successfully
+     */
+    public function saveRunning(): bool
+    {
+        if (!$this->runningConfig) {
+            return false;
+        }
+
+        // Ensure running config directory exists
+        $runningDir = dirname($this->runningPath . '/system.json');
+        if (!is_dir($runningDir)) {
+            mkdir($runningDir, 0755, true);
+        }
+
+        return $this->writer->write(
+            $this->runningPath . '/system.json',
+            $this->runningConfig->toArray()
+        );
+    }
+
+    /**
      * Remount the config partition.
      *
      * @param bool $writable True for read-write, false for read-only

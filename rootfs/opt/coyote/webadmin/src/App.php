@@ -108,6 +108,13 @@ class App
         $this->router->post('/firewall/apply', [Controller\FirewallController::class, 'addApplication']);
         $this->router->post('/firewall/apply/{index}/delete', [Controller\FirewallController::class, 'removeApplication']);
 
+        // Firewall Access Controls (Web Admin and SSH hosts)
+        $this->router->get('/firewall/access', [Controller\FirewallController::class, 'accessControls']);
+        $this->router->post('/firewall/access/webadmin/add', [Controller\FirewallController::class, 'addWebAdminHost']);
+        $this->router->post('/firewall/access/webadmin/{index}/delete', [Controller\FirewallController::class, 'deleteWebAdminHost']);
+        $this->router->post('/firewall/access/ssh/add', [Controller\FirewallController::class, 'addSshHost']);
+        $this->router->post('/firewall/access/ssh/{index}/delete', [Controller\FirewallController::class, 'deleteSshHost']);
+
         // NAT
         $this->router->get('/nat', [Controller\NatController::class, 'index']);
         $this->router->post('/nat/forwards', [Controller\NatController::class, 'saveForwards']);

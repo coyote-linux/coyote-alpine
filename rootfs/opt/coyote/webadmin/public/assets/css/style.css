@@ -402,3 +402,34 @@ dd {
 .info-list li:last-child {
     border-bottom: none;
 }
+
+/* Button Groups */
+.button-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.badge-warning {
+    background: rgba(255, 152, 0, 0.2);
+    color: var(--warning);
+}
+
+.badge-info {
+    background: rgba(74, 158, 255, 0.2);
+    color: var(--accent);
+}
+
+/* Page Header */
+.page-header {
+    margin-bottom: 1.5rem;
+}

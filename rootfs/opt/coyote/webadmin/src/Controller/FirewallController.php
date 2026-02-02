@@ -788,4 +788,174 @@ class FirewallController extends BaseController
 
         return $interfaces;
     }
+
+    /**
+     * Display access controls page (Web Admin and SSH hosts).
+     */
+    public function accessControls(array $params = []): void
+    {
+        $config = $this->configService->getWorkingConfig();
+
+        $webadminHosts = $config->get('services.webadmin.allowed_hosts', []);
+        $sshHosts = $config->get('services.ssh.allowed_hosts', []);
+        $sshEnabled = $config->get('services.ssh.enabled', false);
+        $sshPort = $config->get('services.ssh.port', 22);
+
+        $this->render('pages/firewall/access-controls', [
+            'webadminHosts' => $webadminHosts,
+            'sshHosts' => $sshHosts,
+            'sshEnabled' => $sshEnabled,
+            'sshPort' => $sshPort,
+        ]);
+    }
+
+    /**
+     * Add a web admin allowed host.
+     */
+    public function addWebAdminHost(array $params = []): void
+    {
+        $host = trim($this->post('host', ''));
+
+        if (empty($host)) {
+            $this->flash('error', 'Please enter an IP address or network.');
+            $this->redirect('/firewall/access');
+            return;
+        }
+
+        if (!$this->isValidCidr($host)) {
+            $this->flash('error', 'Invalid IP address or CIDR notation.');
+            $this->redirect('/firewall/access');
+            return;
+        }
+
+        // Add /32 if no mask specified
+        if (strpos($host, '/') === false) {
+            $host = "{$host}/32";
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $hosts = $config->get('services.webadmin.allowed_hosts', []);
+
+        // Check for duplicates
+        if (in_array($host, $hosts)) {
+            $this->flash('error', 'This host is already in the list.');
+            $this->redirect('/firewall/access');
+            return;
+        }
+
+        $hosts[] = $host;
+        $config->set('services.webadmin.allowed_hosts', $hosts);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', "Added web admin host: {$host}");
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/firewall/access');
+    }
+
+    /**
+     * Delete a web admin allowed host.
+     */
+    public function deleteWebAdminHost(array $params = []): void
+    {
+        $index = (int) ($params['index'] ?? -1);
+
+        $config = $this->configService->getWorkingConfig();
+        $hosts = $config->get('services.webadmin.allowed_hosts', []);
+
+        if ($index < 0 || $index >= count($hosts)) {
+            $this->flash('error', 'Invalid host index.');
+            $this->redirect('/firewall/access');
+            return;
+        }
+
+        $removed = $hosts[$index];
+        array_splice($hosts, $index, 1);
+        $config->set('services.webadmin.allowed_hosts', $hosts);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', "Removed web admin host: {$removed}");
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/firewall/access');
+    }
+
+    /**
+     * Add an SSH allowed host.
+     */
+    public function addSshHost(array $params = []): void
+    {
+        $host = trim($this->post('host', ''));
+
+        if (empty($host)) {
+            $this->flash('error', 'Please enter an IP address or network.');
+            $this->redirect('/firewall/access');
+            return;
+        }
+
+        if (!$this->isValidCidr($host)) {
+            $this->flash('error', 'Invalid IP address or CIDR notation.');
+            $this->redirect('/firewall/access');
+            return;
+        }
+
+        // Add /32 if no mask specified
+        if (strpos($host, '/') === false) {
+            $host = "{$host}/32";
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $hosts = $config->get('services.ssh.allowed_hosts', []);
+
+        // Check for duplicates
+        if (in_array($host, $hosts)) {
+            $this->flash('error', 'This host is already in the list.');
+            $this->redirect('/firewall/access');
+            return;
+        }
+
+        $hosts[] = $host;
+        $config->set('services.ssh.allowed_hosts', $hosts);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', "Added SSH host: {$host}");
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/firewall/access');
+    }
+
+    /**
+     * Delete an SSH allowed host.
+     */
+    public function deleteSshHost(array $params = []): void
+    {
+        $index = (int) ($params['index'] ?? -1);
+
+        $config = $this->configService->getWorkingConfig();
+        $hosts = $config->get('services.ssh.allowed_hosts', []);
+
+        if ($index < 0 || $index >= count($hosts)) {
+            $this->flash('error', 'Invalid host index.');
+            $this->redirect('/firewall/access');
+            return;
+        }
+
+        $removed = $hosts[$index];
+        array_splice($hosts, $index, 1);
+        $config->set('services.ssh.allowed_hosts', $hosts);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', "Removed SSH host: {$removed}");
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/firewall/access');
+    }
 }

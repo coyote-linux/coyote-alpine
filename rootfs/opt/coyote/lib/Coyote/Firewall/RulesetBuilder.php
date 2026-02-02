@@ -54,7 +54,9 @@ class RulesetBuilder
      */
     public function buildFromConfig(array $config): string
     {
-        $this->reset();
+        // NOTE: Do NOT call reset() here - sets and rules may have been added
+        // by FirewallManager before calling this method. Use reset() explicitly
+        // when starting a fresh build.
 
         $firewallConfig = $config['firewall'] ?? [];
 
@@ -480,6 +482,15 @@ class RulesetBuilder
         $lines[] = '    chain ssh-hosts {';
         $sshRules = $this->chainRules['inet filter/ssh-hosts'] ?? [];
         foreach ($sshRules as $rule) {
+            $lines[] = "        {$rule}";
+        }
+        $lines[] = '    }';
+        $lines[] = '';
+
+        // Web admin hosts
+        $lines[] = '    chain webadmin-hosts {';
+        $webadminRules = $this->chainRules['inet filter/webadmin-hosts'] ?? [];
+        foreach ($webadminRules as $rule) {
             $lines[] = "        {$rule}";
         }
         $lines[] = '    }';
