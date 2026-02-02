@@ -81,14 +81,19 @@ class ServiceAclService
      */
     private function buildSshAcl(array $config): void
     {
-        if (!($config['enabled'] ?? false)) {
-            // SSH disabled - empty chain
+        $allowedHosts = $config['allowed_hosts'] ?? [];
+
+        // SSH is enabled if explicitly enabled OR if allowed_hosts is configured
+        // This allows the TUI to just set allowed_hosts without needing to also set enabled
+        $isEnabled = ($config['enabled'] ?? false) || !empty($allowedHosts);
+
+        if (!$isEnabled) {
+            // SSH disabled - empty chain, no jump rule
             $this->serviceChains['ssh-hosts'] = [];
             return;
         }
 
         $port = $config['port'] ?? 22;
-        $allowedHosts = $config['allowed_hosts'] ?? [];
 
         // Route SSH traffic to ssh-hosts chain
         $this->localAclRules[] = "tcp dport {$port} jump ssh-hosts";
