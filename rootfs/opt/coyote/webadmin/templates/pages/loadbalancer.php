@@ -19,11 +19,11 @@
 
     <div class="card">
         <h3>Quick Actions</h3>
-        <p>
+        <div class="button-group">
             <button class="btn btn-primary" onclick="alert('Not yet implemented')">Add Frontend</button>
             <button class="btn btn-primary" onclick="alert('Not yet implemented')">Add Backend</button>
             <button class="btn btn-primary" onclick="alert('Not yet implemented')">View Stats</button>
-        </p>
+        </div>
     </div>
 
     <div class="card full-width">

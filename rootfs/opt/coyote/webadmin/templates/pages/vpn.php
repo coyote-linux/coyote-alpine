@@ -17,10 +17,10 @@
 
     <div class="card">
         <h3>Quick Actions</h3>
-        <p>
+        <div class="button-group">
             <button class="btn btn-primary" onclick="alert('Not yet implemented')">Add Tunnel</button>
             <button class="btn btn-primary" onclick="alert('Not yet implemented')">View Connections</button>
-        </p>
+        </div>
     </div>
 
     <div class="card full-width">

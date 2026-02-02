@@ -158,10 +158,14 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
         <h3>System Actions</h3>
         <p>These actions affect the running system.</p>
         <form method="post" action="/system/reboot" style="display: inline;">
-            <button type="submit" class="btn btn-danger" data-confirm="Are you sure you want to reboot the system?">Reboot System</button>
+            <div class="button-group">
+                <button type="submit" class="btn btn-danger" data-confirm="Are you sure you want to reboot the system?">Reboot System</button>
+            </div>
         </form>
         <form method="post" action="/system/shutdown" style="display: inline;">
-            <button type="submit" class="btn btn-danger" data-confirm="Are you sure you want to shutdown the system? You will need physical access to turn it back on.">Shutdown System</button>
+            <div class="button-group">
+                <button type="submit" class="btn btn-danger" data-confirm="Are you sure you want to shutdown the system? You will need physical access to turn it back on.">Shutdown System</button>
+            </div>
         </form>
     </div>
 </div>

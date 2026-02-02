@@ -89,6 +89,12 @@ firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	echo "Coyote Linux $$NEW_VERSION" > $(ROOTFS_BUILD)/etc/issue; \
 	echo "" >> $(ROOTFS_BUILD)/etc/issue; \
 	sed -i "s/Edge Firewall/$$NEW_VERSION - Edge Firewall/" $(ROOTFS_BUILD)/etc/motd; \
+	echo 'NAME="Coyote Linux"' > $(ROOTFS_BUILD)/etc/os-release; \
+	echo 'ID=coyote' >> $(ROOTFS_BUILD)/etc/os-release; \
+	echo "VERSION=$$NEW_VERSION" >> $(ROOTFS_BUILD)/etc/os-release; \
+	echo 'PRETTY_NAME="Coyote Linux $(VERSION_MAJOR).$(VERSION_MINOR)"' >> $(ROOTFS_BUILD)/etc/os-release; \
+	echo 'HOME_URL="https://www.coyotelinux.com/"' >> $(ROOTFS_BUILD)/etc/os-release; \
+	echo 'BUG_REPORT_URL="https://github.com/coyote-linux/coyote-alpine/issues"' >> $(ROOTFS_BUILD)/etc/os-release; \
 	./mksquashfs.sh $(ROOTFS_BUILD) "$$FIRMWARE_FILE" "$(SQUASHFS_OPTS)"; \
 	sha256sum "$$FIRMWARE_FILE" > "$$FIRMWARE_FILE.sha256"; \
 	if [ -f .local-config ]; then \

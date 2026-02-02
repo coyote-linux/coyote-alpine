@@ -15,10 +15,10 @@
 
     <div class="card">
         <h3>Quick Actions</h3>
-        <p>
+        <div class="button-group">
             <button class="btn btn-primary" onclick="alert('Not yet implemented')">Add Port Forward</button>
             <button class="btn btn-primary" onclick="alert('Not yet implemented')">Add 1:1 NAT</button>
-        </p>
+        </div>
     </div>
 
     <div class="card full-width">
