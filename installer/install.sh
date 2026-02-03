@@ -594,7 +594,7 @@ Firmware:     $fw_status
 
 The installer will:
   1. Create a new partition table
-  2. Create a boot partition (2GB, FAT32)
+  2. Create a boot partition (4GB, FAT32)
   3. Create a config partition (remaining space, ext4)
   4. Install the Coyote Linux bootloader and firmware
 
@@ -629,12 +629,12 @@ partition_disk() {
         umount ${TARGET_DISK}* >/dev/null 2>&1 || true
         parted -s "$TARGET_DISK" mklabel msdos >/dev/null 2>&1 || exit 1
 
-        echo "30"; echo "Creating boot partition (2GB)..."
-        parted -s "$TARGET_DISK" mkpart primary fat32 1MiB 2049MiB >/dev/null 2>&1 || exit 1
+        echo "30"; echo "Creating boot partition (4GB)..."
+        parted -s "$TARGET_DISK" mkpart primary fat32 1MiB 4097MiB >/dev/null 2>&1 || exit 1
         parted -s "$TARGET_DISK" set 1 boot on >/dev/null 2>&1
 
         echo "50"; echo "Creating config partition..."
-        parted -s "$TARGET_DISK" mkpart primary ext4 2049MiB 100% >/dev/null 2>&1 || exit 1
+        parted -s "$TARGET_DISK" mkpart primary ext4 4097MiB 100% >/dev/null 2>&1 || exit 1
 
         echo "70"; echo "Waiting for partitions..."
         partprobe "$TARGET_DISK" >/dev/null 2>&1 || blockdev --rereadpt "$TARGET_DISK" >/dev/null 2>&1 || true

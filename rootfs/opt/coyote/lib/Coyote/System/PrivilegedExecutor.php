@@ -165,14 +165,14 @@ class PrivilegedExecutor
     }
 
     /**
-     * Start a DHCP client.
+     * Start/stop dhcpcd DHCP client.
      *
-     * @param string ...$args Arguments for udhcpc
+     * @param string ...$args Arguments for dhcpcd
      * @return array{success: bool, output: string, code: int}
      */
-    public function udhcpc(string ...$args): array
+    public function dhcpcd(string ...$args): array
     {
-        return $this->execute('udhcpc', $args);
+        return $this->execute('dhcpcd', $args);
     }
 
     /**

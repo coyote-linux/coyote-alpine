@@ -197,11 +197,14 @@ class NetworkSubsystem extends AbstractSubsystem
     }
 
     /**
-     * Configure DHCP client.
+     * Configure DHCP client (using dhcpcd).
      */
     private function configureDhcp(PrivilegedExecutor $priv, string $name, array $config, array &$errors): void
     {
         $hostname = $config['dhcp_hostname'] ?? '';
+
+        // Stop any existing dhcpcd for this interface
+        $priv->dhcpcd('-x', $name);
 
         // Flush any existing addresses
         $priv->ip('addr', 'flush', 'dev', $name);
@@ -209,16 +212,20 @@ class NetworkSubsystem extends AbstractSubsystem
         // Bring interface up
         $priv->ip('link', 'set', $name, 'up');
 
-        // Build udhcpc arguments
-        $pidFile = "/var/run/udhcpc.{$name}.pid";
-        $args = ['-i', $name, '-b', '-p', $pidFile, '-S'];
+        // Build dhcpcd arguments
+        // -b = background immediately
+        // -t 0 = wait forever (no timeout)
+        // -h = hostname to send
+        $args = ['-b', '-t', '0'];
 
         if (!empty($hostname)) {
-            $args[] = '-H';
+            $args[] = '-h';
             $args[] = $hostname;
         }
 
-        $result = $priv->udhcpc(...$args);
+        $args[] = $name;
+
+        $result = $priv->dhcpcd(...$args);
 
         if (!$result['success']) {
             $errors[] = "Failed to start DHCP on {$name}: " . $result['output'];
@@ -357,18 +364,8 @@ class NetworkSubsystem extends AbstractSubsystem
      */
     private function stopDhcp(PrivilegedExecutor $priv, string $iface): void
     {
-        $pidFile = "/var/run/udhcpc.{$iface}.pid";
-
-        if (file_exists($pidFile)) {
-            $pid = trim(file_get_contents($pidFile));
-            if ($pid && is_numeric($pid)) {
-                $priv->killPid((int)$pid);
-            }
-            @unlink($pidFile);
-        }
-
-        // Also try to kill by process name pattern (backup method)
-        $priv->pkillPattern("udhcpc.*-i {$iface}");
+        // Use dhcpcd -x to properly release lease and stop
+        $priv->dhcpcd('-x', $iface);
     }
 
     /**

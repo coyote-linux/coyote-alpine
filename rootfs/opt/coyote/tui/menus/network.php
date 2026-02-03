@@ -105,12 +105,27 @@ function configureInterface(string $name, array $current): void
     $configManager->load();
     $config = $configManager->getRunningConfig();
 
+    // Get existing interfaces array
+    $interfaces = $config->get('network.interfaces', []);
+
+    // Find existing config for this interface, or prepare to add new
+    $ifIndex = null;
+    foreach ($interfaces as $i => $iface) {
+        if (($iface['name'] ?? '') === $name) {
+            $ifIndex = $i;
+            break;
+        }
+    }
+
+    $ifConfig = null;
+
     switch ($choice) {
         case 'dhcp':
-            $config->set("network.interfaces.{$name}", [
-                'device' => $name,
+            $ifConfig = [
+                'name' => $name,
                 'type' => 'dhcp',
-            ]);
+                'enabled' => true,
+            ];
             showSuccess("Interface {$name} set to DHCP");
             break;
 
@@ -119,31 +134,79 @@ function configureInterface(string $name, array $current): void
             $gateway = prompt('Gateway (optional)');
 
             $ifConfig = [
-                'device' => $name,
+                'name' => $name,
                 'type' => 'static',
-                'address' => $address,
+                'enabled' => true,
+                'addresses' => [$address],
             ];
 
+            // Add route for gateway if specified
             if ($gateway) {
-                $ifConfig['gateway'] = $gateway;
+                $routes = $config->get('network.routes', []);
+                // Check if default route already exists for this interface
+                $routeExists = false;
+                foreach ($routes as $i => $route) {
+                    if (($route['destination'] ?? '') === 'default' &&
+                        ($route['interface'] ?? '') === $name) {
+                        $routes[$i]['gateway'] = $gateway;
+                        $routeExists = true;
+                        break;
+                    }
+                }
+                if (!$routeExists) {
+                    $routes[] = [
+                        'destination' => 'default',
+                        'gateway' => $gateway,
+                        'interface' => $name,
+                    ];
+                }
+                $config->set('network.routes', $routes);
             }
 
-            $config->set("network.interfaces.{$name}", $ifConfig);
             showSuccess("Interface {$name} configured with {$address}");
             break;
 
         case 'disable':
-            $config->set("network.interfaces.{$name}", [
-                'device' => $name,
+            $ifConfig = [
+                'name' => $name,
                 'type' => 'disabled',
-            ]);
+                'enabled' => false,
+            ];
             showSuccess("Interface {$name} disabled");
             break;
     }
 
+    // Update or add interface config
+    if ($ifConfig !== null) {
+        if ($ifIndex !== null) {
+            $interfaces[$ifIndex] = $ifConfig;
+        } else {
+            $interfaces[] = $ifConfig;
+        }
+        $config->set('network.interfaces', $interfaces);
+    }
+
     if (confirm('Apply changes now?')) {
-        exec('/opt/coyote/bin/apply-config');
-        showSuccess("Changes applied");
+        // Save to running config before applying
+        $configManager->saveRunning();
+
+        // Apply the configuration from running-config
+        $runningConfigFile = '/tmp/running-config/system.json';
+        exec("COYOTE_CONFIG_FILE={$runningConfigFile} /opt/coyote/bin/apply-config 2>&1", $output, $ret);
+
+        if ($ret === 0) {
+            showSuccess("Changes applied");
+
+            if (confirm('Save changes permanently?')) {
+                if ($configManager->save()) {
+                    showSuccess("Configuration saved to disk");
+                } else {
+                    showError("Failed to save configuration to disk");
+                }
+            }
+        } else {
+            showError("Failed to apply configuration");
+        }
     }
 
     waitForEnter();
@@ -174,7 +237,19 @@ function configureDns(): void
     $configManager->load();
     $config = $configManager->getRunningConfig();
 
-    $current = $config->get('network.dns.nameservers', []);
+    // Support both array format and nested format for DNS
+    $currentDns = $config->get('network.dns', []);
+    if (is_array($currentDns) && !isset($currentDns['nameservers'])) {
+        // Flat array format
+        $current = $currentDns;
+    } else {
+        // Nested format with 'nameservers' key
+        $current = $currentDns['nameservers'] ?? $currentDns;
+    }
+    if (!is_array($current)) {
+        $current = [];
+    }
+
     echo "Current nameservers: " . (empty($current) ? 'none' : implode(', ', $current)) . "\n\n";
 
     $ns1 = prompt('Primary DNS', $current[0] ?? '8.8.8.8');
@@ -185,12 +260,31 @@ function configureDns(): void
         $nameservers[] = $ns2;
     }
 
-    $config->set('network.dns.nameservers', $nameservers);
+    // Use flat array format to match apply-config expectations
+    $config->set('network.dns', $nameservers);
     showSuccess("DNS servers updated");
 
     if (confirm('Apply changes now?')) {
-        exec('/opt/coyote/bin/apply-config');
-        showSuccess("Changes applied");
+        // Save to running config before applying
+        $configManager->saveRunning();
+
+        // Apply the configuration from running-config
+        $runningConfigFile = '/tmp/running-config/system.json';
+        exec("COYOTE_CONFIG_FILE={$runningConfigFile} /opt/coyote/bin/apply-config 2>&1", $output, $ret);
+
+        if ($ret === 0) {
+            showSuccess("Changes applied");
+
+            if (confirm('Save changes permanently?')) {
+                if ($configManager->save()) {
+                    showSuccess("Configuration saved to disk");
+                } else {
+                    showError("Failed to save configuration to disk");
+                }
+            }
+        } else {
+            showError("Failed to apply configuration");
+        }
     }
 
     waitForEnter();
@@ -219,8 +313,26 @@ function configureHostname(): void
         showSuccess("Hostname will be changed to: {$hostname}");
 
         if (confirm('Apply changes now?')) {
-            exec('/opt/coyote/bin/apply-config');
-            showSuccess("Changes applied");
+            // Save to running config before applying
+            $configManager->saveRunning();
+
+            // Apply the configuration from running-config
+            $runningConfigFile = '/tmp/running-config/system.json';
+            exec("COYOTE_CONFIG_FILE={$runningConfigFile} /opt/coyote/bin/apply-config 2>&1", $output, $ret);
+
+            if ($ret === 0) {
+                showSuccess("Changes applied");
+
+                if (confirm('Save changes permanently?')) {
+                    if ($configManager->save()) {
+                        showSuccess("Configuration saved to disk");
+                    } else {
+                        showError("Failed to save configuration to disk");
+                    }
+                }
+            } else {
+                showError("Failed to apply configuration");
+            }
         }
     }
 

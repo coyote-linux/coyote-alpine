@@ -14,7 +14,7 @@
 #   ip <args...>                Run ip command
 #   sysctl <args...>            Run sysctl command
 #   modprobe <module>           Load kernel module
-#   udhcpc <args...>            Start DHCP client
+#   dhcpcd <args...>            Start/stop DHCP client
 #   pppd <args...>              Start PPPoE client
 #   kill-pid <pid>              Kill process by PID
 #   pkill-pattern <pattern>     Kill processes matching pattern
@@ -173,12 +173,12 @@ cmd_modprobe() {
     echo "OK"
 }
 
-# Command: udhcpc <args...>
-cmd_udhcpc() {
-    [ $# -eq 0 ] && die "udhcpc: arguments required"
+# Command: dhcpcd <args...>
+cmd_dhcpcd() {
+    [ $# -eq 0 ] && die "dhcpcd: arguments required"
 
-    log_action "udhcpc: $*"
-    udhcpc "$@"
+    log_action "dhcpcd: $*"
+    dhcpcd "$@"
 }
 
 # Command: pppd <args...>
@@ -268,8 +268,8 @@ main() {
         modprobe)
             cmd_modprobe "$@"
             ;;
-        udhcpc)
-            cmd_udhcpc "$@"
+        dhcpcd)
+            cmd_dhcpcd "$@"
             ;;
         pppd)
             cmd_pppd "$@"

@@ -56,19 +56,40 @@ function applyConfig(): bool
             echo "  Config partition: NOT MOUNTED\n";
             echo "  Attempting to find and mount config partition...\n";
 
+            // Find candidate partitions (second partition on each disk)
+            $candidates = array_merge(
+                glob('/dev/sd?2') ?: [],
+                glob('/dev/nvme?n?p2') ?: [],
+                glob('/dev/vd?2') ?: []
+            );
+
+            echo "  Candidate partitions: " . (empty($candidates) ? 'none found' : implode(', ', $candidates)) . "\n";
+
             // Try to mount config partition
-            foreach (glob('/dev/sd*2') + glob('/dev/nvme*p2') + glob('/dev/vd*2') as $part) {
-                if (filetype($part) !== 'block') continue;
+            $mounted = false;
+            foreach ($candidates as $part) {
+                if (!file_exists($part)) continue;
+
+                echo "  Trying: {$part}...\n";
 
                 // Try mounting (busybox mount requires -t type)
-                exec("mount -t ext4 -o ro " . escapeshellarg($part) . " " . escapeshellarg($configPath) . " 2>&1", $output, $ret);
+                $mountOutput = [];
+                exec("mount -t ext4 -o ro " . escapeshellarg($part) . " " . escapeshellarg($configPath) . " 2>&1", $mountOutput, $ret);
                 if ($ret === 0) {
                     if (file_exists($configFile)) {
                         echo "  Found config on: {$part}\n";
+                        $mounted = true;
                         break;
                     }
+                    echo "  Mounted {$part} but no system.json found\n";
                     exec("umount " . escapeshellarg($configPath) . " 2>&1");
+                } else {
+                    echo "  Mount failed: " . implode(' ', $mountOutput) . "\n";
                 }
+            }
+
+            if (!$mounted) {
+                echo "  WARNING: Could not find or mount config partition\n";
             }
         }
 
@@ -209,37 +230,54 @@ function applyConfig(): bool
         exec("ip addr flush dev " . escapeshellarg($name) . " 2>&1");
 
         // Bring interface up
-        exec("ip link set " . escapeshellarg($name) . " up 2>&1", $output, $ret);
+        $cmdOutput = [];
+        exec("ip link set " . escapeshellarg($name) . " up 2>&1", $cmdOutput, $ret);
         if ($ret !== 0) {
-            $errors[] = "Failed to bring up interface {$name}";
+            $errors[] = "Failed to bring up interface {$name}: " . implode(' ', $cmdOutput);
             continue;
         }
+        echo "    Status: up\n";
 
         // Handle by type
         if ($type === 'static') {
             // Set IP addresses (CIDR notation expected, e.g., 192.168.0.1/24)
             foreach ($addresses as $address) {
                 if (empty($address)) continue;
-                exec("ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name) . " 2>&1", $output, $ret);
+                $cmdOutput = [];
+                exec("ip addr add " . escapeshellarg($address) . " dev " . escapeshellarg($name) . " 2>&1", $cmdOutput, $ret);
                 if ($ret === 0) {
                     echo "    Address: {$address}\n";
                 } else {
-                    $errors[] = "Failed to set address {$address} on {$name}";
+                    $errors[] = "Failed to set address {$address} on {$name}: " . implode(' ', $cmdOutput);
                 }
             }
         } elseif ($type === 'dhcp') {
-            // Start DHCP client
+            // Start DHCP client (using dhcpcd)
             $hostname = $ifaceConfig['dhcp_hostname'] ?? '';
-            $pidFile = "/var/run/udhcpc.{$name}.pid";
-            $cmd = "udhcpc -i " . escapeshellarg($name) . " -b -p " . escapeshellarg($pidFile) . " -S";
+
+            // Stop any existing dhcpcd for this interface
+            exec("dhcpcd -x " . escapeshellarg($name) . " 2>&1");
+            usleep(100000); // 100ms
+
+            // Build dhcpcd command
+            // -b = background immediately
+            // -h = hostname to send
+            // -t 0 = wait forever (no timeout)
+            $cmd = "dhcpcd -b -t 0";
             if (!empty($hostname)) {
-                $cmd .= " -H " . escapeshellarg($hostname);
+                $cmd .= " -h " . escapeshellarg($hostname);
             }
-            exec($cmd . " 2>&1", $output, $ret);
+            $cmd .= " " . escapeshellarg($name);
+
+            echo "    DHCP: starting ({$cmd})\n";
+            $cmdOutput = [];
+            exec($cmd . " 2>&1", $cmdOutput, $ret);
             if ($ret === 0) {
                 echo "    DHCP: started\n";
             } else {
-                $errors[] = "Failed to start DHCP on {$name}";
+                $errorMsg = implode(' ', $cmdOutput);
+                $errors[] = "Failed to start DHCP on {$name}: {$errorMsg}";
+                echo "    DHCP: FAILED - {$errorMsg}\n";
             }
         }
     }
