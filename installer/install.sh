@@ -757,6 +757,12 @@ LABEL coyote
     INITRD /boot/initramfs.gz
     APPEND console=tty0 quiet
 
+LABEL previous
+    MENU LABEL Previous Version (after upgrade)
+    LINUX /boot/vmlinuz.prev
+    INITRD /boot/initramfs.gz.prev
+    APPEND console=tty0 quiet firmware=previous
+
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
@@ -880,7 +886,7 @@ upgrade_system() {
         echo "5"; echo "Mounting boot partition..."
         mount -t vfat "$BOOT_PART" "$target_boot" >/dev/null 2>&1 || exit 1
 
-        echo "15"; echo "Backing up existing firmware..."
+        echo "10"; echo "Backing up existing firmware..."
         if [ -f "$target_boot/firmware/current.squashfs" ]; then
             mv "$target_boot/firmware/current.squashfs" "$target_boot/firmware/previous.squashfs" >/dev/null 2>&1 || true
             [ -f "$target_boot/firmware/current.squashfs.sha256" ] && \
@@ -889,10 +895,20 @@ upgrade_system() {
                 mv "$target_boot/firmware/current.squashfs.sig" "$target_boot/firmware/previous.squashfs.sig" >/dev/null 2>&1
         fi
 
-        echo "30"; echo "Installing new kernel..."
+        echo "20"; echo "Backing up existing kernel..."
+        if [ -f "$target_boot/boot/vmlinuz" ]; then
+            mv "$target_boot/boot/vmlinuz" "$target_boot/boot/vmlinuz.prev" >/dev/null 2>&1 || true
+        fi
+
+        echo "30"; echo "Backing up existing initramfs..."
+        if [ -f "$target_boot/boot/initramfs.gz" ]; then
+            mv "$target_boot/boot/initramfs.gz" "$target_boot/boot/initramfs.gz.prev" >/dev/null 2>&1 || true
+        fi
+
+        echo "40"; echo "Installing new kernel..."
         cp "${BOOT_MEDIA}/boot/vmlinuz" "$target_boot/boot/" >/dev/null 2>&1 || exit 1
 
-        echo "45"; echo "Installing new initramfs..."
+        echo "50"; echo "Installing new initramfs..."
         cp "${BOOT_MEDIA}/boot/initramfs-system.gz" "$target_boot/boot/initramfs.gz" >/dev/null 2>&1 || exit 1
 
         echo "60"; echo "Installing new firmware..."
@@ -900,7 +916,7 @@ upgrade_system() {
         [ -f "${FIRMWARE_SRC}.sha256" ] && cp "${FIRMWARE_SRC}.sha256" "$target_boot/firmware/current.squashfs.sha256" >/dev/null 2>&1
         [ -f "${FIRMWARE_SRC}.sig" ] && cp "${FIRMWARE_SRC}.sig" "$target_boot/firmware/current.squashfs.sig" >/dev/null 2>&1
 
-        echo "85"; echo "Updating bootloader files..."
+        echo "70"; echo "Updating bootloader files..."
         if [ -f "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" ]; then
             cp "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
             cp "${BOOT_MEDIA}/boot/isolinux/menu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true

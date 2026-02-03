@@ -7,6 +7,7 @@ log "Checking firmware image..."
 
 FIRMWARE_DIR="/mnt/boot/firmware"
 FIRMWARE_CURRENT="${FIRMWARE_DIR}/current.squashfs"
+FIRMWARE_PREVIOUS="${FIRMWARE_DIR}/previous.squashfs"
 FIRMWARE_NEW="${FIRMWARE_DIR}/new.squashfs"
 FIRMWARE_BACKUP="${FIRMWARE_DIR}/backup.squashfs"
 
@@ -15,6 +16,13 @@ SKIP_SIGCHECK=0
 if grep -q "nosigcheck" /proc/cmdline 2>/dev/null; then
     warn "Signature verification DISABLED (nosigcheck)"
     SKIP_SIGCHECK=1
+fi
+
+# Check for firmware=previous kernel parameter (rollback boot)
+USE_PREVIOUS=0
+if grep -q "firmware=previous" /proc/cmdline 2>/dev/null; then
+    log "Booting previous firmware version (rollback mode)"
+    USE_PREVIOUS=1
 fi
 
 # Function to verify firmware signature
@@ -79,6 +87,25 @@ if [ -f "$FIRMWARE_NEW" ]; then
         fi
     else
         warn "No hash file for new firmware, skipping update"
+    fi
+fi
+
+# Handle rollback boot (firmware=previous kernel parameter)
+if [ "$USE_PREVIOUS" = "1" ]; then
+    if [ -f "$FIRMWARE_PREVIOUS" ]; then
+        log "Using previous firmware for rollback boot"
+        if verify_firmware_signature "$FIRMWARE_PREVIOUS"; then
+            FIRMWARE_PATH="$FIRMWARE_PREVIOUS"
+            export FIRMWARE_PATH
+            log "Firmware image: $FIRMWARE_PATH (previous version)"
+            return 0
+        else
+            error "Previous firmware signature verification FAILED!"
+            error "Cannot boot previous version securely."
+            # Fall through to try current firmware
+        fi
+    else
+        warn "No previous firmware available, booting current version"
     fi
 fi
 
