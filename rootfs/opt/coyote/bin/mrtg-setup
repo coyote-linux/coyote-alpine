@@ -49,8 +49,9 @@ local function get_interface_speed(iface)
     local speed_file = "/sys/class/net/" .. iface .. "/speed"
     local f = io.open(speed_file, "r")
     if f then
-        local speed_mbps = tonumber(f:read("*l"))
+        local speed_raw = f:read("*l") or ""
         f:close()
+        local speed_mbps = tonumber(speed_raw) or tonumber(speed_raw:match("(%d+)") or "")
         if speed_mbps and speed_mbps > 0 then
             return speed_mbps * 125000  -- Convert Mbps to bytes/sec
         end

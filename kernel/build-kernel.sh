@@ -101,7 +101,7 @@ make -j20 -C "$KERNEL_SRC_DIR" ARCH="$ARCH" -j"$JOBS" bzImage modules
 
 echo "Installing modules"
 rm -rf "$OUTPUT_MODULES"
-make -C "$KERNEL_SRC_DIR" ARCH="$ARCH" modules_install INSTALL_MOD_PATH="$OUTPUT_MODULES"
+make -j20 -C "$KERNEL_SRC_DIR" ARCH="$ARCH" modules_install INSTALL_MOD_PATH="$OUTPUT_MODULES"
 
 mkdir -p "$ARCHIVE_DIR"
 echo "Archiving kernel image"

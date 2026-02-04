@@ -38,8 +38,8 @@ fi
 echo "Building USB installer for Coyote Linux $VERSION"
 
 INSTALLER_IMG="${BUILD_DIR}/coyote-installer-${VERSION}.img"
-# Size must accommodate: kernel (~10MB) + initramfs (~11MB) + firmware (~220MB) + syslinux
-INSTALLER_SIZE="300M"
+# Size must accommodate: kernel + initramfs + firmware + syslinux
+INSTALLER_SIZE="600M"
 PARTITION_START=1048576      # 1MiB in bytes
 PARTITION_START_SECTORS=2048 # 1MiB in 512-byte sectors
 
@@ -152,7 +152,7 @@ fi
 
 # Copy firmware
 echo "Copying firmware..."
-FIRMWARE_SRC=$(ls "${BUILD_DIR}"/firmware-*.squashfs 2>/dev/null | head -1)
+FIRMWARE_SRC="$FIRMWARE_FILE"
 if [ -n "$FIRMWARE_SRC" ] && [ -f "$FIRMWARE_SRC" ]; then
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$FIRMWARE_SRC" ::/firmware/current.squashfs
     if [ -f "${FIRMWARE_SRC}.sha256" ]; then

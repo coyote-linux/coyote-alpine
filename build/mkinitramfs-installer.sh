@@ -31,8 +31,8 @@ check_prerequisites() {
         exit 1
     fi
 
-    if [ ! -d "${CACHE_DIR}/modules" ]; then
-        echo "Warning: No kernel modules in cache. Installer may have limited hardware support."
+    if ! ls "${SCRIPT_DIR}/../kernel/output"/modules-*.tar.gz >/dev/null 2>&1; then
+        echo "Warning: No custom kernel modules archive found. Installer may have limited hardware support."
     fi
 
     if [ ! -d "$INITRAMFS_SRC" ]; then
@@ -78,17 +78,29 @@ build_initramfs() {
     chmod +x "${INITRAMFS_BUILD}/init.d/"*.sh
 
     # Copy kernel modules needed for boot (if available)
-    if [ -d "${CACHE_DIR}/modules" ]; then
+    local modules_archive
+    local modules_root="${BUILD_DIR}/modules-archive"
+
+    modules_archive=$(ls -t "${SCRIPT_DIR}/../kernel/output"/modules-*.tar.gz 2>/dev/null | head -1)
+
+    if [ -n "$modules_archive" ] && [ -f "$modules_archive" ]; then
+        echo "Extracting custom kernel modules archive..."
+        rm -rf "$modules_root"
+        mkdir -p "$modules_root"
+        tar -xzf "$modules_archive" -C "$modules_root"
+    fi
+
+    if [ -d "${modules_root}/lib/modules" ]; then
         echo "Including kernel modules..."
 
         # Find the kernel version directory
-        local kver=$(ls "${CACHE_DIR}/modules/" | head -1)
+        local kver=$(ls "${modules_root}/lib/modules/" | head -1)
         if [ -n "$kver" ]; then
             mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers"
 
             copy_module_with_deps() {
                 local module_name="$1"
-                local modules_base="${CACHE_DIR}/modules/${kver}"
+                local modules_base="${modules_root}/lib/modules/${kver}"
                 local dep_file="${modules_base}/modules.dep"
 
                 if [ ! -f "$dep_file" ]; then
@@ -121,7 +133,7 @@ build_initramfs() {
             # Copy essential modules for VMware/QEMU boot
             local module_dirs="ata scsi block virtio cdrom"
             for mdir in $module_dirs; do
-                src="${CACHE_DIR}/modules/${kver}/kernel/drivers/${mdir}"
+                src="${modules_root}/lib/modules/${kver}/kernel/drivers/${mdir}"
                 if [ -d "$src" ]; then
                     mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/${mdir}"
                     cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/${mdir}/" 2>/dev/null || true
@@ -129,7 +141,7 @@ build_initramfs() {
             done
 
             # Copy MPT Fusion drivers (used by VMware)
-            src="${CACHE_DIR}/modules/${kver}/kernel/drivers/message/fusion"
+            src="${modules_root}/lib/modules/${kver}/kernel/drivers/message/fusion"
             if [ -d "$src" ]; then
                 mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/message/fusion"
                 cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/message/fusion/" 2>/dev/null || true
@@ -138,7 +150,7 @@ build_initramfs() {
             # Copy filesystem modules (squashfs, isofs for CD-ROM, fat, ext4, overlay)
             local fs_modules="squashfs isofs fat ext4 nls overlay"
             for fsmod in $fs_modules; do
-                src="${CACHE_DIR}/modules/${kver}/kernel/fs/${fsmod}"
+                src="${modules_root}/lib/modules/${kver}/kernel/fs/${fsmod}"
                 if [ -d "$src" ]; then
                     mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}"
                     cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}/" 2>/dev/null || true
@@ -152,8 +164,8 @@ build_initramfs() {
             done
 
             # Copy modules.builtin
-            if [ -f "${CACHE_DIR}/modules/${kver}/modules.builtin" ]; then
-                cp "${CACHE_DIR}/modules/${kver}/modules.builtin" "${INITRAMFS_BUILD}/lib/modules/${kver}/"
+            if [ -f "${modules_root}/lib/modules/${kver}/modules.builtin" ]; then
+                cp "${modules_root}/lib/modules/${kver}/modules.builtin" "${INITRAMFS_BUILD}/lib/modules/${kver}/"
             fi
 
             # Regenerate modules.dep for the initramfs subset

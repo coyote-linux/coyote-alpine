@@ -7,7 +7,6 @@
 alpine-base
 busybox
 openrc
-linux-lts
 
 # Shell and utilities
 bash

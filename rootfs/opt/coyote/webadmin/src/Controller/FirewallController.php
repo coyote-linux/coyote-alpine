@@ -774,16 +774,12 @@ class FirewallController extends BaseController
     {
         $interfaces = ['any' => 'Any Interface'];
 
-        // Read from /sys/class/net
-        $netDir = '/sys/class/net';
-        if (is_dir($netDir)) {
-            $dirs = scandir($netDir);
-            foreach ($dirs as $iface) {
-                if ($iface === '.' || $iface === '..' || $iface === 'lo') {
-                    continue;
-                }
-                $interfaces[$iface] = $iface;
+        $network = new \Coyote\System\Network();
+        foreach (array_keys($network->getInterfaces()) as $iface) {
+            if ($iface === 'lo') {
+                continue;
             }
+            $interfaces[$iface] = $iface;
         }
 
         return $interfaces;

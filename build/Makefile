@@ -67,12 +67,10 @@ help:
 	@echo "  make iso        # Rebuild ISO with new firmware"
 
 # Build the Alpine rootfs with Coyote overlay
-rootfs: $(ROOTFS_BUILD)/.stamp
-
-$(ROOTFS_BUILD)/.stamp: $(ROOTFS_FILES) apk-packages.txt mkrootfs.sh
+rootfs: kernel
 	@echo "Building rootfs..."
 	./mkrootfs.sh
-	@touch $@
+	@touch $(ROOTFS_BUILD)/.stamp
 
 # Build the main firmware squashfs image
 # This target increments the build number and creates the firmware
@@ -88,6 +86,7 @@ firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	echo "$$NEW_VERSION" > $(ROOTFS_BUILD)/etc/coyote/version; \
 	echo "Coyote Linux $$NEW_VERSION" > $(ROOTFS_BUILD)/etc/issue; \
 	echo "" >> $(ROOTFS_BUILD)/etc/issue; \
+	cp $(ROOTFS_SRC)/etc/motd $(ROOTFS_BUILD)/etc/motd; \
 	sed -i "s/Edge Firewall/$$NEW_VERSION - Edge Firewall/" $(ROOTFS_BUILD)/etc/motd; \
 	echo 'NAME="Coyote Linux"' > $(ROOTFS_BUILD)/etc/os-release; \
 	echo 'ID=coyote' >> $(ROOTFS_BUILD)/etc/os-release; \
@@ -125,13 +124,11 @@ kernel:
 	@echo "Building custom kernel..."
 	@KERNEL_VERSION="$(KERNEL_VERSION)" ../kernel/build-kernel.sh
 
-initramfs: $(BUILD_DIR)/.initramfs-stamp
-
-$(BUILD_DIR)/.initramfs-stamp: mkinitramfs.sh $(INITRAMFS_FILES) kernel
+initramfs: kernel
 	@echo "Building kernel and initramfs..."
 	@mkdir -p $(BUILD_DIR)
 	./mkinitramfs.sh
-	@touch $@
+	@touch $(BUILD_DIR)/.initramfs-stamp
 	@echo "Kernel: $(BUILD_DIR)/vmlinuz"
 	@echo "Initramfs: $(BUILD_DIR)/initramfs.cpio.gz"
 
@@ -140,25 +137,23 @@ $(BUILD_DIR)/vmlinuz: $(BUILD_DIR)/.initramfs-stamp
 $(BUILD_DIR)/initramfs.cpio.gz: $(BUILD_DIR)/.initramfs-stamp
 
 # Build the installer-specific initramfs (simplified, no firmware/config logic)
-initramfs-installer: $(BUILD_DIR)/.initramfs-installer-stamp
-
-$(BUILD_DIR)/.initramfs-installer-stamp: $(BUILD_DIR)/.initramfs-stamp mkinitramfs-installer.sh $(INITRAMFS_INSTALLER_FILES)
+initramfs-installer: initramfs
 	@echo "Building installer initramfs..."
 	@mkdir -p $(BUILD_DIR)
 	./mkinitramfs-installer.sh
-	@touch $@
+	@touch $(BUILD_DIR)/.initramfs-installer-stamp
 	@echo "Installer initramfs: $(BUILD_DIR)/initramfs-installer.cpio.gz"
 
 $(BUILD_DIR)/initramfs-installer.cpio.gz: $(BUILD_DIR)/.initramfs-installer-stamp
 
 # Build the USB installer
-installer: firmware initramfs-installer
+installer: rootfs initramfs initramfs-installer firmware
 	@echo "Building installer image..."
 	./mkinstaller.sh $(BUILD_DIR)
 	@echo "Installer created"
 
 # Build the ISO installer
-iso: firmware initramfs-installer
+iso: rootfs initramfs initramfs-installer firmware
 	@echo "Building ISO image..."
 	./mkiso.sh
 	@echo "ISO created"

@@ -7,6 +7,7 @@ namespace Coyote\System;
  */
 class Network
 {
+    private const NON_ETHERNET_ALLOWLIST = [];
     /**
      * Configure an interface with the given settings.
      *
@@ -225,6 +226,10 @@ class Network
                 continue;
             }
 
+            if (!$this->isEthernetInterface($iface) && !$this->isAllowlistedNonEthernet($iface)) {
+                continue;
+            }
+
             $interfaces[$iface] = [
                 'name' => $iface,
                 'mac' => $this->getMacAddress($iface),
@@ -237,6 +242,27 @@ class Network
         }
 
         return $interfaces;
+    }
+
+    /**
+     * Check if interface is Ethernet class.
+     *
+     * @param string $interface Interface name
+     * @return bool True if Ethernet
+     */
+    private function isEthernetInterface(string $interface): bool
+    {
+        $path = "/sys/class/net/{$interface}/type";
+        if (!file_exists($path)) {
+            return false;
+        }
+
+        return trim(file_get_contents($path)) === '1';
+    }
+
+    private function isAllowlistedNonEthernet(string $interface): bool
+    {
+        return in_array($interface, self::NON_ETHERNET_ALLOWLIST, true);
     }
 
     /**

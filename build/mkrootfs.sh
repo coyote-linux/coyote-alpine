@@ -29,6 +29,7 @@ CACHE_DIR="${SCRIPT_DIR}/../.cache"
 ROOTFS_DIR="${SCRIPT_DIR}/../output/rootfs"
 COYOTE_ROOTFS="${SCRIPT_DIR}/../rootfs"
 PACKAGES_FILE="${SCRIPT_DIR}/apk-packages.txt"
+CUSTOM_KERNEL_ROOT="${SCRIPT_DIR}/../kernel"
 
 # Create directories
 mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$ROOTFS_DIR"
@@ -254,6 +255,28 @@ create_busybox_symlinks() {
     done
 
     echo "Created $bin_count symlinks in /bin, $sbin_count symlinks in /sbin"
+}
+
+install_custom_kernel_modules() {
+    local archive=""
+
+    if [ -n "${KERNEL_VERSION:-}" ]; then
+        archive="${CUSTOM_KERNEL_ROOT}/output/modules-${KERNEL_VERSION}.tar.gz"
+    fi
+
+    if [ -z "$archive" ] || [ ! -f "$archive" ]; then
+        archive=$(ls -t "${CUSTOM_KERNEL_ROOT}/output"/modules-*.tar.gz 2>/dev/null | head -1)
+    fi
+
+    if [ -z "$archive" ]; then
+        echo "Warning: No custom kernel modules archive found; rootfs will lack kernel modules"
+        return 0
+    fi
+
+    echo "Installing custom kernel modules from ${archive}"
+    rm -rf "${ROOTFS_DIR}/lib/modules"
+    mkdir -p "${ROOTFS_DIR}/lib"
+    tar -xzf "$archive" -C "${ROOTFS_DIR}"
 }
 
 #
@@ -632,6 +655,7 @@ main() {
     setup_alpine_keys
     init_rootfs
     install_packages
+    install_custom_kernel_modules
     create_busybox_symlinks
     apply_coyote_overlay
     cleanup_rootfs

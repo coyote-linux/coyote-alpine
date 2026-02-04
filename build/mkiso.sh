@@ -124,7 +124,7 @@ fi
 
 # Copy firmware
 echo "Copying firmware..."
-FIRMWARE_SRC=$(ls "${BUILD_DIR}"/firmware-*.squashfs 2>/dev/null | head -1)
+FIRMWARE_SRC="$FIRMWARE_FILE"
 if [ -n "$FIRMWARE_SRC" ] && [ -f "$FIRMWARE_SRC" ]; then
     cp "$FIRMWARE_SRC" "${ISO_BUILD}/firmware/current.squashfs"
     if [ -f "${FIRMWARE_SRC}.sha256" ]; then

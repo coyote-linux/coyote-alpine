@@ -54,7 +54,7 @@ setup_kernel() {
         if [ -f "$CUSTOM_KERNEL_ARCHIVE" ] && [ -f "$CUSTOM_MODULES_ARCHIVE" ]; then
             echo "Using custom kernel archives"
 
-            local kernel_tmp="${CACHE_DIR}/kernel-tmp"
+            local kernel_tmp="${BUILD_DIR}/kernel-archive"
             rm -rf "$kernel_tmp"
             mkdir -p "$kernel_tmp"
             tar -xzf "$CUSTOM_KERNEL_ARCHIVE" -C "$kernel_tmp"
@@ -62,18 +62,12 @@ setup_kernel() {
                 CUSTOM_KERNEL_IMAGE="${kernel_tmp}/bzImage"
             fi
 
-            local modules_tmp="${CACHE_DIR}/modules-tmp"
+            local modules_tmp="${BUILD_DIR}/modules-archive"
             rm -rf "$modules_tmp"
             mkdir -p "$modules_tmp"
             tar -xzf "$CUSTOM_MODULES_ARCHIVE" -C "$modules_tmp"
             if [ -d "${modules_tmp}/lib/modules" ]; then
-                rm -rf "${CACHE_DIR}/modules"
-                mkdir -p "${CACHE_DIR}/modules"
-                cp -a "${modules_tmp}/lib/modules/"* "${CACHE_DIR}/modules/" 2>/dev/null || true
-            fi
-
-            if [ -d "${CACHE_DIR}/modules" ]; then
-                CUSTOM_KERNEL_MODULES_DIR="${CACHE_DIR}/modules"
+                CUSTOM_KERNEL_MODULES_DIR="${modules_tmp}/lib/modules"
             fi
 
             return
@@ -103,26 +97,19 @@ setup_kernel() {
         fi
     }
 
-    if [ -f "$kernel_dest" ]; then
+    detect_custom_kernel
+
+    if [ -f "$kernel_dest" ] && [ -z "$CUSTOM_KERNEL_IMAGE" ]; then
         echo "Kernel already exists: $kernel_dest"
         return 0
     fi
-
-    detect_custom_kernel
 
     if [ -n "$CUSTOM_KERNEL_IMAGE" ] && [ -f "$CUSTOM_KERNEL_IMAGE" ]; then
         echo "Using custom kernel: $CUSTOM_KERNEL_IMAGE"
         cp "$CUSTOM_KERNEL_IMAGE" "$kernel_dest"
 
         if [ -n "$CUSTOM_KERNEL_MODULES_DIR" ] && [ -d "$CUSTOM_KERNEL_MODULES_DIR" ]; then
-            if [ "$CUSTOM_KERNEL_MODULES_DIR" = "${CACHE_DIR}/modules" ]; then
-                echo "Custom kernel modules already cached"
-            else
-                rm -rf "${CACHE_DIR}/modules"
-                mkdir -p "${CACHE_DIR}/modules"
-                cp -a "${CUSTOM_KERNEL_MODULES_DIR}/"* "${CACHE_DIR}/modules/"
-                echo "Custom kernel modules cached"
-            fi
+            echo "Using custom kernel modules from ${CUSTOM_KERNEL_MODULES_DIR}"
         else
             echo "Warning: No custom kernel modules found; initramfs will include none"
         fi
@@ -321,17 +308,17 @@ build_initramfs() {
     chmod +x "${INITRAMFS_BUILD}/recovery/"*.sh
 
     # Copy kernel modules needed for boot (if available)
-    if [ -d "${CACHE_DIR}/modules" ]; then
+    if [ -n "$CUSTOM_KERNEL_MODULES_DIR" ] && [ -d "$CUSTOM_KERNEL_MODULES_DIR" ]; then
         echo "Including kernel modules..."
 
         # Find the kernel version directory
-        local kver=$(ls "${CACHE_DIR}/modules/" | head -1)
+        local kver=$(ls "${CUSTOM_KERNEL_MODULES_DIR}/" | head -1)
         if [ -n "$kver" ]; then
             mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers"
 
             copy_module_with_deps() {
                 local module_name="$1"
-                local modules_base="${CACHE_DIR}/modules/${kver}"
+                local modules_base="${CUSTOM_KERNEL_MODULES_DIR}/${kver}"
                 local dep_file="${modules_base}/modules.dep"
 
                 if [ ! -f "$dep_file" ]; then
@@ -365,7 +352,7 @@ build_initramfs() {
             # Include: storage (ata, scsi, block, virtio), cdrom, message (mpt drivers)
             local module_dirs="ata scsi block virtio cdrom"
             for mdir in $module_dirs; do
-                src="${CACHE_DIR}/modules/${kver}/kernel/drivers/${mdir}"
+                src="${CUSTOM_KERNEL_MODULES_DIR}/${kver}/kernel/drivers/${mdir}"
                 if [ -d "$src" ]; then
                     mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/${mdir}"
                     cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/${mdir}/" 2>/dev/null || true
@@ -373,7 +360,7 @@ build_initramfs() {
             done
 
             # Copy MPT Fusion drivers (used by VMware)
-            src="${CACHE_DIR}/modules/${kver}/kernel/drivers/message/fusion"
+            src="${CUSTOM_KERNEL_MODULES_DIR}/${kver}/kernel/drivers/message/fusion"
             if [ -d "$src" ]; then
                 mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/message/fusion"
                 cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers/message/fusion/" 2>/dev/null || true
@@ -383,7 +370,7 @@ build_initramfs() {
             # Note: ext4 depends on jbd2, mbcache, and crc modules
             local fs_modules="squashfs isofs fat ext4 nls overlay jbd2 mbcache"
             for fsmod in $fs_modules; do
-                src="${CACHE_DIR}/modules/${kver}/kernel/fs/${fsmod}"
+                src="${CUSTOM_KERNEL_MODULES_DIR}/${kver}/kernel/fs/${fsmod}"
                 if [ -d "$src" ]; then
                     mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}"
                     cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}/" 2>/dev/null || true
@@ -393,7 +380,7 @@ build_initramfs() {
             # Copy crypto/crc modules needed by ext4 and other filesystems
             local crypto_dirs="crypto lib/crc"
             for cdir in $crypto_dirs; do
-                src="${CACHE_DIR}/modules/${kver}/kernel/${cdir}"
+                src="${CUSTOM_KERNEL_MODULES_DIR}/${kver}/kernel/${cdir}"
                 if [ -d "$src" ]; then
                     mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/${cdir}"
                     # Only copy crc-related modules to keep size down
@@ -402,8 +389,8 @@ build_initramfs() {
             done
 
             # Copy modules.builtin (lists built-in modules)
-            if [ -f "${CACHE_DIR}/modules/${kver}/modules.builtin" ]; then
-                cp "${CACHE_DIR}/modules/${kver}/modules.builtin" "${INITRAMFS_BUILD}/lib/modules/${kver}/"
+            if [ -f "${CUSTOM_KERNEL_MODULES_DIR}/${kver}/modules.builtin" ]; then
+                cp "${CUSTOM_KERNEL_MODULES_DIR}/${kver}/modules.builtin" "${INITRAMFS_BUILD}/lib/modules/${kver}/"
             fi
 
             # Copy key NIC modules for installer/runtime probing
