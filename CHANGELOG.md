@@ -4,6 +4,23 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.65] - 2026-02-03
+
+### Added
+
+#### Custom Kernel Build Support
+- Custom kernel build script with cached kernel/module archives for faster rebuilds
+- Makefile target for building the custom kernel in the build workflow
+
+### Changed
+
+#### Boot and Initramfs
+- Installer and runtime initramfs now pull custom kernel modules for storage and NIC detection
+- Custom kernel selected by default when kernel sources are present
+
+#### Kernel Configuration
+- Streamlined default kernel configuration for firewall appliance scope
+
 ## [4.0.64] - 2026-02-01
 
 ### Changed

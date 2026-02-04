@@ -739,12 +739,17 @@ install_system() {
         echo "75"; echo "Installing bootloader files..."
         cp "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/menu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+        cp "${BOOT_MEDIA}/boot/isolinux/vesamenu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/libutil.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/libcom32.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+        cp "${BOOT_MEDIA}/boot/isolinux/libmenu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+        cp "${BOOT_MEDIA}/boot/isolinux/libgpl.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+        cp "${BOOT_MEDIA}/boot/isolinux/liblua.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+        cp "${BOOT_MEDIA}/boot/isolinux/coyote-3-square.png" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
 
         echo "80"; echo "Creating bootloader configuration..."
         cat > "$target_boot/boot/syslinux/syslinux.cfg" << 'SYSLINUX_CFG'
-DEFAULT menu.c32
+UI vesamenu.c32
 PROMPT 0
 TIMEOUT 30
 
@@ -755,19 +760,19 @@ LABEL coyote
     MENU DEFAULT
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 quiet
+    APPEND console=tty0 quiet video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
 
 LABEL previous
     MENU LABEL Previous Version (after upgrade)
     LINUX /boot/vmlinuz.prev
     INITRD /boot/initramfs.gz.prev
-    APPEND console=tty0 quiet firmware=previous
+    APPEND console=tty0 quiet firmware=previous video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 quiet rescue
+    APPEND console=tty0 quiet rescue video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
 SYSLINUX_CFG
 
         echo "85"; echo "Creating system configuration..."
@@ -920,9 +925,42 @@ upgrade_system() {
         if [ -f "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" ]; then
             cp "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
             cp "${BOOT_MEDIA}/boot/isolinux/menu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+            cp "${BOOT_MEDIA}/boot/isolinux/vesamenu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
             cp "${BOOT_MEDIA}/boot/isolinux/libutil.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
             cp "${BOOT_MEDIA}/boot/isolinux/libcom32.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+            cp "${BOOT_MEDIA}/boot/isolinux/libmenu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+            cp "${BOOT_MEDIA}/boot/isolinux/libgpl.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+            cp "${BOOT_MEDIA}/boot/isolinux/liblua.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
+            cp "${BOOT_MEDIA}/boot/isolinux/coyote-3-square.png" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         fi
+
+        echo "80"; echo "Updating bootloader configuration..."
+        cat > "$target_boot/boot/syslinux/syslinux.cfg" << 'SYSLINUX_CFG'
+UI vesamenu.c32
+PROMPT 0
+TIMEOUT 30
+
+MENU TITLE Coyote Linux 4
+
+LABEL coyote
+    MENU LABEL Coyote Linux
+    MENU DEFAULT
+    LINUX /boot/vmlinuz
+    INITRD /boot/initramfs.gz
+    APPEND console=tty0 quiet video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+
+LABEL previous
+    MENU LABEL Previous Version (after upgrade)
+    LINUX /boot/vmlinuz.prev
+    INITRD /boot/initramfs.gz.prev
+    APPEND console=tty0 quiet firmware=previous video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+
+LABEL rescue
+    MENU LABEL Rescue Mode
+    LINUX /boot/vmlinuz
+    INITRD /boot/initramfs.gz
+    APPEND console=tty0 quiet rescue video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+SYSLINUX_CFG
 
         echo "95"; echo "Syncing disk..."
         sync >/dev/null 2>&1

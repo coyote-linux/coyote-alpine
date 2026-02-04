@@ -88,7 +88,22 @@ fi
 echo "Copying syslinux modules..."
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/ldlinux.c32" ::/boot/syslinux/
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/menu.c32" ::/boot/syslinux/
+if [ -f "${SYSLINUX_DIR}/vesamenu.c32" ]; then
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/vesamenu.c32" ::/boot/syslinux/
+fi
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/libutil.c32" ::/boot/syslinux/
+if [ -f "${SYSLINUX_DIR}/libcom32.c32" ]; then
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/libcom32.c32" ::/boot/syslinux/
+fi
+if [ -f "${SYSLINUX_DIR}/libmenu.c32" ]; then
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/libmenu.c32" ::/boot/syslinux/
+fi
+if [ -f "${SYSLINUX_DIR}/libgpl.c32" ]; then
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/libgpl.c32" ::/boot/syslinux/
+fi
+if [ -f "${SYSLINUX_DIR}/liblua.c32" ]; then
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/liblua.c32" ::/boot/syslinux/
+fi
 
 # Also copy ldlinux.sys if it exists (needed by some syslinux versions)
 if [ -f "${SYSLINUX_DIR}/ldlinux.sys" ]; then
@@ -119,6 +134,10 @@ if [ -f "$INITRAMFS_SRC" ]; then
 else
     echo "Warning: No installer initramfs found at ${INITRAMFS_SRC}"
     echo "         Run 'make initramfs-installer' to build it"
+fi
+
+if [ -f "${BUILD_DIR}/coyote-3-square.png" ]; then
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${BUILD_DIR}/coyote-3-square.png" ::/boot/syslinux/
 fi
 
 # Also include the system initramfs - this is what gets installed to the target system

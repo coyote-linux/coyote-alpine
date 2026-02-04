@@ -46,7 +46,7 @@ help:
 	@echo "  rootfs              - Download Alpine and build rootfs"
 	@echo "  firmware            - Build firmware squashfs image (increments build number)"
 	@echo "  sign                - Sign the latest firmware image"
-	@echo "  kernel              - Download Alpine kernel"
+	@echo "  kernel              - Build custom kernel (kernel/build-kernel.sh)"
 	@echo "  initramfs           - Build initramfs for running system"
 	@echo "  initramfs-installer - Build initramfs for installer (simplified)"
 	@echo "  installer           - Build USB installer image"
@@ -120,12 +120,14 @@ sign:
 	fi; \
 	./sign-firmware.sh "$$FIRMWARE_FILE"
 
-# Build the kernel and initramfs (mkinitramfs.sh creates both)
-kernel: $(BUILD_DIR)/.initramfs-stamp
+# Build the custom kernel
+kernel:
+	@echo "Building custom kernel..."
+	@KERNEL_VERSION="$(KERNEL_VERSION)" ../kernel/build-kernel.sh
 
 initramfs: $(BUILD_DIR)/.initramfs-stamp
 
-$(BUILD_DIR)/.initramfs-stamp: mkinitramfs.sh $(INITRAMFS_FILES)
+$(BUILD_DIR)/.initramfs-stamp: mkinitramfs.sh $(INITRAMFS_FILES) kernel
 	@echo "Building kernel and initramfs..."
 	@mkdir -p $(BUILD_DIR)
 	./mkinitramfs.sh
@@ -164,11 +166,13 @@ iso: firmware initramfs-installer
 # Clean build outputs but keep cache
 clean:
 	rm -rf $(BUILD_DIR)
+	rm -f ../kernel/output/kernel-*.tar.gz ../kernel/output/modules-*.tar.gz
 	@echo "Build directory cleaned"
 
 # Clean everything including cached downloads
 distclean: clean
 	rm -rf $(CACHE_DIR)
+	rm -f ../kernel/output/kernel-*.tar.gz ../kernel/output/modules-*.tar.gz
 	@echo "Cache directory cleaned"
 
 # Force rebuild of firmware (removes all firmware files, preserves rootfs)
@@ -192,7 +196,7 @@ rebuild-initramfs-installer:
 # Development helpers
 .PHONY: test-boot lint shell
 
-test-boot: firmware kernel
+test-boot: firmware kernel initramfs
 	@echo "Testing boot with QEMU..."
 	qemu-system-x86_64 \
 		-kernel $(BUILD_DIR)/vmlinuz \

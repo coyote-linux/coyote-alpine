@@ -70,11 +70,23 @@ echo "Copying isolinux bootloader..."
 cp "${ISOLINUX_DIR}/isolinux.bin" "${ISO_BUILD}/boot/isolinux/"
 cp "${ISOLINUX_DIR}/ldlinux.c32" "${ISO_BUILD}/boot/isolinux/"
 cp "${ISOLINUX_DIR}/menu.c32" "${ISO_BUILD}/boot/isolinux/"
+if [ -f "${ISOLINUX_DIR}/vesamenu.c32" ]; then
+    cp "${ISOLINUX_DIR}/vesamenu.c32" "${ISO_BUILD}/boot/isolinux/"
+fi
 cp "${ISOLINUX_DIR}/libutil.c32" "${ISO_BUILD}/boot/isolinux/"
 
 # Copy libcom32.c32 if it exists (needed by some menu.c32 versions)
 if [ -f "${ISOLINUX_DIR}/libcom32.c32" ]; then
     cp "${ISOLINUX_DIR}/libcom32.c32" "${ISO_BUILD}/boot/isolinux/"
+fi
+if [ -f "${ISOLINUX_DIR}/libmenu.c32" ]; then
+    cp "${ISOLINUX_DIR}/libmenu.c32" "${ISO_BUILD}/boot/isolinux/"
+fi
+if [ -f "${ISOLINUX_DIR}/libgpl.c32" ]; then
+    cp "${ISOLINUX_DIR}/libgpl.c32" "${ISO_BUILD}/boot/isolinux/"
+fi
+if [ -f "${ISOLINUX_DIR}/liblua.c32" ]; then
+    cp "${ISOLINUX_DIR}/liblua.c32" "${ISO_BUILD}/boot/isolinux/"
 fi
 
 # Copy kernel and installer initramfs
@@ -94,6 +106,10 @@ else
     echo "Error: Installer initramfs not found at ${BUILD_DIR}/initramfs-installer.cpio.gz"
     echo "Run 'make initramfs-installer' first"
     exit 1
+fi
+
+if [ -f "${BUILD_DIR}/coyote-3-square.png" ]; then
+    cp "${BUILD_DIR}/coyote-3-square.png" "${ISO_BUILD}/boot/isolinux/"
 fi
 
 # Also include the system initramfs - this is what gets installed to the target system

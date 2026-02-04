@@ -24,6 +24,13 @@ ALPINE_VERSION="3.23"
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine"
 ARCH="x86_64"
 
+CUSTOM_KERNEL_ROOT="${SCRIPT_DIR}/../kernel"
+REQUIRE_CUSTOM_KERNEL="${REQUIRE_CUSTOM_KERNEL:-auto}"
+CUSTOM_KERNEL_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/kernel-${KERNEL_VERSION:-6.18.8}.tar.gz"
+CUSTOM_MODULES_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/modules-${KERNEL_VERSION:-6.18.8}.tar.gz"
+CUSTOM_KERNEL_IMAGE=""
+CUSTOM_KERNEL_MODULES_DIR=""
+
 # Create directories
 mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$INITRAMFS_BUILD"
 
@@ -33,9 +40,99 @@ mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$INITRAMFS_BUILD"
 setup_kernel() {
     local kernel_dest="${BUILD_DIR}/vmlinuz"
 
+    if [ "$REQUIRE_CUSTOM_KERNEL" = "auto" ]; then
+        if [ -d "$CUSTOM_KERNEL_ROOT" ] && [ -f "${CUSTOM_KERNEL_ROOT}/build-kernel.sh" ]; then
+            REQUIRE_CUSTOM_KERNEL="1"
+        else
+            REQUIRE_CUSTOM_KERNEL="0"
+        fi
+    fi
+
+    detect_custom_kernel() {
+        local kernel_tree=""
+
+        if [ -f "$CUSTOM_KERNEL_ARCHIVE" ] && [ -f "$CUSTOM_MODULES_ARCHIVE" ]; then
+            echo "Using custom kernel archives"
+
+            local kernel_tmp="${CACHE_DIR}/kernel-tmp"
+            rm -rf "$kernel_tmp"
+            mkdir -p "$kernel_tmp"
+            tar -xzf "$CUSTOM_KERNEL_ARCHIVE" -C "$kernel_tmp"
+            if [ -f "${kernel_tmp}/bzImage" ]; then
+                CUSTOM_KERNEL_IMAGE="${kernel_tmp}/bzImage"
+            fi
+
+            local modules_tmp="${CACHE_DIR}/modules-tmp"
+            rm -rf "$modules_tmp"
+            mkdir -p "$modules_tmp"
+            tar -xzf "$CUSTOM_MODULES_ARCHIVE" -C "$modules_tmp"
+            if [ -d "${modules_tmp}/lib/modules" ]; then
+                rm -rf "${CACHE_DIR}/modules"
+                mkdir -p "${CACHE_DIR}/modules"
+                cp -a "${modules_tmp}/lib/modules/"* "${CACHE_DIR}/modules/" 2>/dev/null || true
+            fi
+
+            if [ -d "${CACHE_DIR}/modules" ]; then
+                CUSTOM_KERNEL_MODULES_DIR="${CACHE_DIR}/modules"
+            fi
+
+            return
+        fi
+
+        if [ -n "$CUSTOM_KERNEL_IMAGE" ] && [ -f "$CUSTOM_KERNEL_IMAGE" ]; then
+            kernel_tree="$(cd "$(dirname "$CUSTOM_KERNEL_IMAGE")/../.." && pwd)"
+        else
+            for dir in "${CUSTOM_KERNEL_ROOT}"/linux-*; do
+                [ -d "$dir" ] || continue
+                if [ -f "${dir}/arch/x86/boot/bzImage" ]; then
+                    CUSTOM_KERNEL_IMAGE="${dir}/arch/x86/boot/bzImage"
+                    kernel_tree="$dir"
+                    break
+                fi
+            done
+        fi
+
+        if [ -z "$CUSTOM_KERNEL_MODULES_DIR" ]; then
+            if [ -d "${CUSTOM_KERNEL_ROOT}/output/modules/lib/modules" ]; then
+                CUSTOM_KERNEL_MODULES_DIR="${CUSTOM_KERNEL_ROOT}/output/modules/lib/modules"
+            elif [ -d "${CUSTOM_KERNEL_ROOT}/modules/lib/modules" ]; then
+                CUSTOM_KERNEL_MODULES_DIR="${CUSTOM_KERNEL_ROOT}/modules/lib/modules"
+            elif [ -n "$kernel_tree" ] && [ -d "${kernel_tree}/modules/lib/modules" ]; then
+                CUSTOM_KERNEL_MODULES_DIR="${kernel_tree}/modules/lib/modules"
+            fi
+        fi
+    }
+
     if [ -f "$kernel_dest" ]; then
         echo "Kernel already exists: $kernel_dest"
         return 0
+    fi
+
+    detect_custom_kernel
+
+    if [ -n "$CUSTOM_KERNEL_IMAGE" ] && [ -f "$CUSTOM_KERNEL_IMAGE" ]; then
+        echo "Using custom kernel: $CUSTOM_KERNEL_IMAGE"
+        cp "$CUSTOM_KERNEL_IMAGE" "$kernel_dest"
+
+        if [ -n "$CUSTOM_KERNEL_MODULES_DIR" ] && [ -d "$CUSTOM_KERNEL_MODULES_DIR" ]; then
+            if [ "$CUSTOM_KERNEL_MODULES_DIR" = "${CACHE_DIR}/modules" ]; then
+                echo "Custom kernel modules already cached"
+            else
+                rm -rf "${CACHE_DIR}/modules"
+                mkdir -p "${CACHE_DIR}/modules"
+                cp -a "${CUSTOM_KERNEL_MODULES_DIR}/"* "${CACHE_DIR}/modules/"
+                echo "Custom kernel modules cached"
+            fi
+        else
+            echo "Warning: No custom kernel modules found; initramfs will include none"
+        fi
+
+        return 0
+    fi
+
+    if [ "$REQUIRE_CUSTOM_KERNEL" = "1" ]; then
+        echo "Error: Custom kernel not found. Run 'make kernel' first."
+        exit 1
     fi
 
     echo "Downloading Alpine kernel..."
@@ -232,6 +329,38 @@ build_initramfs() {
         if [ -n "$kver" ]; then
             mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers"
 
+            copy_module_with_deps() {
+                local module_name="$1"
+                local modules_base="${CACHE_DIR}/modules/${kver}"
+                local dep_file="${modules_base}/modules.dep"
+
+                if [ ! -f "$dep_file" ]; then
+                    return 0
+                fi
+
+                while IFS=: read -r modpath deps; do
+                    case "$modpath" in
+                        */${module_name}.ko* )
+                            local src="${modules_base}/${modpath}"
+                            local dst="${INITRAMFS_BUILD}/lib/modules/${kver}/${modpath}"
+                            if [ -f "$src" ]; then
+                                mkdir -p "$(dirname "$dst")"
+                                cp -a "$src" "$dst" 2>/dev/null || true
+                            fi
+                            for dep in $deps; do
+                                local dep_src="${modules_base}/${dep}"
+                                local dep_dst="${INITRAMFS_BUILD}/lib/modules/${kver}/${dep}"
+                                if [ -f "$dep_src" ]; then
+                                    mkdir -p "$(dirname "$dep_dst")"
+                                    cp -a "$dep_src" "$dep_dst" 2>/dev/null || true
+                                fi
+                            done
+                            break
+                            ;;
+                    esac
+                done < "$dep_file"
+            }
+
             # Copy essential modules for VMware/QEMU boot
             # Include: storage (ata, scsi, block, virtio), cdrom, message (mpt drivers)
             local module_dirs="ata scsi block virtio cdrom"
@@ -276,6 +405,12 @@ build_initramfs() {
             if [ -f "${CACHE_DIR}/modules/${kver}/modules.builtin" ]; then
                 cp "${CACHE_DIR}/modules/${kver}/modules.builtin" "${INITRAMFS_BUILD}/lib/modules/${kver}/"
             fi
+
+            # Copy key NIC modules for installer/runtime probing
+            local nic_modules="virtio_net vmxnet3 e1000 e1000e xen-netfront igb igc ixgbe i40e r8169 r8152 tg3 bnx2 atlantic hv_netvsc"
+            for mod in $nic_modules; do
+                copy_module_with_deps "$mod"
+            done
 
             # Regenerate modules.dep for the initramfs subset
             # This ensures modprobe can find the modules we included

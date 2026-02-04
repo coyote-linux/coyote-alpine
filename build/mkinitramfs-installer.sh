@@ -86,6 +86,38 @@ build_initramfs() {
         if [ -n "$kver" ]; then
             mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/drivers"
 
+            copy_module_with_deps() {
+                local module_name="$1"
+                local modules_base="${CACHE_DIR}/modules/${kver}"
+                local dep_file="${modules_base}/modules.dep"
+
+                if [ ! -f "$dep_file" ]; then
+                    return 0
+                fi
+
+                while IFS=: read -r modpath deps; do
+                    case "$modpath" in
+                        */${module_name}.ko* )
+                            local src="${modules_base}/${modpath}"
+                            local dst="${INITRAMFS_BUILD}/lib/modules/${kver}/${modpath}"
+                            if [ -f "$src" ]; then
+                                mkdir -p "$(dirname "$dst")"
+                                cp -a "$src" "$dst" 2>/dev/null || true
+                            fi
+                            for dep in $deps; do
+                                local dep_src="${modules_base}/${dep}"
+                                local dep_dst="${INITRAMFS_BUILD}/lib/modules/${kver}/${dep}"
+                                if [ -f "$dep_src" ]; then
+                                    mkdir -p "$(dirname "$dep_dst")"
+                                    cp -a "$dep_src" "$dep_dst" 2>/dev/null || true
+                                fi
+                            done
+                            break
+                            ;;
+                    esac
+                done < "$dep_file"
+            }
+
             # Copy essential modules for VMware/QEMU boot
             local module_dirs="ata scsi block virtio cdrom"
             for mdir in $module_dirs; do
@@ -111,6 +143,12 @@ build_initramfs() {
                     mkdir -p "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}"
                     cp -a "$src"/* "${INITRAMFS_BUILD}/lib/modules/${kver}/kernel/fs/${fsmod}/" 2>/dev/null || true
                 fi
+            done
+
+            # Copy key NIC modules for installer probing
+            local nic_modules="virtio_net vmxnet3 e1000 e1000e xen-netfront igb igc ixgbe i40e r8169 r8152 tg3 bnx2 atlantic hv_netvsc"
+            for mod in $nic_modules; do
+                copy_module_with_deps "$mod"
             done
 
             # Copy modules.builtin

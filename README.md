@@ -122,6 +122,23 @@ make distclean         # Remove outputs and cached downloads
 
 The build process does not require root privileges. Images are created using `mtools` for FAT manipulation and `apk --usermode` for package installation.
 
+### Custom Kernel (Optional)
+
+If a custom kernel is built under `kernel/`, the initramfs build will use it automatically:
+
+- Kernel image: `kernel/linux-*/arch/x86/boot/bzImage`
+- Modules (optional): `kernel/output/modules/lib/modules/`
+
+Example kernel build (from `kernel/linux-6.18.8/`):
+
+```bash
+make olddefconfig
+make -j"$(nproc)" bzImage modules
+make modules_install INSTALL_MOD_PATH="../output/modules"
+```
+
+If no custom kernel is found, the build falls back to Alpine `linux-lts`.
+
 ### Build Outputs
 
 | File | Size | Description |
@@ -234,4 +251,3 @@ The `.local-config` file is gitignored and will not be committed.
 - `Coyote\Vpn\` - IPSec VPN (StrongSwan)
 - `Coyote\LoadBalancer\` - HAProxy load balancer
 - `Coyote\Util\` - Utility classes
-
