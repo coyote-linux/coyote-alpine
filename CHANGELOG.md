@@ -4,7 +4,7 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [4.0.65] - 2026-02-03
+## [4.0.95] - 2026-02-03
 
 ### Added
 
