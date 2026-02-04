@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [4.0.114] - 2026-02-04
 
+### Added
+
+#### .NET Runtime Support
+- Added dotnet10-runtime and dotnet10-sdk packages to base system
+
 ### Changed
 
 #### Web Admin CSS Consolidation

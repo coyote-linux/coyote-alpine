@@ -29,6 +29,10 @@ php83-session
 lua5.4
 lua5.4-cjson
 
+# DotNet runtime
+dotnet10-runtime
+dotnet10-sdk
+
 # Networking core
 iproute2
 iproute2-qos
