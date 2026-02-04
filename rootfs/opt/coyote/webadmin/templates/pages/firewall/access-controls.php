@@ -118,34 +118,4 @@ $sshPort = $sshPort ?? 22;
     </div>
 </div>
 
-<style>
-.form-inline {
-    display: flex;
-    gap: 0.5rem;
-    align-items: flex-end;
-}
-.form-inline .form-group {
-    margin-bottom: 0;
-}
-.form-inline input {
-    margin-bottom: 0;
-}
-code {
-    background: var(--bg-dark);
-    padding: 0.2rem 0.5rem;
-    border-radius: 3px;
-    font-family: monospace;
-}
-.help-text h4 {
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-    color: var(--text-secondary);
-}
-.help-text ul {
-    margin-left: 1.5rem;
-    margin-bottom: 0.5rem;
-}
-.help-text li {
-    margin-bottom: 0.25rem;
-}
-</style>
+

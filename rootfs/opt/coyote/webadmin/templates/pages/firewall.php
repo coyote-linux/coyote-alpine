@@ -156,49 +156,4 @@ $status = $status ?? ['enabled' => true, 'defaultPolicy' => 'drop'];
     </div>
 </div>
 
-<style>
-.button-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
 
-.button-group .btn {
-    text-align: center;
-}
-
-.badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.85rem;
-    border-radius: 3px;
-    background: var(--bg-dark);
-}
-
-.badge-info {
-    background: var(--accent);
-    color: white;
-}
-
-.badge-warning {
-    background: var(--warning);
-    color: var(--bg-dark);
-}
-
-.help-content {
-    color: var(--text-muted);
-}
-
-.help-content ol {
-    margin: 0;
-    padding-left: 1.5rem;
-}
-
-.help-content li {
-    margin-bottom: 0.5rem;
-}
-
-.help-content strong {
-    color: var(--text);
-}
-</style>

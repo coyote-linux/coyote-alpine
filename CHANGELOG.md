@@ -4,6 +4,16 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.114] - 2026-02-04
+
+### Changed
+
+#### Web Admin CSS Consolidation
+- Consolidated duplicated CSS styles from 12 template files into main stylesheet
+- Removed ~730 lines of embedded `<style>` blocks from page templates
+- Added organized style sections: form components, config sections, badges, help content, apply/countdown modal, network badges, firewall components, services page
+- Templates now rely on centralized `/assets/css/style.css` for consistent styling
+
 ## [4.0.95] - 2026-02-03
 
 ### Added

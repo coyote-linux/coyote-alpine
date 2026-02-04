@@ -70,24 +70,4 @@
     </table>
 </div>
 
-<style>
-.service-actions form {
-    margin-right: 0.25rem;
-}
-.service-actions .btn-small {
-    margin-bottom: 0.25rem;
-}
-.core-badge {
-    display: inline-block;
-    padding: 0.1rem 0.4rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--color-primary);
-    background: rgba(59, 130, 246, 0.15);
-    border-radius: 3px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    vertical-align: middle;
-    margin-left: 0.5rem;
-}
-</style>
+

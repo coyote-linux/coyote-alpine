@@ -446,3 +446,497 @@ a:not(.btn):visited {
 .page-header {
     margin-bottom: 1.5rem;
 }
+
+/* ==========================================================================
+   Form Components (consolidated from page templates)
+   ========================================================================== */
+
+/* Form Actions - button container at bottom of forms */
+.form-actions {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+}
+
+/* Form Row - horizontal form layout */
+.form-row {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.form-row .form-group {
+    flex: 1;
+}
+
+/* Form Group Inline - checkbox/radio inline labels */
+.form-group-inline {
+    display: flex;
+    align-items: center;
+}
+
+.form-group-inline label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0;
+}
+
+.form-group-inline input[type="checkbox"],
+.form-group-inline input[type="radio"] {
+    width: auto;
+}
+
+/* Form Inline - inline form with button */
+.form-inline {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+
+.form-inline .form-group {
+    margin-bottom: 0;
+}
+
+.form-inline input {
+    margin-bottom: 0;
+}
+
+/* Form Group Small Text */
+.form-group small {
+    display: block;
+    margin-top: 0.25rem;
+}
+
+.form-note {
+    display: block;
+    color: #888;
+    font-size: 0.85em;
+    margin-top: 0.75rem;
+}
+
+/* ==========================================================================
+   Config Section - highlighted configuration blocks
+   ========================================================================== */
+
+.config-section {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: var(--bg-dark);
+    border-radius: 4px;
+    border-left: 3px solid var(--accent);
+}
+
+.config-section h4 {
+    margin: 0 0 1rem 0;
+    color: var(--accent);
+    font-size: 1rem;
+}
+
+/* ==========================================================================
+   Extended Badge Styles
+   ========================================================================== */
+
+.badge-success {
+    background: #28a745;
+    color: white;
+}
+
+.badge-danger {
+    background: #dc3545;
+    color: white;
+}
+
+/* ==========================================================================
+   Code Styling
+   ========================================================================== */
+
+code {
+    background: var(--bg-dark);
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+/* ==========================================================================
+   Help Content - documentation/help text blocks
+   ========================================================================== */
+
+.help-content {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.help-content h4 {
+    color: var(--text-primary);
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-size: 1rem;
+}
+
+.help-content h4:first-child {
+    margin-top: 0;
+}
+
+.help-content ul,
+.help-content ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.help-content li {
+    margin-bottom: 0.25rem;
+}
+
+.help-content strong {
+    color: var(--text-primary);
+}
+
+.help-content p {
+    margin: 0.5rem 0;
+}
+
+/* Help Text variant */
+.help-text {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.help-text h4 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-secondary);
+}
+
+.help-text ul {
+    margin-left: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.help-text li {
+    margin-bottom: 0.25rem;
+}
+
+.help-text p {
+    margin: 0.5rem 0;
+}
+
+.help-text strong {
+    color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Text Utilities
+   ========================================================================== */
+
+.text-center {
+    text-align: center;
+}
+
+/* ==========================================================================
+   Table Row States
+   ========================================================================== */
+
+.row-disabled {
+    opacity: 0.6;
+}
+
+/* ==========================================================================
+   Horizontal Rule
+   ========================================================================== */
+
+hr {
+    border: none;
+    border-top: 1px solid var(--bg-light);
+    margin: 1rem 0;
+}
+
+/* ==========================================================================
+   Apply Configuration Card & Countdown Modal
+   ========================================================================== */
+
+.apply-config-card {
+    background: #2a3a4a;
+    border: 2px solid #f0ad4e;
+}
+
+.apply-config-card.no-countdown {
+    border-color: #5cb85c;
+}
+
+.apply-config-card h3 {
+    color: #f0ad4e;
+}
+
+.apply-config-card.no-countdown h3 {
+    color: #5cb85c;
+}
+
+.countdown-warning {
+    color: #f0ad4e;
+    font-style: italic;
+}
+
+.safe-apply-note {
+    color: #5cb85c;
+    font-style: italic;
+}
+
+.apply-actions {
+    margin-top: 1rem;
+}
+
+/* Countdown Overlay */
+.apply-countdown-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.apply-countdown-modal {
+    background: #1e2a3a;
+    padding: 2rem;
+    border-radius: 8px;
+    border: 2px solid #f0ad4e;
+    text-align: center;
+    max-width: 500px;
+}
+
+.apply-countdown-modal h3 {
+    color: #f0ad4e;
+    margin-bottom: 1rem;
+}
+
+.countdown-timer {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #f0ad4e;
+    margin: 1.5rem 0;
+}
+
+.countdown-timer span {
+    font-size: 2rem;
+    color: #ff6b6b;
+}
+
+.countdown-actions {
+    margin-top: 1.5rem;
+}
+
+.countdown-actions .btn {
+    margin: 0 0.5rem;
+}
+
+/* Large Button variant */
+.btn-large {
+    padding: 0.75rem 1.5rem;
+    font-size: 1.1rem;
+}
+
+/* Mini Button variant */
+.btn-mini {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+    min-width: auto;
+}
+
+/* ==========================================================================
+   Network Page - Configuration Badges
+   ========================================================================== */
+
+.config-badge {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 500;
+}
+
+.config-static {
+    background: #2a5a8a;
+    color: #fff;
+}
+
+.config-dhcp {
+    background: #5a8a2a;
+    color: #fff;
+}
+
+.config-pppoe {
+    background: #8a5a2a;
+    color: #fff;
+}
+
+.config-disabled {
+    background: #555;
+    color: #aaa;
+}
+
+.config-unconfigured {
+    background: #3a3a3a;
+    color: #888;
+    font-style: italic;
+}
+
+/* ==========================================================================
+   Interface Edit Page - Secondary Address & VLAN Rows
+   ========================================================================== */
+
+.secondary-addr-row,
+.vlan-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    align-items: center;
+}
+
+.secondary-addr-row input {
+    flex: 1;
+    max-width: 300px;
+}
+
+/* ==========================================================================
+   Firewall Rule Edit - Radio Groups & Address Fieldsets
+   ========================================================================== */
+
+.radio-group {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.75rem 1rem;
+    background: var(--bg-dark);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+}
+
+.radio-label:has(input:checked) {
+    border-color: var(--accent);
+}
+
+.radio-label input {
+    width: auto;
+}
+
+.radio-text {
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.radio-text.permit {
+    color: #28a745;
+}
+
+.radio-text.deny {
+    color: #dc3545;
+}
+
+.radio-desc {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.address-fieldset {
+    border: 1px solid var(--bg-light);
+    border-radius: 4px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.address-fieldset legend {
+    padding: 0 0.5rem;
+    color: var(--accent);
+    font-weight: bold;
+}
+
+/* Rule Preview */
+.rule-preview {
+    background: var(--bg-dark);
+    padding: 1rem;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 1rem;
+}
+
+.rule-preview code {
+    color: var(--accent);
+}
+
+/* ==========================================================================
+   Firewall ACL Edit - Rules Table
+   ========================================================================== */
+
+.rules-table {
+    font-size: 0.9rem;
+}
+
+.rules-table td {
+    vertical-align: middle;
+}
+
+.rule-number {
+    color: var(--text-secondary);
+    font-weight: bold;
+    text-align: center;
+}
+
+.rule-actions {
+    white-space: nowrap;
+}
+
+.rule-actions form {
+    display: inline-block;
+}
+
+/* ==========================================================================
+   Firewall Applications Page - Interface Arrow
+   ========================================================================== */
+
+.interface-arrow {
+    flex: 0 0 50px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: var(--accent);
+    padding-bottom: 1.5rem;
+}
+
+/* ==========================================================================
+   Services Page
+   ========================================================================== */
+
+.service-actions form {
+    margin-right: 0.25rem;
+}
+
+.service-actions .btn-small {
+    margin-bottom: 0.25rem;
+}
+
+.core-badge {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: rgba(74, 158, 255, 0.15);
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+    margin-left: 0.5rem;
+}
