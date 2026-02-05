@@ -27,6 +27,13 @@ body {
     min-height: 100vh;
 }
 
+/* Images */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
 /* Sidebar */
 .sidebar {
     width: 220px;
@@ -36,6 +43,7 @@ body {
     flex-direction: column;
     position: fixed;
     height: 100vh;
+    z-index: 100;
 }
 
 .logo {
@@ -48,8 +56,9 @@ body {
     margin-bottom: 1rem;
 }
 
-.logo-icon {
-    font-size: 2rem;
+.logo-img {
+    height: 40px;
+    width: auto;
 }
 
 .logo-text {
@@ -109,12 +118,71 @@ body {
 
 .content-header {
     margin-bottom: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 
 .content-header h1 {
     font-size: 1.75rem;
     font-weight: 600;
+    margin: 0;
 }
+
+/* Sidebar Toggle Button */
+.sidebar-toggle {
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    padding: 0.5rem;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.sidebar-toggle:hover {
+    color: var(--accent);
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out;
+        box-shadow: 2px 0 5px rgba(0,0,0,0.5);
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    .content {
+        margin-left: 0;
+        padding: 1rem;
+    }
+
+    .sidebar-toggle {
+        display: block;
+    }
+    
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 90;
+    }
+    
+    .sidebar-overlay.active {
+        display: block;
+    }
+    
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 
 /* Cards */
 .card {
@@ -122,6 +190,13 @@ body {
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }
 
 .card h3 {
@@ -147,6 +222,15 @@ th, td {
     padding: 0.75rem;
     text-align: left;
     border-bottom: 1px solid var(--bg-light);
+    vertical-align: middle;
+}
+
+tbody tr {
+    transition: background-color 0.2s;
+}
+
+tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.02);
 }
 
 th {
@@ -245,20 +329,33 @@ input:focus, select:focus, textarea:focus {
 
 /* Buttons */
 .btn {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     padding: 0.75rem 1.5rem;
     border: none;
     border-radius: 4px;
     font-size: 1rem;
+    line-height: 1.5;
     cursor: pointer;
     text-decoration: none;
-    transition: background 0.2s;
+    transition: all 0.2s;
     background: var(--bg-light);
     color: var(--text-primary);
+    vertical-align: middle;
+    gap: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .btn:hover {
     background: #1a4a70;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.btn:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .btn-primary {
@@ -423,6 +520,13 @@ a:not(.btn):visited {
     gap: 0.5rem;
 }
 
+.button-group .btn {
+    flex: 1;
+    text-align: center;
+    justify-content: center;
+    min-width: 120px;
+}
+
 /* Badges */
 .badge {
     display: inline-block;
@@ -455,6 +559,7 @@ a:not(.btn):visited {
 .form-actions {
     margin-top: 1.5rem;
     display: flex;
+    align-items: center;
     gap: 0.75rem;
 }
 

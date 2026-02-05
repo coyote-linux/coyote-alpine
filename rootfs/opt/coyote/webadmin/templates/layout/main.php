@@ -7,9 +7,10 @@
     <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body>
-    <nav class="sidebar">
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+    <nav class="sidebar" id="sidebar">
         <div class="logo">
-            <span class="logo-icon">🐺</span>
+            <img src="/assets/img/logo.png" alt="Coyote Linux" class="logo-img">
             <span class="logo-text">Coyote Linux</span>
             <span class="logo-version"><?= trim(@file_get_contents('/etc/coyote/version') ?: '4.0') ?></span>
         </div>
@@ -31,6 +32,9 @@
 
     <main class="content">
         <header class="content-header">
+            <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle Navigation">
+                <span class="icon">☰</span>
+            </button>
             <h1><?= htmlspecialchars($pageTitle ?? 'Dashboard') ?></h1>
         </header>
 
