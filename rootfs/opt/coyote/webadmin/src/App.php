@@ -108,6 +108,15 @@ class App
         $this->router->post('/firewall/apply', [Controller\FirewallController::class, 'addApplication']);
         $this->router->post('/firewall/apply/{index}/delete', [Controller\FirewallController::class, 'removeApplication']);
 
+        // Firewall Address Lists
+        $this->router->get('/firewall/address-lists', [Controller\FirewallController::class, 'addressLists']);
+        $this->router->get('/firewall/address-list/new', [Controller\FirewallController::class, 'newAddressList']);
+        $this->router->post('/firewall/address-list/new', [Controller\FirewallController::class, 'createAddressList']);
+        $this->router->get('/firewall/address-list/{name}', [Controller\FirewallController::class, 'editAddressList']);
+        $this->router->post('/firewall/address-list/{name}', [Controller\FirewallController::class, 'saveAddressList']);
+        $this->router->post('/firewall/address-list/{name}/import', [Controller\FirewallController::class, 'importAddressList']);
+        $this->router->post('/firewall/address-list/{name}/delete', [Controller\FirewallController::class, 'deleteAddressList']);
+
         // Firewall Access Controls (Web Admin and SSH hosts)
         $this->router->get('/firewall/access', [Controller\FirewallController::class, 'accessControls']);
         $this->router->post('/firewall/access/webadmin/add', [Controller\FirewallController::class, 'addWebAdminHost']);

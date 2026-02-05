@@ -749,7 +749,7 @@ install_system() {
 
         echo "80"; echo "Creating bootloader configuration..."
         cat > "$target_boot/boot/syslinux/syslinux.cfg" << 'SYSLINUX_CFG'
-UI vesamenu.c32
+UI menu.c32
 PROMPT 0
 TIMEOUT 30
 
@@ -760,19 +760,19 @@ LABEL coyote
     MENU DEFAULT
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 quiet video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+    APPEND console=tty0 quiet
 
 LABEL previous
     MENU LABEL Previous Version (after upgrade)
     LINUX /boot/vmlinuz.prev
     INITRD /boot/initramfs.gz.prev
-    APPEND console=tty0 quiet firmware=previous video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+    APPEND console=tty0 quiet firmware=previous
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 quiet rescue video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+    APPEND console=tty0 quiet rescue
 SYSLINUX_CFG
 
         echo "85"; echo "Creating system configuration..."
@@ -947,19 +947,19 @@ LABEL coyote
     MENU DEFAULT
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 quiet video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+    APPEND console=tty0 quiet
 
 LABEL previous
     MENU LABEL Previous Version (after upgrade)
     LINUX /boot/vmlinuz.prev
     INITRD /boot/initramfs.gz.prev
-    APPEND console=tty0 quiet firmware=previous video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+    APPEND console=tty0 quiet firmware=previous
 
 LABEL rescue
     MENU LABEL Rescue Mode
     LINUX /boot/vmlinuz
     INITRD /boot/initramfs.gz
-    APPEND console=tty0 quiet rescue video=vesafb:mode_option=1024x768-32,mtrr:3,ywrap
+    APPEND console=tty0 quiet rescue
 SYSLINUX_CFG
 
         echo "95"; echo "Syncing disk..."

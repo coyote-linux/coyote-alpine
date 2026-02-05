@@ -4,6 +4,23 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.127] - 2026-02-05
+
+### Added
+
+#### Firewall Address Lists
+- Address lists for IPv4 and IPv6 with ACL rule support
+- Web admin pages to manage lists and import provider ranges (Cloudflare preset)
+
+### Changed
+
+#### Firewall ACLs
+- ACL rules can reference address lists for source and destination
+- Prevent deleting address lists that are in use by ACL rules
+
+#### Console Boot Behavior
+- Restored standard boot parameters and reduced console log verbosity
+
 ## [4.0.114] - 2026-02-04
 
 ### Added

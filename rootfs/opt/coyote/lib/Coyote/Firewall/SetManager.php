@@ -63,6 +63,11 @@ class SetManager
     ];
 
     /**
+     * Prefix for address list sets.
+     */
+    private const ADDRESS_LIST_PREFIX = 'addrlist';
+
+    /**
      * Create a new SetManager instance.
      *
      * @param NftablesService|null $nftables Optional NftablesService instance
@@ -86,6 +91,28 @@ class SetManager
         $sets = [];
         $servicesConfig = $config['services'] ?? [];
         $firewallConfig = $config['firewall'] ?? [];
+
+        // Address lists (IPv4/IPv6 split)
+        $addressLists = $firewallConfig['address_lists'] ?? [];
+        foreach ($this->normalizeAddressLists($addressLists) as $name => $list) {
+            $normalizedName = $this->normalizeSetName($name);
+
+            if (!empty($list['ipv4'])) {
+                $sets[$this->buildAddressListSetName($normalizedName, 'v4')] = [
+                    'type' => 'ipv4_addr',
+                    'flags' => ['interval'],
+                    'elements' => $this->normalizeAddresses($list['ipv4']),
+                ];
+            }
+
+            if (!empty($list['ipv6'])) {
+                $sets[$this->buildAddressListSetName($normalizedName, 'v6')] = [
+                    'type' => 'ipv6_addr',
+                    'flags' => ['interval'],
+                    'elements' => $this->normalizeAddresses($list['ipv6']),
+                ];
+            }
+        }
 
         // SSH allowed hosts
         $sshHosts = $servicesConfig['ssh']['allowed_hosts'] ?? [];
@@ -184,6 +211,61 @@ class SetManager
         }
 
         return $sets;
+    }
+
+    /**
+     * Normalize address list configuration into a consistent structure.
+     *
+     * @param array $lists Address lists config
+     * @return array Normalized lists keyed by name
+     */
+    private function normalizeAddressLists(array $lists): array
+    {
+        $normalized = [];
+
+        foreach ($lists as $key => $list) {
+            $name = is_numeric($key) ? ($list['name'] ?? null) : $key;
+            if (!$name) {
+                continue;
+            }
+
+            $ipv4 = $list['ipv4'] ?? $list['elements_ipv4'] ?? [];
+            $ipv6 = $list['ipv6'] ?? $list['elements_ipv6'] ?? [];
+            $elements = $list['elements'] ?? [];
+
+            if (!empty($elements)) {
+                foreach ($elements as $entry) {
+                    if (filter_var($entry, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) || str_contains($entry, ':')) {
+                        $ipv6[] = $entry;
+                    } else {
+                        $ipv4[] = $entry;
+                    }
+                }
+            }
+
+            $normalized[$name] = [
+                'ipv4' => array_values(array_filter($ipv4)),
+                'ipv6' => array_values(array_filter($ipv6)),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Normalize a set name to a safe nftables identifier.
+     */
+    private function normalizeSetName(string $name): string
+    {
+        $normalized = strtolower(trim($name));
+        $normalized = preg_replace('/[^a-z0-9_-]/', '_', $normalized);
+        $normalized = preg_replace('/_+/', '_', $normalized);
+        return trim($normalized, '_');
+    }
+
+    private function buildAddressListSetName(string $name, string $suffix): string
+    {
+        return sprintf('%s_%s_%s', self::ADDRESS_LIST_PREFIX, $name, $suffix);
     }
 
     /**

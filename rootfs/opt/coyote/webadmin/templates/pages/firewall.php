@@ -37,6 +37,7 @@ $status = $status ?? ['enabled' => true, 'defaultPolicy' => 'drop'];
             <a href="/firewall/acl/new" class="btn btn-primary">Create ACL</a>
             <a href="/firewall/apply" class="btn btn-primary">Apply ACLs to Interfaces</a>
             <a href="/firewall/access" class="btn btn-primary">Access Controls</a>
+            <a href="/firewall/address-lists" class="btn">Address Lists</a>
         </div>
     </div>
 
@@ -155,5 +156,4 @@ $status = $status ?? ['enabled' => true, 'defaultPolicy' => 'drop'];
         </div>
     </div>
 </div>
-
 

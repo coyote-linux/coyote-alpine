@@ -24,6 +24,9 @@ class AclBindingService
     /** @var array ACL bindings from config */
     private array $bindings = [];
 
+    /** @var array Address lists from config */
+    private array $addressLists = [];
+
     /**
      * Create a new AclBindingService instance.
      *
@@ -46,6 +49,7 @@ class AclBindingService
     {
         $this->acls = $firewallConfig['acls'] ?? [];
         $this->bindings = $firewallConfig['applied'] ?? [];
+        $this->addressLists = $firewallConfig['address_lists'] ?? [];
 
         if (!empty($networkConfig)) {
             $this->resolver->loadConfig($networkConfig);
@@ -163,9 +167,11 @@ class AclBindingService
         $rules = [];
 
         foreach ($aclRules as $rule) {
-            $nftRule = $this->buildRule($rule);
-            if (!empty($nftRule)) {
-                $rules[] = $nftRule;
+            $nftRules = $this->buildRule($rule);
+            foreach ($nftRules as $nftRule) {
+                if (!empty($nftRule)) {
+                    $rules[] = $nftRule;
+                }
             }
         }
 
@@ -179,25 +185,34 @@ class AclBindingService
      * Build a single nftables rule from ACL rule definition.
      *
      * @param array $rule Rule definition
-     * @return string nftables rule string
+     * @return array nftables rule strings
      */
-    private function buildRule(array $rule): string
+    private function buildRule(array $rule): array
     {
-        $parts = [];
+        $rules = [];
+        $families = $this->resolveRuleFamilies($rule);
+
+        foreach ($families as $family) {
+            $parts = [];
 
         // Protocol
         $protocol = strtolower($rule['protocol'] ?? 'any');
         if ($protocol !== 'any' && $protocol !== 'all') {
-            if ($protocol === 'icmp') {
-                $parts[] = 'ip protocol icmp';
-            } elseif ($protocol === 'icmpv6') {
-                $parts[] = 'ip6 nexthdr icmpv6';
-            } else {
-                $parts[] = $protocol;
-            }
+                if ($protocol === 'icmp') {
+                    $parts[] = $family === 'ip6' ? 'ip6 nexthdr icmpv6' : 'ip protocol icmp';
+                } elseif ($protocol === 'icmpv6') {
+                    if ($family === 'ip6') {
+                        $parts[] = 'ip6 nexthdr icmpv6';
+                    } else {
+                        continue;
+                    }
+                } else {
+                    $parts[] = $protocol;
+                }
         }
 
         // Source address
+        $sourceList = $rule['source_list'] ?? null;
         $source = $rule['source'] ?? $rule['src'] ?? null;
         if ($source && $source !== 'any' && $source !== '0.0.0.0/0') {
             // Check if it's an interface reference
@@ -207,11 +222,17 @@ class AclBindingService
                     $parts[] = "iifname \"" . $resolved[0] . "\"";
                 }
             } else {
-                $parts[] = "ip saddr {$source}";
+                $parts[] = $family === 'ip6' ? "ip6 saddr {$source}" : "ip saddr {$source}";
+            }
+        } elseif (!empty($sourceList)) {
+            $setName = $this->buildAddressListSetName($sourceList, $family);
+            if ($setName) {
+                $parts[] = $family === 'ip6' ? "ip6 saddr @{$setName}" : "ip saddr @{$setName}";
             }
         }
 
         // Destination address
+        $destList = $rule['destination_list'] ?? null;
         $dest = $rule['destination'] ?? $rule['dst'] ?? null;
         if ($dest && $dest !== 'any' && $dest !== '0.0.0.0/0') {
             if ($this->isInterfaceReference($dest)) {
@@ -220,7 +241,12 @@ class AclBindingService
                     $parts[] = "oifname \"" . $resolved[0] . "\"";
                 }
             } else {
-                $parts[] = "ip daddr {$dest}";
+                $parts[] = $family === 'ip6' ? "ip6 daddr {$dest}" : "ip daddr {$dest}";
+            }
+        } elseif (!empty($destList)) {
+            $setName = $this->buildAddressListSetName($destList, $family);
+            if ($setName) {
+                $parts[] = $family === 'ip6' ? "ip6 daddr @{$setName}" : "ip daddr @{$setName}";
             }
         }
 
@@ -276,7 +302,109 @@ class AclBindingService
                 $parts[] = 'accept';
         }
 
-        return implode(' ', $parts);
+            $rules[] = implode(' ', $parts);
+        }
+
+        return $rules;
+    }
+
+    private function resolveRuleFamilies(array $rule): array
+    {
+        $families = ['ip', 'ip6'];
+
+        $source = $rule['source'] ?? $rule['src'] ?? null;
+        $dest = $rule['destination'] ?? $rule['dst'] ?? null;
+        $sourceList = $rule['source_list'] ?? null;
+        $destList = $rule['destination_list'] ?? null;
+
+        $protocol = strtolower($rule['protocol'] ?? 'any');
+        if ($protocol === 'icmpv6') {
+            $families = ['ip6'];
+        }
+
+        $sourceFamily = $this->getAddressFamily($source);
+        if ($sourceFamily) {
+            $families = array_intersect($families, [$sourceFamily]);
+        }
+
+        $destFamily = $this->getAddressFamily($dest);
+        if ($destFamily) {
+            $families = array_intersect($families, [$destFamily]);
+        }
+
+        if (!empty($sourceList)) {
+            $families = array_intersect($families, $this->getListFamilies($sourceList));
+        }
+
+        if (!empty($destList)) {
+            $families = array_intersect($families, $this->getListFamilies($destList));
+        }
+
+        return array_values(array_unique($families));
+    }
+
+    private function getAddressFamily(?string $value): ?string
+    {
+        if (!$value || $value === 'any' || $this->isInterfaceReference($value)) {
+            return null;
+        }
+
+        if (str_contains($value, ':')) {
+            return 'ip6';
+        }
+
+        return 'ip';
+    }
+
+    private function getListFamilies(string $name): array
+    {
+        $list = $this->addressLists[$name] ?? null;
+        if (!$list && is_array($this->addressLists)) {
+            foreach ($this->addressLists as $key => $entry) {
+                if (is_numeric($key) && ($entry['name'] ?? '') === $name) {
+                    $list = $entry;
+                    break;
+                }
+            }
+        }
+
+        if (!$list) {
+            return [];
+        }
+
+        $families = [];
+        if (!empty($list['ipv4']) || !empty($list['elements_ipv4'])) {
+            $families[] = 'ip';
+        }
+        if (!empty($list['ipv6']) || !empty($list['elements_ipv6'])) {
+            $families[] = 'ip6';
+        }
+
+        if (!empty($list['elements'])) {
+            foreach ($list['elements'] as $entry) {
+                if (str_contains($entry, ':')) {
+                    $families[] = 'ip6';
+                } else {
+                    $families[] = 'ip';
+                }
+            }
+        }
+
+        return array_values(array_unique($families));
+    }
+
+    private function buildAddressListSetName(string $name, string $family): ?string
+    {
+        if (empty($name)) {
+            return null;
+        }
+
+        $normalized = strtolower(trim($name));
+        $normalized = preg_replace('/[^a-z0-9_-]/', '_', $normalized);
+        $normalized = preg_replace('/_+/', '_', $normalized);
+        $normalized = trim($normalized, '_');
+
+        return sprintf('addrlist_%s_%s', $normalized, $family === 'ip6' ? 'v6' : 'v4');
     }
 
     /**

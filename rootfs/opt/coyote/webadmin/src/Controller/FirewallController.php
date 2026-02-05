@@ -13,6 +13,13 @@ use Coyote\WebAdmin\Service\ApplyService;
  */
 class FirewallController extends BaseController
 {
+    private const ADDRESS_LIST_PRESETS = [
+        'cloudflare' => [
+            'label' => 'Cloudflare Proxy IPs',
+            'ipv4_url' => 'https://www.cloudflare.com/ips-v4',
+            'ipv6_url' => 'https://www.cloudflare.com/ips-v6',
+        ],
+    ];
     /** @var ConfigService */
     private ConfigService $configService;
 
@@ -263,6 +270,7 @@ class FirewallController extends BaseController
             'rule' => null,
             'ruleIndex' => null,
             'isNew' => true,
+            'addressLists' => array_keys($this->getAddressLists()),
         ];
 
         $this->render('pages/firewall/rule-edit', $data);
@@ -306,6 +314,7 @@ class FirewallController extends BaseController
             'rule' => $rules[$ruleIndex],
             'ruleIndex' => $ruleIndex,
             'isNew' => false,
+            'addressLists' => array_keys($this->getAddressLists()),
         ];
 
         $this->render('pages/firewall/rule-edit', $data);
@@ -325,8 +334,10 @@ class FirewallController extends BaseController
         $protocol = $this->post('protocol', 'any');
         $sourceType = $this->post('source_type', 'any');
         $sourceValue = trim($this->post('source_value', ''));
+        $sourceList = trim($this->post('source_list', ''));
         $destType = $this->post('dest_type', 'any');
         $destValue = trim($this->post('dest_value', ''));
+        $destList = trim($this->post('dest_list', ''));
         $ports = trim($this->post('ports', ''));
         $comment = trim($this->post('comment', ''));
 
@@ -341,11 +352,34 @@ class FirewallController extends BaseController
             $errors[] = 'Invalid protocol';
         }
 
+        // Address list validation
+        $addressLists = array_keys($this->getAddressLists());
+
         // Source validation
-        $source = $this->parseAddressField($sourceType, $sourceValue, 'Source', $errors);
+        if ($sourceType === 'list') {
+            if (empty($sourceList)) {
+                $errors[] = 'Source address list is required';
+            } elseif (!in_array($sourceList, $addressLists, true)) {
+                $errors[] = 'Source address list not found';
+            }
+            $source = 'any';
+        } else {
+            $source = $this->parseAddressField($sourceType, $sourceValue, 'Source', $errors);
+            $sourceList = '';
+        }
 
         // Destination validation
-        $dest = $this->parseAddressField($destType, $destValue, 'Destination', $errors);
+        if ($destType === 'list') {
+            if (empty($destList)) {
+                $errors[] = 'Destination address list is required';
+            } elseif (!in_array($destList, $addressLists, true)) {
+                $errors[] = 'Destination address list not found';
+            }
+            $dest = 'any';
+        } else {
+            $dest = $this->parseAddressField($destType, $destValue, 'Destination', $errors);
+            $destList = '';
+        }
 
         // Port validation (only for TCP/UDP)
         if (!empty($ports) && !in_array($protocol, ['tcp', 'udp'], true)) {
@@ -373,6 +407,14 @@ class FirewallController extends BaseController
             'source' => $source,
             'destination' => $dest,
         ];
+
+        if (!empty($sourceList)) {
+            $rule['source_list'] = $sourceList;
+        }
+
+        if (!empty($destList)) {
+            $rule['destination_list'] = $destList;
+        }
 
         if (!empty($ports)) {
             $rule['ports'] = $ports;
@@ -660,6 +702,244 @@ class FirewallController extends BaseController
     }
 
     /**
+     * Display address list management page.
+     */
+    public function addressLists(array $params = []): void
+    {
+        $lists = $this->getAddressLists();
+
+        $this->render('pages/firewall/address-lists', [
+            'lists' => $lists,
+        ]);
+    }
+
+    /**
+     * Show new address list form.
+     */
+    public function newAddressList(array $params = []): void
+    {
+        $this->render('pages/firewall/address-list-edit', [
+            'list' => null,
+            'isNew' => true,
+        ]);
+    }
+
+    /**
+     * Create a new address list.
+     */
+    public function createAddressList(array $params = []): void
+    {
+        $name = trim($this->post('name', ''));
+        $description = trim($this->post('description', ''));
+
+        $errors = [];
+        if ($name === '') {
+            $errors[] = 'List name is required';
+        } elseif (!preg_match('/^[A-Za-z][A-Za-z0-9_-]*$/', $name)) {
+            $errors[] = 'List name must start with a letter and contain only letters, numbers, underscores, and hyphens';
+        }
+
+        $lists = $this->getAddressLists();
+        if (isset($lists[$name])) {
+            $errors[] = 'List name already exists';
+        }
+
+        if (!empty($errors)) {
+            $this->flash('error', implode('. ', $errors));
+            $this->redirect('/firewall/address-list/new');
+            return;
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $rawLists = $config->get('firewall.address_lists', []);
+        $rawLists[$name] = [
+            'description' => $description,
+            'ipv4' => [],
+            'ipv6' => [],
+        ];
+        $config->set('firewall.address_lists', $rawLists);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'Address list created');
+            $this->redirect('/firewall/address-list/' . urlencode($name));
+            return;
+        }
+
+        $this->flash('error', 'Failed to save configuration');
+        $this->redirect('/firewall/address-list/new');
+    }
+
+    /**
+     * Edit an address list.
+     */
+    public function editAddressList(array $params = []): void
+    {
+        $name = $params['name'] ?? '';
+        $lists = $this->getAddressLists();
+
+        if (!isset($lists[$name])) {
+            $this->flash('error', 'Address list not found: ' . $name);
+            $this->redirect('/firewall/address-lists');
+            return;
+        }
+
+        $this->render('pages/firewall/address-list-edit', [
+            'list' => $lists[$name],
+            'isNew' => false,
+            'presets' => $this->getAddressListPresets(),
+        ]);
+    }
+
+    /**
+     * Save an address list.
+     */
+    public function saveAddressList(array $params = []): void
+    {
+        $name = $params['name'] ?? '';
+        $description = trim($this->post('description', ''));
+        $ipv4Input = trim($this->post('ipv4_entries', ''));
+        $ipv6Input = trim($this->post('ipv6_entries', ''));
+
+        $lists = $this->getAddressLists();
+        if (!isset($lists[$name])) {
+            $this->flash('error', 'Address list not found: ' . $name);
+            $this->redirect('/firewall/address-lists');
+            return;
+        }
+
+        $ipv4Entries = $this->parseListEntries($ipv4Input);
+        $ipv6Entries = $this->parseListEntries($ipv6Input);
+
+        $errors = [];
+        foreach ($ipv4Entries as $entry) {
+            if (!$this->isValidAddressOrCidr($entry, 'ipv4')) {
+                $errors[] = "Invalid IPv4 entry: {$entry}";
+            }
+        }
+        foreach ($ipv6Entries as $entry) {
+            if (!$this->isValidAddressOrCidr($entry, 'ipv6')) {
+                $errors[] = "Invalid IPv6 entry: {$entry}";
+            }
+        }
+
+        if (!empty($errors)) {
+            $this->flash('error', implode('. ', $errors));
+            $this->redirect('/firewall/address-list/' . urlencode($name));
+            return;
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $rawLists = $config->get('firewall.address_lists', []);
+        $rawLists[$name] = [
+            'description' => $description,
+            'ipv4' => $ipv4Entries,
+            'ipv6' => $ipv6Entries,
+        ];
+        $config->set('firewall.address_lists', $rawLists);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'Address list saved');
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/firewall/address-list/' . urlencode($name));
+    }
+
+    /**
+     * Delete an address list.
+     */
+    public function deleteAddressList(array $params = []): void
+    {
+        $name = $params['name'] ?? '';
+        $config = $this->configService->getWorkingConfig();
+        $rawLists = $config->get('firewall.address_lists', []);
+
+        if (!isset($rawLists[$name])) {
+            $this->flash('error', 'Address list not found: ' . $name);
+            $this->redirect('/firewall/address-lists');
+            return;
+        }
+
+        $usage = $this->findAddressListUsage($name);
+        if (!empty($usage)) {
+            $this->flash('error', 'Address list is in use by ACLs: ' . implode(', ', $usage));
+            $this->redirect('/firewall/address-lists');
+            return;
+        }
+
+        unset($rawLists[$name]);
+        $config->set('firewall.address_lists', $rawLists);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'Address list deleted');
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/firewall/address-lists');
+    }
+
+    /**
+     * Import entries into an address list from preset or URL.
+     */
+    public function importAddressList(array $params = []): void
+    {
+        $name = $params['name'] ?? '';
+        $preset = trim($this->post('preset', ''));
+        $ipv4Url = trim($this->post('ipv4_url', ''));
+        $ipv6Url = trim($this->post('ipv6_url', ''));
+
+        $lists = $this->getAddressLists();
+        if (!isset($lists[$name])) {
+            $this->flash('error', 'Address list not found: ' . $name);
+            $this->redirect('/firewall/address-lists');
+            return;
+        }
+
+        if ($preset !== '') {
+            $presets = $this->getAddressListPresets();
+            if (!isset($presets[$preset])) {
+                $this->flash('error', 'Unknown preset');
+                $this->redirect('/firewall/address-list/' . urlencode($name));
+                return;
+            }
+            $ipv4Url = $presets[$preset]['ipv4_url'] ?? '';
+            $ipv6Url = $presets[$preset]['ipv6_url'] ?? '';
+        }
+
+        $errors = [];
+        $ipv4Entries = $this->fetchAddressList($ipv4Url, 'ipv4', $errors);
+        $ipv6Entries = $this->fetchAddressList($ipv6Url, 'ipv6', $errors);
+
+        if (!empty($errors)) {
+            $this->flash('error', implode('. ', $errors));
+            $this->redirect('/firewall/address-list/' . urlencode($name));
+            return;
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $rawLists = $config->get('firewall.address_lists', []);
+        $existing = $rawLists[$name] ?? [];
+
+        $rawLists[$name] = [
+            'description' => $existing['description'] ?? '',
+            'ipv4' => $this->mergeListEntries($existing['ipv4'] ?? [], $ipv4Entries),
+            'ipv6' => $this->mergeListEntries($existing['ipv6'] ?? [], $ipv6Entries),
+        ];
+
+        $config->set('firewall.address_lists', $rawLists);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'Address list imported');
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/firewall/address-list/' . urlencode($name));
+    }
+
+    /**
      * Parse an address field (source or destination).
      */
     private function parseAddressField(string $type, string $value, string $fieldName, array &$errors): string
@@ -711,11 +991,141 @@ class FirewallController extends BaseController
             return false;
         }
 
-        if (!is_numeric($prefix) || $prefix < 0 || $prefix > 32) {
+        if (!is_numeric($prefix)) {
             return false;
         }
 
-        return true;
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            return $prefix >= 0 && $prefix <= 128;
+        }
+
+        return $prefix >= 0 && $prefix <= 32;
+    }
+
+    private function getAddressLists(): array
+    {
+        $config = $this->configService->getWorkingConfig();
+        $lists = $config->get('firewall.address_lists', []);
+
+        return $this->normalizeAddressLists($lists);
+    }
+
+    private function getAddressListPresets(): array
+    {
+        return self::ADDRESS_LIST_PRESETS;
+    }
+
+    private function normalizeAddressLists(array $lists): array
+    {
+        $normalized = [];
+
+        foreach ($lists as $key => $list) {
+            $name = is_numeric($key) ? ($list['name'] ?? null) : $key;
+            if (!$name) {
+                continue;
+            }
+
+            $normalized[$name] = [
+                'name' => $name,
+                'description' => $list['description'] ?? '',
+                'ipv4' => $list['ipv4'] ?? [],
+                'ipv6' => $list['ipv6'] ?? [],
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function parseListEntries(string $input): array
+    {
+        if ($input === '') {
+            return [];
+        }
+
+        $entries = preg_split('/[\r\n,]+/', $input);
+        $entries = array_map('trim', $entries);
+        return array_values(array_filter($entries, fn($entry) => $entry !== ''));
+    }
+
+    private function isValidAddressOrCidr(string $value, string $family): bool
+    {
+        if ($family === 'ipv4') {
+            if (filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                return true;
+            }
+            return $this->isValidCidr($value) && !str_contains($value, ':');
+        }
+
+        if ($family === 'ipv6') {
+            if (filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+                return true;
+            }
+            return $this->isValidCidr($value) && str_contains($value, ':');
+        }
+
+        return false;
+    }
+
+    private function fetchAddressList(string $url, string $family, array &$errors): array
+    {
+        if ($url === '') {
+            return [];
+        }
+
+        if (!str_starts_with($url, 'https://')) {
+            $errors[] = 'Only https URLs are allowed';
+            return [];
+        }
+
+        $content = @file_get_contents($url);
+        if ($content === false) {
+            $errors[] = "Failed to fetch {$url}";
+            return [];
+        }
+
+        $entries = $this->parseListEntries($content);
+        $valid = [];
+        foreach ($entries as $entry) {
+            if ($this->isValidAddressOrCidr($entry, $family)) {
+                $valid[] = $entry;
+            }
+        }
+
+        if (empty($valid)) {
+            $errors[] = "No valid {$family} entries found in {$url}";
+        }
+
+        return $valid;
+    }
+
+    private function mergeListEntries(array $existing, array $incoming): array
+    {
+        $merged = array_merge($existing, $incoming);
+        $merged = array_map('trim', $merged);
+        $merged = array_filter($merged, fn($entry) => $entry !== '');
+        $merged = array_values(array_unique($merged));
+        sort($merged);
+        return $merged;
+    }
+
+    private function findAddressListUsage(string $name): array
+    {
+        $config = $this->configService->getWorkingConfig();
+        $acls = $config->get('firewall.acls', []);
+        $usage = [];
+
+        foreach ($acls as $acl) {
+            $aclName = $acl['name'] ?? '';
+            $rules = $acl['rules'] ?? [];
+            foreach ($rules as $rule) {
+                if (($rule['source_list'] ?? '') === $name || ($rule['destination_list'] ?? '') === $name) {
+                    $usage[] = $aclName ?: 'Unnamed ACL';
+                    break;
+                }
+            }
+        }
+
+        return array_values(array_unique($usage));
     }
 
     /**

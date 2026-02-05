@@ -4,19 +4,25 @@ $acl = $acl ?? null;
 $aclName = $acl['name'] ?? '';
 $rule = $rule ?? null;
 $ruleIndex = $ruleIndex ?? null;
+$addressLists = $addressLists ?? [];
 
 // Extract rule values
 $action = $rule['action'] ?? 'permit';
 $protocol = $rule['protocol'] ?? 'any';
 $source = $rule['source'] ?? 'any';
+$sourceList = $rule['source_list'] ?? '';
 $dest = $rule['destination'] ?? 'any';
+$destList = $rule['destination_list'] ?? '';
 $ports = $rule['ports'] ?? '';
 $comment = $rule['comment'] ?? '';
 
 // Determine source/dest types
 $sourceType = 'any';
 $sourceValue = '';
-if ($source !== 'any') {
+if (!empty($sourceList)) {
+    $sourceType = 'list';
+    $sourceValue = $sourceList;
+} elseif ($source !== 'any') {
     if (strpos($source, '/') !== false) {
         $sourceType = 'network';
         $sourceValue = $source;
@@ -28,7 +34,10 @@ if ($source !== 'any') {
 
 $destType = 'any';
 $destValue = '';
-if ($dest !== 'any') {
+if (!empty($destList)) {
+    $destType = 'list';
+    $destValue = $destList;
+} elseif ($dest !== 'any') {
     if (strpos($dest, '/') !== false) {
         $destType = 'network';
         $destValue = $dest;
@@ -94,15 +103,27 @@ $page = 'firewall';
                         <option value="any" <?= $sourceType === 'any' ? 'selected' : '' ?>>Any</option>
                         <option value="ip" <?= $sourceType === 'ip' ? 'selected' : '' ?>>Single IP Address</option>
                         <option value="network" <?= $sourceType === 'network' ? 'selected' : '' ?>>Network (CIDR)</option>
+                        <option value="list" <?= $sourceType === 'list' ? 'selected' : '' ?>>Address List</option>
                     </select>
                 </div>
-                <div class="form-group" id="source_value_group" style="<?= $sourceType === 'any' ? 'display:none' : '' ?>">
+                <div class="form-group" id="source_value_group" style="<?= $sourceType === 'any' || $sourceType === 'list' ? 'display:none' : '' ?>">
                     <label for="source_value">
                         <span id="source_value_label"><?= $sourceType === 'network' ? 'Network (CIDR)' : 'IP Address' ?></span>
                     </label>
                     <input type="text" id="source_value" name="source_value"
                            value="<?= htmlspecialchars($sourceValue) ?>"
                            placeholder="<?= $sourceType === 'network' ? '192.168.1.0/24' : '192.168.1.100' ?>">
+                </div>
+                <div class="form-group" id="source_list_group" style="<?= $sourceType === 'list' ? '' : 'display:none' ?>">
+                    <label for="source_list">Address List</label>
+                    <select id="source_list" name="source_list">
+                        <option value="">Select list...</option>
+                        <?php foreach ($addressLists as $listName): ?>
+                            <option value="<?= htmlspecialchars($listName) ?>" <?= $sourceValue === $listName ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($listName) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </fieldset>
 
@@ -115,15 +136,27 @@ $page = 'firewall';
                         <option value="any" <?= $destType === 'any' ? 'selected' : '' ?>>Any</option>
                         <option value="ip" <?= $destType === 'ip' ? 'selected' : '' ?>>Single IP Address</option>
                         <option value="network" <?= $destType === 'network' ? 'selected' : '' ?>>Network (CIDR)</option>
+                        <option value="list" <?= $destType === 'list' ? 'selected' : '' ?>>Address List</option>
                     </select>
                 </div>
-                <div class="form-group" id="dest_value_group" style="<?= $destType === 'any' ? 'display:none' : '' ?>">
+                <div class="form-group" id="dest_value_group" style="<?= $destType === 'any' || $destType === 'list' ? 'display:none' : '' ?>">
                     <label for="dest_value">
                         <span id="dest_value_label"><?= $destType === 'network' ? 'Network (CIDR)' : 'IP Address' ?></span>
                     </label>
                     <input type="text" id="dest_value" name="dest_value"
                            value="<?= htmlspecialchars($destValue) ?>"
                            placeholder="<?= $destType === 'network' ? '10.0.0.0/8' : '10.0.0.1' ?>">
+                </div>
+                <div class="form-group" id="dest_list_group" style="<?= $destType === 'list' ? '' : 'display:none' ?>">
+                    <label for="dest_list">Address List</label>
+                    <select id="dest_list" name="dest_list">
+                        <option value="">Select list...</option>
+                        <?php foreach ($addressLists as $listName): ?>
+                            <option value="<?= htmlspecialchars($listName) ?>" <?= $destValue === $listName ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($listName) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </fieldset>
 
@@ -176,13 +209,25 @@ function togglePortField() {
 function toggleAddressField(prefix) {
     var typeSelect = document.getElementById(prefix + '_type');
     var valueGroup = document.getElementById(prefix + '_value_group');
+    var listGroup = document.getElementById(prefix + '_list_group');
     var valueLabel = document.getElementById(prefix + '_value_label');
     var valueInput = document.getElementById(prefix + '_value');
 
     if (typeSelect.value === 'any') {
         valueGroup.style.display = 'none';
+        if (listGroup) {
+            listGroup.style.display = 'none';
+        }
+    } else if (typeSelect.value === 'list') {
+        valueGroup.style.display = 'none';
+        if (listGroup) {
+            listGroup.style.display = '';
+        }
     } else {
         valueGroup.style.display = '';
+        if (listGroup) {
+            listGroup.style.display = 'none';
+        }
         if (typeSelect.value === 'network') {
             valueLabel.textContent = 'Network (CIDR)';
             valueInput.placeholder = '192.168.1.0/24';
@@ -199,12 +244,14 @@ function updatePreview() {
     var protocol = document.getElementById('protocol').value;
     var sourceType = document.getElementById('source_type').value;
     var sourceValue = document.getElementById('source_value').value;
+    var sourceList = document.getElementById('source_list');
     var destType = document.getElementById('dest_type').value;
     var destValue = document.getElementById('dest_value').value;
+    var destList = document.getElementById('dest_list');
     var ports = document.getElementById('ports').value;
 
-    var source = sourceType === 'any' ? 'any' : (sourceValue || '?');
-    var dest = destType === 'any' ? 'any' : (destValue || '?');
+    var source = sourceType === 'any' ? 'any' : (sourceType === 'list' ? '@' + (sourceList ? sourceList.value : '?') : (sourceValue || '?'));
+    var dest = destType === 'any' ? 'any' : (destType === 'list' ? '@' + (destList ? destList.value : '?') : (destValue || '?'));
 
     var preview = action.toUpperCase() + ' ';
     preview += protocol.toUpperCase() + ' ';
@@ -227,5 +274,4 @@ document.addEventListener('DOMContentLoaded', function() {
     updatePreview();
 });
 </script>
-
 
