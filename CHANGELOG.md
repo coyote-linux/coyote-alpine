@@ -4,6 +4,67 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.130] - 2026-02-07
+
+### Added
+
+#### Certificate Management System
+- Certificate store at `/mnt/config/certificates/` with subdirectories for CA, server, client certs and private keys
+- `CertificateStore` class with persistent index, atomic writes, and read-only remount safety
+- `CertificateInfo` class for X.509 parsing (subject, issuer, SANs, expiry, fingerprint, key type)
+- `CertificateValidator` class for PEM validation, upload checks, key-pair matching, and PKCS#12 import
+- Web admin Certificates section with upload (file or PEM paste), viewing, and deletion
+- Certificate selection dropdowns on Load Balancer frontend SSL and Web Admin SSL replacement
+- Sidebar navigation entry for Certificates between Services and System
+
+#### ACME / Let's Encrypt Integration
+- `AcmeService` class wrapping `uacme` for account registration, certificate issuance, and renewal
+- HTTP-01 challenge support via lighttpd webroot alias at `/.well-known/acme-challenge/`
+- ACME challenge hook script at `/opt/coyote/bin/acme-challenge-hook`
+- Daily auto-renewal cron script at `/etc/periodic/daily/coyote-acme-renew`
+- Web admin ACME management page for account registration, certificate requests, and renewal
+- ACME-issued certificates automatically stored in the certificate store
+- Added `uacme` package dependency
+
+#### StrongSwan IPSec VPN (Web Admin Completion)
+- Full tunnel CRUD from web admin (create, edit, delete IPSec tunnels)
+- Pre-shared key and X.509 certificate authentication modes with certificate store integration
+- Connect/disconnect tunnels via AJAX from the tunnel list
+- Status monitoring with established/disconnected badges and byte counters
+- `VpnSubsystem` registered in `SubsystemManager` for apply/rollback integration (no countdown)
+
+#### OpenVPN Support
+- `OpenVpnService` class for server and client mode config generation, service management, status parsing
+- `OpenVpnInstance` data class with fluent builder for instance configuration
+- `EasyRsaService` class wrapping Easy-RSA CLI for full PKI management from the web admin
+- Web admin pages for instance CRUD, PKI initialization, server/client cert generation, and revocation
+- Downloadable `.ovpn` client configuration files with embedded certificates
+- Added `easy-rsa` package dependency
+
+#### WireGuard Support
+- `WireGuardService` class for interface/peer management, key generation, config generation, and status parsing
+- `WireGuardInterface` and `WireGuardPeer` data classes with fluent builders
+- Private keys stored persistently in `/mnt/config/certificates/private/`
+- Web admin pages for interface CRUD, peer management, and downloadable peer configs
+- Auto-generated key pairs on new interface creation
+
+### Changed
+
+#### VPN Architecture
+- VPN overview page reorganized as hub linking to IPSec, OpenVPN, and WireGuard sections
+- `VpnManager` now orchestrates StrongSwan, OpenVPN, and WireGuard services
+- VPN subsystem config keys cover all three VPN types
+
+#### Load Balancer Frontend SSL
+- SSL certificate field changed from raw path text input to certificate store dropdown
+- Backward compatibility preserved for existing frontends with raw filesystem paths
+
+#### System Permissions
+- Added `doas` rules for `swanctl`, `openvpn`, `easyrsa`, `wg`, `wg-quick`, and `uacme` commands
+
+#### lighttpd Configuration
+- Added ACME challenge directory alias for Let's Encrypt HTTP-01 validation
+
 ## [4.0.127] - 2026-02-05
 
 ### Added

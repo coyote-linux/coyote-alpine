@@ -62,6 +62,7 @@ conntrack-tools
 # VPN (coyote-firewall addon)
 strongswan
 openvpn
+easy-rsa
 wireguard-tools
 
 # Load balancer (coyote-loadbalancer addon)
@@ -88,6 +89,7 @@ logrotate
 ca-certificates
 tzdata
 openssl
+uacme
 
 # Filesystem tools
 squashfs-tools

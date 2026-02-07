@@ -1,0 +1,27 @@
+#!/bin/sh
+# uacme HTTP-01 challenge hook for Coyote Linux
+
+CHALLENGE_DIR="/tmp/acme-challenge"
+
+# uacme calls hook with: method type ident token auth
+METHOD="$1"
+TYPE="$2"
+IDENT="$3"
+TOKEN="$4"
+AUTH="$5"
+
+if [ "$TYPE" != "http-01" ]; then
+    exit 1
+fi
+
+case "$METHOD" in
+    begin)
+        mkdir -p "$CHALLENGE_DIR"
+        printf '%s' "$AUTH" > "$CHALLENGE_DIR/$TOKEN"
+        ;;
+    done|failed)
+        rm -f "$CHALLENGE_DIR/$TOKEN"
+        ;;
+esac
+
+exit 0

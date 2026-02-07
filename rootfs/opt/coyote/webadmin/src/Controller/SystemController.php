@@ -2,8 +2,11 @@
 
 namespace Coyote\WebAdmin\Controller;
 
+use Coyote\Certificate\CertificateInfo;
+use Coyote\Certificate\CertificateStore;
 use Coyote\Config\ConfigManager;
 use Coyote\System\PrivilegedExecutor;
+use Coyote\WebAdmin\Auth;
 use Coyote\WebAdmin\Service\ConfigService;
 use Coyote\WebAdmin\Service\ApplyService;
 
@@ -30,29 +33,7 @@ class SystemController extends BaseController
      */
     public function index(array $params = []): void
     {
-        // Get working config (includes uncommitted changes)
-        $config = $this->configService->getWorkingConfig()->toArray();
-
-        // Get list of available timezones
-        $timezones = \DateTimeZone::listIdentifiers();
-
-        // Get list of backups
-        $backups = $this->listBackups();
-
-        // Get apply status
-        $applyStatus = $this->applyService->getStatus();
-
-        $data = [
-            'hostname' => $config['system']['hostname'] ?? 'coyote',
-            'domain' => $config['system']['domain'] ?? '',
-            'timezone' => $config['system']['timezone'] ?? 'UTC',
-            'nameservers' => $config['system']['nameservers'] ?? ['1.1.1.1'],
-            'timezones' => $timezones,
-            'backups' => $backups,
-            'applyStatus' => $applyStatus,
-        ];
-
-        $this->render('pages/system', $data);
+        $this->render('pages/system', $this->buildSystemPageData());
     }
 
     /**
@@ -116,6 +97,190 @@ class SystemController extends BaseController
             $this->flash('success', 'Settings saved. Click "Apply Configuration" to activate changes.');
         } else {
             $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/system');
+    }
+
+    public function sslCertificate(array $params = []): void
+    {
+        $this->render('pages/system', $this->buildSystemPageData());
+    }
+
+    public function saveSslCertificate(array $params = []): void
+    {
+        $certificateId = trim((string)$this->post('ssl_cert_id', ''));
+        if ($certificateId === '') {
+            $this->flash('error', 'Please select a server certificate');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        $store = new CertificateStore();
+        if (!$store->initialize()) {
+            $this->flash('error', 'Unable to initialize certificate store');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        $entry = $store->get($certificateId);
+        if ($entry === null || ($entry['type'] ?? '') !== CertificateStore::DIR_SERVER) {
+            $this->flash('error', 'Selected certificate is not available');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        $certificatePath = (string)($store->getPath($certificateId) ?? '');
+        if ($certificatePath === '' || !file_exists($certificatePath)) {
+            $this->flash('error', 'Selected certificate path could not be resolved');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        $certContent = file_get_contents($certificatePath);
+        if (!is_string($certContent) || trim($certContent) === '') {
+            $this->flash('error', 'Unable to read selected certificate');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        $combinedPem = $this->buildCombinedPem($store, $certContent);
+        if ($combinedPem === '') {
+            $this->flash('error', 'No matching private key was found for the selected certificate');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        if (!$this->writeWebAdminSslPem($combinedPem)) {
+            $this->flash('error', 'Failed to write SSL certificate file');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $config->set('services.webadmin.ssl_cert_id', $certificateId);
+        $config->set('services.webadmin.ssl_cert_path', '/mnt/config/ssl/server.pem');
+        if (!$this->configService->saveWorkingConfig($config)) {
+            $this->flash('warning', 'SSL certificate applied, but selection could not be saved to configuration');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        if (!$this->reloadLighttpd()) {
+            $this->flash('error', 'Certificate updated, but failed to reload lighttpd');
+            $this->redirect('/system#ssl-certificate');
+            return;
+        }
+
+        $this->flash('success', 'Web admin SSL certificate updated');
+        $this->redirect('/system#ssl-certificate');
+    }
+
+    /**
+     * Display the password change form.
+     *
+     * Renders the system page scrolled to the password card.
+     */
+    public function showPasswordForm(array $params = []): void
+    {
+        $this->flash('info', 'Please set a new admin password');
+        $this->redirect('/system#password');
+    }
+
+    /**
+     * Process a password change request.
+     *
+     * Validates the new password, hashes it, and stores it in the
+     * working configuration. The password takes effect immediately
+     * for new login sessions without requiring an apply cycle.
+     */
+    public function changePassword(array $params = []): void
+    {
+        $currentPassword = $this->post('current_password', '');
+        $newPassword = $this->post('new_password', '');
+        $confirmPassword = $this->post('confirm_password', '');
+
+        // Validate inputs
+        if (empty($newPassword) || empty($confirmPassword)) {
+            $this->flash('error', 'New password and confirmation are required');
+            $this->redirect('/system#password');
+            return;
+        }
+
+        if ($newPassword !== $confirmPassword) {
+            $this->flash('error', 'Passwords do not match');
+            $this->redirect('/system#password');
+            return;
+        }
+
+        if (strlen($newPassword) < 8) {
+            $this->flash('error', 'Password must be at least 8 characters');
+            $this->redirect('/system#password');
+            return;
+        }
+
+        // Verify current password (unless using default credentials)
+        $auth = new Auth();
+        $configService = new ConfigService();
+        $config = $configService->getWorkingConfig();
+        $users = $config->get('users', []);
+
+        if (!empty($users) && !empty($currentPassword)) {
+            // Existing password set — verify it
+            $verified = false;
+            foreach ($users as $user) {
+                if ($user['username'] === 'admin') {
+                    $verified = password_verify($currentPassword, $user['password_hash'] ?? '');
+                    break;
+                }
+            }
+
+            if (!$verified) {
+                $this->flash('error', 'Current password is incorrect');
+                $this->redirect('/system#password');
+                return;
+            }
+        }
+
+        // Hash and store the new password
+        $hash = Auth::hashPassword($newPassword);
+
+        $found = false;
+        foreach ($users as &$user) {
+            if ($user['username'] === 'admin') {
+                $user['password_hash'] = $hash;
+                $found = true;
+                break;
+            }
+        }
+        unset($user);
+
+        if (!$found) {
+            $users[] = [
+                'username' => 'admin',
+                'password_hash' => $hash,
+            ];
+        }
+
+        $config->set('users', $users);
+
+        // Save to both working config and running config so the password
+        // takes effect immediately without requiring an apply cycle
+        $saved = $configService->saveWorkingConfig($config);
+
+        // Also update running config directly for immediate effect
+        $runningConfig = $configService->getRunningConfig();
+        $runningConfig->set('users', $users);
+        $runningFile = '/tmp/running-config/system.json';
+        if (is_dir('/tmp/running-config')) {
+            $writer = new \Coyote\Config\ConfigWriter();
+            $writer->write($runningFile, $runningConfig->toArray());
+        }
+
+        if ($saved) {
+            $this->flash('success', 'Admin password changed successfully');
+        } else {
+            $this->flash('error', 'Failed to save password');
         }
 
         $this->redirect('/system');
@@ -407,6 +572,162 @@ class SystemController extends BaseController
         }
 
         $this->redirect('/system');
+    }
+
+    private function buildSystemPageData(): array
+    {
+        $config = $this->configService->getWorkingConfig()->toArray();
+
+        $data = [
+            'hostname' => $config['system']['hostname'] ?? 'coyote',
+            'domain' => $config['system']['domain'] ?? '',
+            'timezone' => $config['system']['timezone'] ?? 'UTC',
+            'nameservers' => $config['system']['nameservers'] ?? ['1.1.1.1'],
+            'timezones' => \DateTimeZone::listIdentifiers(),
+            'backups' => $this->listBackups(),
+            'applyStatus' => $this->applyService->getStatus(),
+        ];
+
+        return array_merge($data, $this->buildSslCertificateData($config));
+    }
+
+    private function buildSslCertificateData(array $config): array
+    {
+        $store = new CertificateStore();
+        $storeReady = $store->initialize();
+        $serverCerts = [];
+
+        if ($storeReady) {
+            foreach ($store->listByType(CertificateStore::DIR_SERVER) as $entry) {
+                $id = (string)($entry['id'] ?? '');
+                if ($id === '') {
+                    continue;
+                }
+
+                $content = $store->getContent($id);
+                $entry['info'] = is_string($content) ? CertificateInfo::parse($content) : null;
+                $serverCerts[] = $entry;
+            }
+        }
+
+        usort($serverCerts, static function (array $left, array $right): int {
+            return strcmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
+        });
+
+        $currentSslCertId = (string)($config['services']['webadmin']['ssl_cert_id'] ?? '');
+        $currentSslCertPath = (string)($config['services']['webadmin']['ssl_cert_path'] ?? '');
+
+        if ($currentSslCertPath === '') {
+            $currentSslCertPath = $this->readLighttpdPemFilePath();
+        }
+        if ($currentSslCertPath === '' && file_exists('/mnt/config/ssl/server.pem')) {
+            $currentSslCertPath = '/mnt/config/ssl/server.pem';
+        }
+
+        $currentSslCertInfo = null;
+        if ($currentSslCertPath !== '' && file_exists($currentSslCertPath)) {
+            $currentContent = file_get_contents($currentSslCertPath);
+            if (is_string($currentContent)) {
+                $currentSslCertInfo = CertificateInfo::parse($currentContent);
+            }
+        }
+
+        if (!is_array($currentSslCertInfo) && $currentSslCertId !== '' && $storeReady) {
+            $selectedContent = $store->getContent($currentSslCertId);
+            if (is_string($selectedContent)) {
+                $currentSslCertInfo = CertificateInfo::parse($selectedContent);
+            }
+        }
+
+        return [
+            'serverCerts' => $serverCerts,
+            'currentSslCertId' => $currentSslCertId,
+            'currentSslCertPath' => $currentSslCertPath,
+            'currentSslCertInfo' => $currentSslCertInfo,
+        ];
+    }
+
+    private function buildCombinedPem(CertificateStore $store, string $certificateContent): string
+    {
+        $certificateContent = trim($certificateContent);
+        if ($certificateContent === '') {
+            return '';
+        }
+
+        if (CertificateInfo::isPemPrivateKey($certificateContent)) {
+            return $certificateContent . "\n";
+        }
+
+        foreach ($store->listByType(CertificateStore::DIR_PRIVATE) as $entry) {
+            $keyId = (string)($entry['id'] ?? '');
+            if ($keyId === '') {
+                continue;
+            }
+
+            $keyContent = $store->getContent($keyId);
+            if (!is_string($keyContent) || !CertificateInfo::isPemPrivateKey($keyContent)) {
+                continue;
+            }
+
+            if (CertificateInfo::certMatchesKey($certificateContent, $keyContent)) {
+                return $certificateContent . "\n" . trim($keyContent) . "\n";
+            }
+        }
+
+        return '';
+    }
+
+    private function writeWebAdminSslPem(string $pemContent): bool
+    {
+        if (!$this->remountConfig(true)) {
+            return false;
+        }
+
+        $written = false;
+        $remountedReadOnly = false;
+
+        try {
+            if (!is_dir('/mnt/config/ssl') && !mkdir('/mnt/config/ssl', 0700, true)) {
+                return false;
+            }
+
+            if (file_put_contents('/mnt/config/ssl/server.pem', $pemContent) === false) {
+                return false;
+            }
+
+            chmod('/mnt/config/ssl', 0700);
+            chmod('/mnt/config/ssl/server.pem', 0600);
+            $written = true;
+        } finally {
+            $remountedReadOnly = $this->remountConfig(false);
+        }
+
+        return $written && $remountedReadOnly;
+    }
+
+    private function reloadLighttpd(): bool
+    {
+        $command = (posix_getuid() === 0) ? 'rc-service lighttpd reload' : 'doas rc-service lighttpd reload';
+        exec($command . ' 2>&1', $output, $returnCode);
+        return $returnCode === 0;
+    }
+
+    private function readLighttpdPemFilePath(): string
+    {
+        if (!is_readable('/etc/lighttpd/lighttpd.conf')) {
+            return '';
+        }
+
+        $contents = file_get_contents('/etc/lighttpd/lighttpd.conf');
+        if (!is_string($contents)) {
+            return '';
+        }
+
+        if (preg_match('/^\s*ssl\.pemfile\s*=\s*"([^"]+)"/m', $contents, $matches) !== 1) {
+            return '';
+        }
+
+        return trim((string)$matches[1]);
     }
 
     /**

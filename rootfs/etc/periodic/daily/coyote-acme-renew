@@ -1,0 +1,30 @@
+#!/bin/sh
+# Daily ACME certificate auto-renewal
+
+ACME_DIR="/mnt/config/acme"
+UACME="/usr/bin/uacme"
+HOOK="/opt/coyote/bin/acme-challenge-hook"
+LOG="/var/log/acme-renew.log"
+
+if [ ! -d "$ACME_DIR" ] || [ ! -f "$ACME_DIR/private/key.pem" ]; then
+    exit 0
+fi
+
+if [ ! -x "$UACME" ]; then
+    exit 0
+fi
+
+for certdir in "$ACME_DIR"/certs/*/; do
+    domain=$(basename "$certdir")
+    if [ "$domain" = "*" ]; then
+        continue
+    fi
+
+    printf '%s: Checking renewal for %s\n' "$(date)" "$domain" >> "$LOG"
+    $UACME -c "$ACME_DIR" -h "$HOOK" -d 30 issue "$domain" >> "$LOG" 2>&1
+
+    if [ $? -eq 0 ]; then
+        printf '%s: Renewed certificate for %s\n' "$(date)" "$domain" >> "$LOG"
+        doas rc-service lighttpd reload >> "$LOG" 2>&1
+    fi
+done

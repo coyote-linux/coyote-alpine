@@ -22,6 +22,7 @@
             <li><a href="/vpn" class="<?= ($page ?? '') === 'vpn' ? 'active' : '' ?>">VPN</a></li>
             <li><a href="/loadbalancer" class="<?= ($page ?? '') === 'loadbalancer' ? 'active' : '' ?>">Load Balancer</a></li>
             <li><a href="/services" class="<?= ($page ?? '') === 'services' ? 'active' : '' ?>">Services</a></li>
+            <li><a href="/certificates" class="<?= ($page ?? '') === 'certificates' ? 'active' : '' ?>">Certificates</a></li>
             <li><a href="/system" class="<?= ($page ?? '') === 'system' ? 'active' : '' ?>">System</a></li>
             <li><a href="/firmware" class="<?= ($page ?? '') === 'firmware' ? 'active' : '' ?>">Firmware</a></li>
         </ul>

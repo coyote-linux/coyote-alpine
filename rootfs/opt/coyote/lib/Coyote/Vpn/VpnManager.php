@@ -17,6 +17,9 @@ class VpnManager
     /** @var Logger */
     private Logger $logger;
 
+    private WireGuardService $wireguard;
+    private OpenVpnService $openvpn;
+
     /** @var array Current VPN configuration */
     private array $config = [];
 
@@ -26,6 +29,8 @@ class VpnManager
     public function __construct()
     {
         $this->strongswan = new StrongSwanService();
+        $this->wireguard = new WireGuardService();
+        $this->openvpn = new OpenVpnService();
         $this->logger = new Logger('coyote-vpn');
     }
 
@@ -38,6 +43,7 @@ class VpnManager
     public function applyConfig(array $config): bool
     {
         $this->config = $config;
+        $success = true;
 
         // Handle IPSec tunnels
         if (isset($config['ipsec'])) {
@@ -45,20 +51,44 @@ class VpnManager
 
             if (!($ipsecConfig['enabled'] ?? true) || empty($ipsecConfig['tunnels'])) {
                 $this->logger->info('IPSec VPN disabled or no tunnels configured');
-                return $this->strongswan->stop();
+                if (!$this->strongswan->stop()) {
+                    $success = false;
+                }
+            } else {
+                $this->logger->info('Applying IPSec VPN configuration');
+
+                if (!$this->strongswan->applyConfig($ipsecConfig)) {
+                    $this->logger->error('Failed to apply IPSec configuration');
+                    $success = false;
+                } else {
+                    $this->logger->info('IPSec VPN configuration applied successfully');
+                }
             }
-
-            $this->logger->info('Applying IPSec VPN configuration');
-
-            if (!$this->strongswan->applyConfig($ipsecConfig)) {
-                $this->logger->error('Failed to apply IPSec configuration');
-                return false;
-            }
-
-            $this->logger->info('IPSec VPN configuration applied successfully');
         }
 
-        return true;
+        if (isset($config['wireguard']) && is_array($config['wireguard'])) {
+            $this->logger->info('Applying WireGuard VPN configuration');
+
+            if (!$this->wireguard->applyConfig($config['wireguard'])) {
+                $this->logger->error('Failed to apply WireGuard configuration');
+                $success = false;
+            } else {
+                $this->logger->info('WireGuard VPN configuration applied successfully');
+            }
+        }
+
+        if (isset($config['openvpn']) && is_array($config['openvpn'])) {
+            $this->logger->info('Applying OpenVPN configuration');
+
+            if (!$this->openvpn->applyConfig($config['openvpn'])) {
+                $this->logger->error('Failed to apply OpenVPN configuration');
+                $success = false;
+            } else {
+                $this->logger->info('OpenVPN configuration applied successfully');
+            }
+        }
+
+        return $success;
     }
 
     /**
@@ -70,7 +100,27 @@ class VpnManager
     {
         return [
             'ipsec' => $this->strongswan->getStatus(),
+            'wireguard' => $this->wireguard->getInterfaceStatus(),
+            'openvpn' => $this->getOpenVpnStatus(),
             'tunnels' => $this->getTunnelStatus(),
+        ];
+    }
+
+    public function getOpenVpnStatus(): array
+    {
+        $statuses = [];
+
+        foreach ($this->config['openvpn']['instances'] ?? [] as $name => $instanceConfig) {
+            if (!is_array($instanceConfig)) {
+                continue;
+            }
+
+            $statuses[(string)$name] = $this->openvpn->getStatus((string)$name);
+        }
+
+        return [
+            'enabled' => (bool)($this->config['openvpn']['enabled'] ?? false),
+            'instances' => $statuses,
         ];
     }
 
@@ -175,6 +225,16 @@ class VpnManager
     public function getStrongSwanService(): StrongSwanService
     {
         return $this->strongswan;
+    }
+
+    public function getWireGuardService(): WireGuardService
+    {
+        return $this->wireguard;
+    }
+
+    public function getOpenVpnService(): OpenVpnService
+    {
+        return $this->openvpn;
     }
 
     /**

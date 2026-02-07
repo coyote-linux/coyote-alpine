@@ -101,6 +101,65 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
         </form>
     </div>
 
+    <div class="card" id="ssl-certificate">
+        <h3>SSL Certificate</h3>
+        <?php if (!empty($currentSslCertInfo)): ?>
+        <p><strong>Current Subject:</strong> <?= htmlspecialchars((string)($currentSslCertInfo['subject'] ?? 'Unknown')) ?></p>
+        <p><strong>Expires:</strong> <?= htmlspecialchars((string)($currentSslCertInfo['valid_to_human'] ?? 'Unknown')) ?></p>
+        <?php if (!empty($currentSslCertPath)): ?>
+        <p><strong>Path:</strong> <code><?= htmlspecialchars((string)$currentSslCertPath) ?></code></p>
+        <?php endif; ?>
+        <?php elseif (!empty($currentSslCertPath)): ?>
+        <p><strong>Current certificate path:</strong> <code><?= htmlspecialchars((string)$currentSslCertPath) ?></code></p>
+        <?php else: ?>
+        <p><em>No active SSL certificate detected.</em></p>
+        <?php endif; ?>
+
+        <?php if (!empty($serverCerts)): ?>
+        <form method="post" action="/system/ssl">
+            <div class="form-group">
+                <label for="ssl_cert_id">Server Certificate</label>
+                <select id="ssl_cert_id" name="ssl_cert_id" required>
+                    <option value="">Select a certificate</option>
+                    <?php foreach ($serverCerts as $cert): ?>
+                    <option value="<?= htmlspecialchars((string)($cert['id'] ?? '')) ?>" <?= ($currentSslCertId ?? '') === ($cert['id'] ?? '') ? 'selected' : '' ?>>
+                        <?= htmlspecialchars((string)($cert['name'] ?? 'Unnamed')) ?>
+                        <?php if (isset($cert['info']['subject'])): ?> (<?= htmlspecialchars((string)$cert['info']['subject']) ?>)<?php endif; ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <small>Select a server certificate for the web admin HTTPS endpoint.</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Certificate</button>
+            <a href="/certificates/upload" class="btn">Upload New Certificate</a>
+        </form>
+        <?php else: ?>
+        <p>No server certificates are available.</p>
+        <a href="/certificates/upload" class="btn btn-primary">Upload Certificate</a>
+        <?php endif; ?>
+    </div>
+
+    <div class="card" id="password">
+        <h3>Change Admin Password</h3>
+        <form method="post" action="/system/password">
+            <div class="form-group">
+                <label for="current_password">Current Password</label>
+                <input type="password" id="current_password" name="current_password" placeholder="Leave blank if using default password">
+                <small>Leave blank if this is the first time setting a password</small>
+            </div>
+            <div class="form-group">
+                <label for="new_password">New Password</label>
+                <input type="password" id="new_password" name="new_password" required minlength="8">
+                <small>Minimum 8 characters</small>
+            </div>
+            <div class="form-group">
+                <label for="confirm_password">Confirm New Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
+            </div>
+            <button type="submit" class="btn btn-primary" data-confirm="Change the admin password?">Change Password</button>
+        </form>
+    </div>
+
     <div class="card">
         <h3>Backup Configuration</h3>
         <p>Create a backup of the current configuration or download it as a file.</p>
@@ -169,5 +228,3 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
         </form>
     </div>
 </div>
-
-

@@ -2,6 +2,7 @@
 
 namespace Coyote\LoadBalancer;
 
+use Coyote\Certificate\CertificateStore;
 use Coyote\Util\Filesystem;
 
 /**
@@ -186,7 +187,10 @@ class HaproxyService
 
         // SSL certificate
         if (isset($frontend['ssl_cert'])) {
-            $conf .= "    bind *:443 ssl crt {$frontend['ssl_cert']}\n";
+            $sslCertPath = $this->resolveSslCertificatePath((string)$frontend['ssl_cert']);
+            if ($sslCertPath !== '') {
+                $conf .= "    bind *:443 ssl crt {$sslCertPath}\n";
+            }
         }
 
         // HTTP options
@@ -269,6 +273,29 @@ class HaproxyService
         $conf .= "\n";
 
         return $conf;
+    }
+
+    private function resolveSslCertificatePath(string $sslCert): string
+    {
+        $sslCert = trim($sslCert);
+        if ($sslCert === '') {
+            return '';
+        }
+
+        if (str_starts_with($sslCert, '/')) {
+            return $sslCert;
+        }
+
+        if (!str_starts_with($sslCert, 'cert_')) {
+            return '';
+        }
+
+        $store = new CertificateStore();
+        if (!$store->initialize()) {
+            return '';
+        }
+
+        return (string)($store->getPath($sslCert) ?? '');
     }
 
     /**
