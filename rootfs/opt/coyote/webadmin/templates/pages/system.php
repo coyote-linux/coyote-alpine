@@ -144,8 +144,8 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
         <form method="post" action="/system/password">
             <div class="form-group">
                 <label for="current_password">Current Password</label>
-                <input type="password" id="current_password" name="current_password" placeholder="Leave blank if using default password">
-                <small>Leave blank if this is the first time setting a password</small>
+                <input type="password" id="current_password" name="current_password" placeholder="Required once an admin password is set">
+                <small>Required when an admin password already exists</small>
             </div>
             <div class="form-group">
                 <label for="new_password">New Password</label>

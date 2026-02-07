@@ -6,7 +6,7 @@ namespace Coyote\WebAdmin\Controller;
  * Debug controller for viewing logs and diagnostics.
  *
  * This controller provides access to system logs for debugging purposes.
- * Routes are public (no auth required) to facilitate debugging auth issues.
+ * Routes are only available in development builds.
  */
 class DebugController extends BaseController
 {

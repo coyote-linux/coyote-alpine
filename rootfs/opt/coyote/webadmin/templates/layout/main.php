@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= htmlspecialchars((string)($csrfToken ?? '')) ?>">
     <title><?= htmlspecialchars($pageTitle ?? 'Coyote Linux') ?></title>
     <link rel="stylesheet" href="/assets/css/style.css">
 </head>
@@ -27,7 +28,9 @@
             <li><a href="/firmware" class="<?= ($page ?? '') === 'firmware' ? 'active' : '' ?>">Firmware</a></li>
         </ul>
         <div class="nav-footer">
-            <a href="/logout">Logout</a>
+            <form method="post" action="/logout">
+                <button type="submit" class="nav-logout-button">Logout</button>
+            </form>
         </div>
     </nav>
 

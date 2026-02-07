@@ -2,6 +2,8 @@
 
 namespace Coyote\WebAdmin\Controller;
 
+use Coyote\WebAdmin\Csrf;
+
 /**
  * Base controller with common functionality.
  */
@@ -34,11 +36,21 @@ abstract class BaseController
             return;
         }
 
-        // Extract data to variables
+        if (!isset($data['csrfToken']) || !is_string($data['csrfToken']) || $data['csrfToken'] === '') {
+            $data['csrfToken'] = Csrf::getToken();
+        }
+
         extract($data);
 
-        // Include layout with content
+        ob_start();
         include $this->templatesPath . '/layout/main.php';
+        $output = ob_get_clean();
+
+        if (!is_string($output)) {
+            $output = '';
+        }
+
+        echo $this->injectCsrfIntoPostForms($output, $data['csrfToken']);
     }
 
     /**
@@ -167,5 +179,22 @@ abstract class BaseController
         $messages = $_SESSION['flash_messages'] ?? [];
         unset($_SESSION['flash_messages']);
         return $messages;
+    }
+
+    private function injectCsrfIntoPostForms(string $html, string $token): string
+    {
+        if ($token === '') {
+            return $html;
+        }
+
+        $encoded = htmlspecialchars($token, ENT_QUOTES, 'UTF-8');
+
+        return preg_replace_callback(
+            '/<form\b(?=[^>]*\bmethod\s*=\s*["\']?post["\']?)[^>]*>/i',
+            static function (array $matches) use ($encoded): string {
+                return $matches[0] . '<input type="hidden" name="_csrf_token" value="' . $encoded . '">';
+            },
+            $html
+        ) ?? $html;
     }
 }

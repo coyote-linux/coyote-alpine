@@ -7,6 +7,7 @@ VERSION_MINOR := 0
 BUILD_NUMBER_FILE := .build-number
 BUILD_NUMBER := $(shell cat $(BUILD_NUMBER_FILE) 2>/dev/null || echo 0)
 VERSION := $(VERSION_MAJOR).$(VERSION_MINOR).$(BUILD_NUMBER)
+DEV_BUILD ?= 0
 
 BUILD_DIR := ../output
 ROOTFS_SRC := ../rootfs
@@ -29,6 +30,7 @@ all: firmware
 # Show current version
 show-version:
 	@echo "Current version: $(VERSION)"
+	@echo "Build mode: $(if $(filter 1,$(DEV_BUILD)),development,release)"
 	@echo "Next build will be: $(VERSION_MAJOR).$(VERSION_MINOR).$$(($(BUILD_NUMBER) + 1))"
 
 # Increment build number (called automatically by firmware target)
@@ -63,6 +65,7 @@ help:
 	@echo ""
 	@echo "After editing rootfs/ files:"
 	@echo "  make firmware   # Detects changes, increments build number"
+	@echo "  make firmware DEV_BUILD=1   # Build development firmware (enables debug routes)"
 	@echo "  make sign       # Sign firmware (if COYOTE_SIGNING_KEY set in .local-config)"
 	@echo "  make iso        # Rebuild ISO with new firmware"
 
@@ -79,11 +82,13 @@ firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	@NEW_BUILD=$$(($(BUILD_NUMBER) + 1)); \
 	echo $$NEW_BUILD > $(BUILD_NUMBER_FILE); \
 	NEW_VERSION="$(VERSION_MAJOR).$(VERSION_MINOR).$$NEW_BUILD"; \
+	if [ "$(DEV_BUILD)" = "1" ]; then BUILD_MODE="development"; else BUILD_MODE="release"; fi; \
 	FIRMWARE_FILE="$(BUILD_DIR)/firmware-$$NEW_VERSION.squashfs"; \
-	echo "Building firmware version $$NEW_VERSION..."; \
+	echo "Building firmware version $$NEW_VERSION ($$BUILD_MODE mode)..."; \
 	mkdir -p $(BUILD_DIR); \
 	mkdir -p $(ROOTFS_BUILD)/etc/coyote; \
 	echo "$$NEW_VERSION" > $(ROOTFS_BUILD)/etc/coyote/version; \
+	echo "$$BUILD_MODE" > $(ROOTFS_BUILD)/etc/coyote/build-mode; \
 	echo "Coyote Linux $$NEW_VERSION" > $(ROOTFS_BUILD)/etc/issue; \
 	echo "" >> $(ROOTFS_BUILD)/etc/issue; \
 	cp $(ROOTFS_SRC)/etc/motd $(ROOTFS_BUILD)/etc/motd; \

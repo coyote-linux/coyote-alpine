@@ -4,6 +4,50 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.131] - 2026-02-07
+
+### Added
+
+#### Build Mode Control
+- Added `DEV_BUILD` build parameter in `build/Makefile` (`DEV_BUILD=1` for development builds)
+- Firmware builds now embed `/etc/coyote/build-mode` as `release` or `development`
+- Web admin bootstrap now exposes `COYOTE_BUILD_MODE` and `COYOTE_DEV_BUILD` constants
+
+#### CSRF Protection
+- Added `Csrf` service with per-session token generation and validation
+- Added automatic CSRF hidden token injection into POST forms rendered by `BaseController`
+- Added support for `X-CSRF-Token` validation for AJAX/fetch requests
+- Added CSRF token meta tag for frontend JavaScript integration
+
+#### API Completeness
+- Added `FirewallApi` implementation for registered firewall status/rules API routes
+
+### Changed
+
+#### Debug Route Lockdown
+- Debug routes are now registered only in development builds
+- Release builds no longer expose `/debug/*` endpoints
+
+#### Password Change Enforcement
+- Non-development builds now enforce first-login password change before normal admin navigation
+- Password change now requires current password whenever an admin password hash already exists
+- Updated system password form messaging to reflect required current password behavior
+
+#### Session and Cookie Security
+- Enabled strict PHP session settings (`use_strict_mode`, `use_only_cookies`, `HttpOnly`, `Secure`, `SameSite=Strict`)
+- Added explicit session cookie invalidation on logout
+- Applied configured session timeout to the auth service at app startup
+
+#### Request Hardening
+- Added CSRF enforcement for authenticated non-public state-changing requests
+- Converted logout from GET to POST-only endpoint
+- Added response hardening headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, CSP frame-ancestors)
+- Added HSTS header in non-development builds
+
+#### HTTPS-only Web Admin
+- Disabled plain HTTP listener in runtime lighttpd config
+- Updated lighttpd template to generate HTTPS-only web admin configuration
+
 ## [4.0.130] - 2026-02-07
 
 ### Added

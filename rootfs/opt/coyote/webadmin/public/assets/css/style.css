@@ -109,6 +109,24 @@ img {
     text-decoration: none;
 }
 
+.nav-footer form {
+    margin: 0;
+}
+
+.nav-logout-button {
+    color: var(--text-secondary);
+    text-decoration: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+}
+
+.nav-logout-button:hover {
+    color: var(--text-primary);
+}
+
 /* Main Content */
 .content {
     flex: 1;

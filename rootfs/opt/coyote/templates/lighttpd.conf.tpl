@@ -13,8 +13,6 @@ server.document-root = "/opt/coyote/webadmin/public"
 server.errorlog = "/var/log/lighttpd/error.log"
 accesslog.filename = "/var/log/lighttpd/access.log"
 
-server.port = {{port}}
-{{#ssl.enabled}}
 server.port = 443
 ssl.engine = "enable"
 ssl.pemfile = "{{ssl.cert}}"
@@ -24,12 +22,6 @@ ssl.privkey = "{{ssl.key}}"
 ssl.honor-cipher-order = "enable"
 ssl.cipher-list = "EECDH+AESGCM:EDH+AESGCM"
 ssl.openssl.ssl-conf-cmd = ("MinProtocol" => "TLSv1.2")
-
-# Redirect HTTP to HTTPS
-$SERVER["socket"] == ":80" {
-    url.redirect = ("" => "https://${url.authority}${url.path}${qsa}")
-}
-{{/ssl.enabled}}
 
 server.username = "lighttpd"
 server.groupname = "lighttpd"

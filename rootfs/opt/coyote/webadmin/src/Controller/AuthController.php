@@ -56,7 +56,7 @@ class AuthController extends BaseController
 
         if ($this->auth->login($username, $password)) {
             // Check if password needs to be changed
-            if ($this->auth->needsPasswordChange()) {
+            if (!$this->isDevelopmentBuild() && $this->auth->needsPasswordChange()) {
                 $this->flash('warning', 'Please change the default password');
                 $this->redirect('/system/password');
                 return;
@@ -190,5 +190,10 @@ class AuthController extends BaseController
         </body>
         </html>
         <?php
+    }
+
+    private function isDevelopmentBuild(): bool
+    {
+        return defined('COYOTE_DEV_BUILD') && COYOTE_DEV_BUILD === true;
     }
 }

@@ -26,6 +26,11 @@ class App
         $this->config = array_merge($this->getDefaultConfig(), $config);
         $this->router = new Router();
         $this->auth = new Auth();
+
+        $timeout = (int)($this->config['session_timeout'] ?? 3600);
+        if ($timeout > 0) {
+            $this->auth->setTimeout($timeout);
+        }
     }
 
     /**
@@ -38,7 +43,10 @@ class App
         // Start session if not API-only mode
         if (!($this->config['api_only'] ?? false)) {
             session_start();
+            Csrf::getToken();
         }
+
+        $this->applySecurityHeaders();
 
         // Get request info
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -53,6 +61,41 @@ class App
                 return;
             }
             $this->redirect('/login');
+            return;
+        }
+
+        if (
+            !$this->isDevelopmentBuild()
+            && !$this->isPublicRoute($uri)
+            && $this->auth->isAuthenticated()
+            && $this->auth->needsPasswordChange()
+            && !$this->isPasswordChangeRoute($uri, $method)
+        ) {
+            if ($this->config['api_only'] ?? false) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Password change required']);
+                return;
+            }
+
+            $this->redirect('/system/password');
+            return;
+        }
+
+        if ($this->requiresCsrfValidation($method, $uri) && !Csrf::validate(Csrf::getRequestToken())) {
+            if ($this->isApiRequest($uri) || $this->isAjaxRequest()) {
+                http_response_code(403);
+                echo json_encode(['error' => 'Invalid CSRF token']);
+                return;
+            }
+
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                $_SESSION['flash_messages'][] = [
+                    'type' => 'error',
+                    'message' => 'Security token validation failed. Please try again.',
+                ];
+            }
+
+            $this->redirect('/dashboard');
             return;
         }
 
@@ -74,7 +117,7 @@ class App
         // Authentication
         $this->router->get('/login', [Controller\AuthController::class, 'showLogin']);
         $this->router->post('/login', [Controller\AuthController::class, 'login']);
-        $this->router->get('/logout', [Controller\AuthController::class, 'logout']);
+        $this->router->post('/logout', [Controller\AuthController::class, 'logout']);
 
         // Network
         $this->router->get('/network', [Controller\NetworkController::class, 'index']);
@@ -237,15 +280,16 @@ class App
         $this->router->get('/firmware', [Controller\FirmwareController::class, 'index']);
         $this->router->post('/firmware/upload', [Controller\FirmwareController::class, 'upload']);
 
-        // Debug (public routes for troubleshooting)
-        $this->router->get('/debug', [Controller\DebugController::class, 'index']);
-        $this->router->get('/debug/logs/apply', [Controller\DebugController::class, 'applyLog']);
-        $this->router->get('/debug/logs/access', [Controller\DebugController::class, 'accessLog']);
-        $this->router->get('/debug/logs/error', [Controller\DebugController::class, 'errorLog']);
-        $this->router->get('/debug/logs/php', [Controller\DebugController::class, 'phpLog']);
-        $this->router->get('/debug/logs/syslog', [Controller\DebugController::class, 'syslog']);
-        $this->router->get('/debug/phpinfo', [Controller\DebugController::class, 'phpInfo']);
-        $this->router->get('/debug/config', [Controller\DebugController::class, 'config']);
+        if ($this->isDevelopmentBuild()) {
+            $this->router->get('/debug', [Controller\DebugController::class, 'index']);
+            $this->router->get('/debug/logs/apply', [Controller\DebugController::class, 'applyLog']);
+            $this->router->get('/debug/logs/access', [Controller\DebugController::class, 'accessLog']);
+            $this->router->get('/debug/logs/error', [Controller\DebugController::class, 'errorLog']);
+            $this->router->get('/debug/logs/php', [Controller\DebugController::class, 'phpLog']);
+            $this->router->get('/debug/logs/syslog', [Controller\DebugController::class, 'syslog']);
+            $this->router->get('/debug/phpinfo', [Controller\DebugController::class, 'phpInfo']);
+            $this->router->get('/debug/config', [Controller\DebugController::class, 'config']);
+        }
     }
 
     /**
@@ -293,12 +337,73 @@ class App
             return true;
         }
 
-        // Debug routes are public for troubleshooting
-        if (strpos($uri, '/debug') === 0) {
+        return false;
+    }
+
+    private function isPasswordChangeRoute(string $uri, string $method): bool
+    {
+        if ($uri === '/logout' && $method === 'POST') {
+            return true;
+        }
+
+        if ($uri === '/system' && $method === 'GET') {
+            return true;
+        }
+
+        if ($uri === '/system/password' && ($method === 'GET' || $method === 'POST')) {
             return true;
         }
 
         return false;
+    }
+
+    private function isDevelopmentBuild(): bool
+    {
+        return defined('COYOTE_DEV_BUILD') && COYOTE_DEV_BUILD === true;
+    }
+
+    private function isApiRequest(string $uri): bool
+    {
+        return strpos($uri, '/api/') === 0;
+    }
+
+    private function isAjaxRequest(): bool
+    {
+        return isset($_SERVER['HTTP_X_REQUESTED_WITH'])
+            && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+    }
+
+    private function requiresCsrfValidation(string $method, string $uri): bool
+    {
+        if ($this->config['api_only'] ?? false) {
+            return false;
+        }
+
+        if (!in_array($method, ['POST', 'PUT', 'DELETE'], true)) {
+            return false;
+        }
+
+        if ($this->isPublicRoute($uri)) {
+            return false;
+        }
+
+        if (!$this->auth->isAuthenticated()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function applySecurityHeaders(): void
+    {
+        header('X-Frame-Options: DENY');
+        header('X-Content-Type-Options: nosniff');
+        header('Referrer-Policy: same-origin');
+        header("Content-Security-Policy: frame-ancestors 'none'");
+
+        if (!$this->isDevelopmentBuild()) {
+            header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+        }
     }
 
     /**

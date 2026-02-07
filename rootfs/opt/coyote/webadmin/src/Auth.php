@@ -113,6 +113,22 @@ class Auth
         if (session_status() === PHP_SESSION_ACTIVE) {
             unset($_SESSION[self::SESSION_KEY]);
             unset($_SESSION[self::ACTIVITY_KEY]);
+
+            $params = session_get_cookie_params();
+            setcookie(
+                session_name(),
+                '',
+                [
+                    'expires' => time() - 3600,
+                    'path' => $params['path'] ?? '/',
+                    'domain' => $params['domain'] ?? '',
+                    'secure' => (bool)($params['secure'] ?? true),
+                    'httponly' => (bool)($params['httponly'] ?? true),
+                    'samesite' => $params['samesite'] ?? 'Strict',
+                ]
+            );
+
+            session_unset();
             session_destroy();
         }
     }
@@ -196,6 +212,10 @@ class Auth
      */
     public function needsPasswordChange(): bool
     {
+        if (defined('COYOTE_DEV_BUILD') && COYOTE_DEV_BUILD === true) {
+            return false;
+        }
+
         $username = $this->getCurrentUser();
         if ($username !== 'admin') {
             return false;

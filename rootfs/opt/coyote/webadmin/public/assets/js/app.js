@@ -3,6 +3,30 @@
  */
 
 document.addEventListener('DOMContentLoaded', function() {
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+    if (csrfToken && typeof window.fetch === 'function') {
+        var originalFetch = window.fetch.bind(window);
+        window.fetch = function(resource, init) {
+            var options = init || {};
+            var method = String(options.method || 'GET').toUpperCase();
+
+            if (method === 'POST' || method === 'PUT' || method === 'DELETE' || method === 'PATCH') {
+                var headers = new Headers(options.headers || {});
+                if (!headers.has('X-CSRF-Token')) {
+                    headers.set('X-CSRF-Token', csrfToken);
+                }
+                if (!headers.has('X-Requested-With')) {
+                    headers.set('X-Requested-With', 'xmlhttprequest');
+                }
+                options = Object.assign({}, options, { headers: headers });
+            }
+
+            return originalFetch(resource, options);
+        };
+    }
+
     // Auto-dismiss only transient flash alerts (those with data-auto-dismiss attribute)
     // Static informational alerts should NOT be auto-dismissed
     document.querySelectorAll('.alert[data-auto-dismiss]').forEach(function(alert) {

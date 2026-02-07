@@ -220,22 +220,26 @@ class SystemController extends BaseController
         }
 
         // Verify current password (unless using default credentials)
-        $auth = new Auth();
         $configService = new ConfigService();
         $config = $configService->getWorkingConfig();
         $users = $config->get('users', []);
 
-        if (!empty($users) && !empty($currentPassword)) {
-            // Existing password set — verify it
-            $verified = false;
-            foreach ($users as $user) {
-                if ($user['username'] === 'admin') {
-                    $verified = password_verify($currentPassword, $user['password_hash'] ?? '');
-                    break;
-                }
+        $adminPasswordHash = '';
+        foreach ($users as $user) {
+            if (($user['username'] ?? '') === 'admin') {
+                $adminPasswordHash = (string)($user['password_hash'] ?? '');
+                break;
+            }
+        }
+
+        if ($adminPasswordHash !== '') {
+            if ($currentPassword === '') {
+                $this->flash('error', 'Current password is required');
+                $this->redirect('/system#password');
+                return;
             }
 
-            if (!$verified) {
+            if (!password_verify($currentPassword, $adminPasswordHash)) {
                 $this->flash('error', 'Current password is incorrect');
                 $this->redirect('/system#password');
                 return;
