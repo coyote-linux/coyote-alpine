@@ -18,6 +18,16 @@ BUILD_DIR="${SCRIPT_DIR}/../output"
 CACHE_DIR="${SCRIPT_DIR}/../.cache"
 INITRAMFS_SRC="${SCRIPT_DIR}/../initramfs-installer"
 INITRAMFS_BUILD="${BUILD_DIR}/initramfs-installer-build"
+ROOTFS_BUILD="${BUILD_DIR}/rootfs"
+KERNEL_TYPE="${KERNEL_TYPE:-custom}"
+
+case "$KERNEL_TYPE" in
+    custom|alpine-lts) ;;
+    *)
+        echo "Warning: Invalid KERNEL_TYPE='$KERNEL_TYPE', defaulting to custom"
+        KERNEL_TYPE="custom"
+        ;;
+esac
 
 # Create directories
 mkdir -p "$BUILD_DIR" "$INITRAMFS_BUILD"
@@ -31,8 +41,14 @@ check_prerequisites() {
         exit 1
     fi
 
-    if ! ls "${SCRIPT_DIR}/../kernel/output"/modules-*.tar.gz >/dev/null 2>&1; then
-        echo "Warning: No custom kernel modules archive found. Installer may have limited hardware support."
+    if [ "$KERNEL_TYPE" = "custom" ]; then
+        if ! ls "${SCRIPT_DIR}/../kernel/output"/modules-*.tar.gz >/dev/null 2>&1; then
+            echo "Warning: No custom kernel modules archive found. Installer may have limited hardware support."
+        fi
+    else
+        if [ ! -d "${ROOTFS_BUILD}/lib/modules" ]; then
+            echo "Warning: Alpine LTS modules not found in rootfs. Run 'make rootfs' first."
+        fi
     fi
 
     if [ ! -d "$INITRAMFS_SRC" ]; then
@@ -78,16 +94,23 @@ build_initramfs() {
     chmod +x "${INITRAMFS_BUILD}/init.d/"*.sh
 
     # Copy kernel modules needed for boot (if available)
-    local modules_archive
+    local modules_archive=""
     local modules_root="${BUILD_DIR}/modules-archive"
 
-    modules_archive=$(ls -t "${SCRIPT_DIR}/../kernel/output"/modules-*.tar.gz 2>/dev/null | head -1)
+    rm -rf "$modules_root"
 
-    if [ -n "$modules_archive" ] && [ -f "$modules_archive" ]; then
-        echo "Extracting custom kernel modules archive..."
-        rm -rf "$modules_root"
-        mkdir -p "$modules_root"
-        tar -xzf "$modules_archive" -C "$modules_root"
+    if [ "$KERNEL_TYPE" = "alpine-lts" ] && [ -d "${ROOTFS_BUILD}/lib/modules" ]; then
+        echo "Using Alpine LTS kernel modules from rootfs..."
+        mkdir -p "${modules_root}/lib"
+        cp -a "${ROOTFS_BUILD}/lib/modules" "${modules_root}/lib/"
+    else
+        modules_archive=$(ls -t "${SCRIPT_DIR}/../kernel/output"/modules-*.tar.gz 2>/dev/null | head -1)
+
+        if [ -n "$modules_archive" ] && [ -f "$modules_archive" ]; then
+            echo "Extracting custom kernel modules archive..."
+            mkdir -p "$modules_root"
+            tar -xzf "$modules_archive" -C "$modules_root"
+        fi
     fi
 
     if [ -d "${modules_root}/lib/modules" ]; then
@@ -226,6 +249,7 @@ build_initramfs() {
 main() {
     echo "=========================================="
     echo "Coyote Linux Installer Initramfs Builder"
+    echo "Kernel type: ${KERNEL_TYPE}"
     echo "=========================================="
     echo ""
 

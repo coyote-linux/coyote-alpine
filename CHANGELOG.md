@@ -4,6 +4,36 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.143] - 2026-02-08
+
+### Added
+
+#### Menuconfig Build System
+- Added `make menuconfig` with interactive build configuration in `build/menuconfig.sh`
+- Added persistent build config file support via `build/.config` and `make show-config`
+- Added configurable options for kernel type, development mode, firmware size limit, boot partition size, and optional feature toggles
+
+#### Build-Time Feature Metadata
+- Firmware builds now embed `/etc/coyote/build-config` and `/etc/coyote/features.json`
+- Web admin now consumes feature metadata to hide disabled VPN and Load Balancer navigation/routes/views
+
+### Changed
+
+#### Build and Installer Integration
+- Rootfs package selection now honors menuconfig feature toggles (DotNet, HAProxy, IPSec, OpenVPN, WireGuard)
+- Kernel/initramfs build flow now supports both custom kernel and Alpine LTS kernel paths
+- New installs now use configurable boot partition sizing from build config instead of fixed 4GB
+- Syslinux boot menu handling now consistently uses `menu.c32` in install/upgrade paths
+
+### Fixed
+
+#### OpenVPN PKI Initialization
+- Easy-RSA execution now passes batch/PKI/CN options as explicit CLI arguments instead of relying on environment propagation through `doas`
+- Fixed `/vpn/openvpn/pki` initialization failures caused by missing Easy-RSA runtime options
+
+#### Menuconfig Feature Toggle Persistence
+- Fixed checklist parsing so selected additional options are saved reliably and no longer default to disabled unexpectedly
+
 ## [4.0.136] - 2026-02-07
 
 ### Added

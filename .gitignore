@@ -436,3 +436,5 @@ composer.lock
 # Local development config (not committed)
 .local-config
 build/.local-config
+build/.config
+build/.config.old

@@ -30,6 +30,15 @@ CUSTOM_KERNEL_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/kernel-${KERNEL_VERSION:-6.1
 CUSTOM_MODULES_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/modules-${KERNEL_VERSION:-6.18.8}.tar.gz"
 CUSTOM_KERNEL_IMAGE=""
 CUSTOM_KERNEL_MODULES_DIR=""
+KERNEL_TYPE="${KERNEL_TYPE:-custom}"
+
+case "$KERNEL_TYPE" in
+    custom|alpine-lts) ;;
+    *)
+        echo "Warning: Invalid KERNEL_TYPE='$KERNEL_TYPE', defaulting to custom"
+        KERNEL_TYPE="custom"
+        ;;
+esac
 
 # Create directories
 mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$INITRAMFS_BUILD"
@@ -40,7 +49,15 @@ mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$INITRAMFS_BUILD"
 setup_kernel() {
     local kernel_dest="${BUILD_DIR}/vmlinuz"
 
-    if [ "$REQUIRE_CUSTOM_KERNEL" = "auto" ]; then
+    if [ "$KERNEL_TYPE" = "custom" ]; then
+        REQUIRE_CUSTOM_KERNEL="1"
+    elif [ "$KERNEL_TYPE" = "alpine-lts" ]; then
+        REQUIRE_CUSTOM_KERNEL="0"
+        CUSTOM_KERNEL_IMAGE=""
+        if [ -d "${CACHE_DIR}/modules" ]; then
+            CUSTOM_KERNEL_MODULES_DIR="${CACHE_DIR}/modules"
+        fi
+    elif [ "$REQUIRE_CUSTOM_KERNEL" = "auto" ]; then
         if [ -d "$CUSTOM_KERNEL_ROOT" ] && [ -f "${CUSTOM_KERNEL_ROOT}/build-kernel.sh" ]; then
             REQUIRE_CUSTOM_KERNEL="1"
         else
@@ -99,8 +116,11 @@ setup_kernel() {
 
     detect_custom_kernel
 
-    if [ -f "$kernel_dest" ] && [ -z "$CUSTOM_KERNEL_IMAGE" ]; then
+    if [ -f "$kernel_dest" ] && [ -z "$CUSTOM_KERNEL_IMAGE" ] && [ "$REQUIRE_CUSTOM_KERNEL" != "1" ] && [ "$KERNEL_TYPE" != "alpine-lts" ]; then
         echo "Kernel already exists: $kernel_dest"
+        if [ -d "${CACHE_DIR}/modules" ]; then
+            CUSTOM_KERNEL_MODULES_DIR="${CACHE_DIR}/modules"
+        fi
         return 0
     fi
 
@@ -161,7 +181,9 @@ setup_kernel() {
     # Also extract modules if present
     if [ -d "${tmp_dir}/lib/modules" ]; then
         mkdir -p "${CACHE_DIR}/modules"
+        rm -rf "${CACHE_DIR}/modules"/*
         cp -a "${tmp_dir}/lib/modules/"* "${CACHE_DIR}/modules/"
+        CUSTOM_KERNEL_MODULES_DIR="${CACHE_DIR}/modules"
         echo "Kernel modules cached"
     fi
 
@@ -458,6 +480,7 @@ build_initramfs() {
 main() {
     echo "=========================================="
     echo "Coyote Linux Initramfs Builder"
+    echo "Kernel type: ${KERNEL_TYPE}"
     echo "=========================================="
     echo ""
 

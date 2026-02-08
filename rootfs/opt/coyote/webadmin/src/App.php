@@ -110,6 +110,13 @@ class App
      */
     public function registerRoutes(): void
     {
+        $features = new FeatureFlags();
+        $vpnAvailable = $features->isVpnAvailable();
+        $ipsecAvailable = $features->isIpsecAvailable();
+        $openVpnAvailable = $features->isOpenVpnAvailable();
+        $wireGuardAvailable = $features->isWireGuardAvailable();
+        $loadBalancerAvailable = $features->isLoadBalancerAvailable();
+
         // Dashboard
         $this->router->get('/', [Controller\DashboardController::class, 'index']);
         $this->router->get('/dashboard', [Controller\DashboardController::class, 'index']);
@@ -184,58 +191,71 @@ class App
         $this->router->post('/nat/masquerade/{id}', [Controller\NatController::class, 'saveMasquerade']);
         $this->router->post('/nat/masquerade/{id}/delete', [Controller\NatController::class, 'deleteMasquerade']);
 
-        // VPN
-        $this->router->get('/vpn', [Controller\VpnController::class, 'index']);
-        $this->router->get('/vpn/openvpn', [Controller\VpnController::class, 'openvpnInstances']);
-        $this->router->get('/vpn/openvpn/new', [Controller\VpnController::class, 'newOpenvpnInstance']);
-        $this->router->post('/vpn/openvpn/new', [Controller\VpnController::class, 'saveOpenvpnInstance']);
-        $this->router->get('/vpn/openvpn/pki', [Controller\VpnController::class, 'openvpnPki']);
-        $this->router->post('/vpn/openvpn/pki/init', [Controller\VpnController::class, 'initializePki']);
-        $this->router->post('/vpn/openvpn/pki/server-cert', [Controller\VpnController::class, 'generateServerCert']);
-        $this->router->post('/vpn/openvpn/pki/client-cert', [Controller\VpnController::class, 'generateClientCert']);
-        $this->router->post('/vpn/openvpn/pki/revoke/{name}', [Controller\VpnController::class, 'revokeClientCert']);
-        $this->router->get('/vpn/openvpn/client/{server}/{client}/download', [Controller\VpnController::class, 'downloadClientConfig']);
-        $this->router->get('/vpn/openvpn/{name}', [Controller\VpnController::class, 'editOpenvpnInstance']);
-        $this->router->post('/vpn/openvpn/{name}', [Controller\VpnController::class, 'saveOpenvpnInstance']);
-        $this->router->post('/vpn/openvpn/{name}/delete', [Controller\VpnController::class, 'deleteOpenvpnInstance']);
-        $this->router->get('/vpn/ipsec', [Controller\VpnController::class, 'ipsecTunnels']);
-        $this->router->get('/vpn/ipsec/new', [Controller\VpnController::class, 'newIpsecTunnel']);
-        $this->router->post('/vpn/ipsec/new', [Controller\VpnController::class, 'saveIpsecTunnel']);
-        $this->router->get('/vpn/ipsec/{name}', [Controller\VpnController::class, 'editIpsecTunnel']);
-        $this->router->post('/vpn/ipsec/{name}', [Controller\VpnController::class, 'saveIpsecTunnel']);
-        $this->router->post('/vpn/ipsec/{name}/delete', [Controller\VpnController::class, 'deleteIpsecTunnel']);
-        $this->router->post('/vpn/ipsec/{name}/connect', [Controller\VpnController::class, 'connectTunnel']);
-        $this->router->post('/vpn/ipsec/{name}/disconnect', [Controller\VpnController::class, 'disconnectTunnel']);
-        $this->router->get('/vpn/wireguard', [Controller\VpnController::class, 'wireguardInterfaces']);
-        $this->router->get('/vpn/wireguard/new', [Controller\VpnController::class, 'newWireguardInterface']);
-        $this->router->post('/vpn/wireguard/new', [Controller\VpnController::class, 'saveWireguardInterface']);
-        $this->router->get('/vpn/wireguard/{name}', [Controller\VpnController::class, 'editWireguardInterface']);
-        $this->router->post('/vpn/wireguard/{name}', [Controller\VpnController::class, 'saveWireguardInterface']);
-        $this->router->post('/vpn/wireguard/{name}/delete', [Controller\VpnController::class, 'deleteWireguardInterface']);
-        $this->router->get('/vpn/wireguard/{name}/peer/new', [Controller\VpnController::class, 'newWireguardPeer']);
-        $this->router->post('/vpn/wireguard/{name}/peer', [Controller\VpnController::class, 'saveWireguardPeer']);
-        $this->router->post('/vpn/wireguard/{name}/peer/{key}/delete', [Controller\VpnController::class, 'deleteWireguardPeer']);
-        $this->router->get('/vpn/wireguard/{name}/peer/{key}/config', [Controller\VpnController::class, 'wireguardPeerConfig']);
+        if ($vpnAvailable) {
+            // VPN
+            $this->router->get('/vpn', [Controller\VpnController::class, 'index']);
 
-        // Load Balancer
-        $this->router->get('/loadbalancer', [Controller\LoadBalancerController::class, 'index']);
-        $this->router->get('/loadbalancer/settings', [Controller\LoadBalancerController::class, 'settings']);
-        $this->router->post('/loadbalancer/settings', [Controller\LoadBalancerController::class, 'saveSettings']);
-        $this->router->get('/loadbalancer/stats', [Controller\LoadBalancerController::class, 'stats']);
+            if ($openVpnAvailable) {
+                $this->router->get('/vpn/openvpn', [Controller\VpnController::class, 'openvpnInstances']);
+                $this->router->get('/vpn/openvpn/new', [Controller\VpnController::class, 'newOpenvpnInstance']);
+                $this->router->post('/vpn/openvpn/new', [Controller\VpnController::class, 'saveOpenvpnInstance']);
+                $this->router->get('/vpn/openvpn/pki', [Controller\VpnController::class, 'openvpnPki']);
+                $this->router->post('/vpn/openvpn/pki/init', [Controller\VpnController::class, 'initializePki']);
+                $this->router->post('/vpn/openvpn/pki/server-cert', [Controller\VpnController::class, 'generateServerCert']);
+                $this->router->post('/vpn/openvpn/pki/client-cert', [Controller\VpnController::class, 'generateClientCert']);
+                $this->router->post('/vpn/openvpn/pki/revoke/{name}', [Controller\VpnController::class, 'revokeClientCert']);
+                $this->router->get('/vpn/openvpn/client/{server}/{client}/download', [Controller\VpnController::class, 'downloadClientConfig']);
+                $this->router->get('/vpn/openvpn/{name}', [Controller\VpnController::class, 'editOpenvpnInstance']);
+                $this->router->post('/vpn/openvpn/{name}', [Controller\VpnController::class, 'saveOpenvpnInstance']);
+                $this->router->post('/vpn/openvpn/{name}/delete', [Controller\VpnController::class, 'deleteOpenvpnInstance']);
+            }
 
-        // Load Balancer Frontends
-        $this->router->get('/loadbalancer/frontend/new', [Controller\LoadBalancerController::class, 'newFrontend']);
-        $this->router->post('/loadbalancer/frontend/new', [Controller\LoadBalancerController::class, 'saveFrontend']);
-        $this->router->get('/loadbalancer/frontend/{name}', [Controller\LoadBalancerController::class, 'editFrontend']);
-        $this->router->post('/loadbalancer/frontend/{name}', [Controller\LoadBalancerController::class, 'saveFrontend']);
-        $this->router->post('/loadbalancer/frontend/{name}/delete', [Controller\LoadBalancerController::class, 'deleteFrontend']);
+            if ($ipsecAvailable) {
+                $this->router->get('/vpn/ipsec', [Controller\VpnController::class, 'ipsecTunnels']);
+                $this->router->get('/vpn/ipsec/new', [Controller\VpnController::class, 'newIpsecTunnel']);
+                $this->router->post('/vpn/ipsec/new', [Controller\VpnController::class, 'saveIpsecTunnel']);
+                $this->router->get('/vpn/ipsec/{name}', [Controller\VpnController::class, 'editIpsecTunnel']);
+                $this->router->post('/vpn/ipsec/{name}', [Controller\VpnController::class, 'saveIpsecTunnel']);
+                $this->router->post('/vpn/ipsec/{name}/delete', [Controller\VpnController::class, 'deleteIpsecTunnel']);
+                $this->router->post('/vpn/ipsec/{name}/connect', [Controller\VpnController::class, 'connectTunnel']);
+                $this->router->post('/vpn/ipsec/{name}/disconnect', [Controller\VpnController::class, 'disconnectTunnel']);
+            }
 
-        // Load Balancer Backends
-        $this->router->get('/loadbalancer/backend/new', [Controller\LoadBalancerController::class, 'newBackend']);
-        $this->router->post('/loadbalancer/backend/new', [Controller\LoadBalancerController::class, 'saveBackend']);
-        $this->router->get('/loadbalancer/backend/{name}', [Controller\LoadBalancerController::class, 'editBackend']);
-        $this->router->post('/loadbalancer/backend/{name}', [Controller\LoadBalancerController::class, 'saveBackend']);
-        $this->router->post('/loadbalancer/backend/{name}/delete', [Controller\LoadBalancerController::class, 'deleteBackend']);
+            if ($wireGuardAvailable) {
+                $this->router->get('/vpn/wireguard', [Controller\VpnController::class, 'wireguardInterfaces']);
+                $this->router->get('/vpn/wireguard/new', [Controller\VpnController::class, 'newWireguardInterface']);
+                $this->router->post('/vpn/wireguard/new', [Controller\VpnController::class, 'saveWireguardInterface']);
+                $this->router->get('/vpn/wireguard/{name}', [Controller\VpnController::class, 'editWireguardInterface']);
+                $this->router->post('/vpn/wireguard/{name}', [Controller\VpnController::class, 'saveWireguardInterface']);
+                $this->router->post('/vpn/wireguard/{name}/delete', [Controller\VpnController::class, 'deleteWireguardInterface']);
+                $this->router->get('/vpn/wireguard/{name}/peer/new', [Controller\VpnController::class, 'newWireguardPeer']);
+                $this->router->post('/vpn/wireguard/{name}/peer', [Controller\VpnController::class, 'saveWireguardPeer']);
+                $this->router->post('/vpn/wireguard/{name}/peer/{key}/delete', [Controller\VpnController::class, 'deleteWireguardPeer']);
+                $this->router->get('/vpn/wireguard/{name}/peer/{key}/config', [Controller\VpnController::class, 'wireguardPeerConfig']);
+            }
+        }
+
+        if ($loadBalancerAvailable) {
+            // Load Balancer
+            $this->router->get('/loadbalancer', [Controller\LoadBalancerController::class, 'index']);
+            $this->router->get('/loadbalancer/settings', [Controller\LoadBalancerController::class, 'settings']);
+            $this->router->post('/loadbalancer/settings', [Controller\LoadBalancerController::class, 'saveSettings']);
+            $this->router->get('/loadbalancer/stats', [Controller\LoadBalancerController::class, 'stats']);
+
+            // Load Balancer Frontends
+            $this->router->get('/loadbalancer/frontend/new', [Controller\LoadBalancerController::class, 'newFrontend']);
+            $this->router->post('/loadbalancer/frontend/new', [Controller\LoadBalancerController::class, 'saveFrontend']);
+            $this->router->get('/loadbalancer/frontend/{name}', [Controller\LoadBalancerController::class, 'editFrontend']);
+            $this->router->post('/loadbalancer/frontend/{name}', [Controller\LoadBalancerController::class, 'saveFrontend']);
+            $this->router->post('/loadbalancer/frontend/{name}/delete', [Controller\LoadBalancerController::class, 'deleteFrontend']);
+
+            // Load Balancer Backends
+            $this->router->get('/loadbalancer/backend/new', [Controller\LoadBalancerController::class, 'newBackend']);
+            $this->router->post('/loadbalancer/backend/new', [Controller\LoadBalancerController::class, 'saveBackend']);
+            $this->router->get('/loadbalancer/backend/{name}', [Controller\LoadBalancerController::class, 'editBackend']);
+            $this->router->post('/loadbalancer/backend/{name}', [Controller\LoadBalancerController::class, 'saveBackend']);
+            $this->router->post('/loadbalancer/backend/{name}/delete', [Controller\LoadBalancerController::class, 'deleteBackend']);
+        }
 
         $this->router->get('/certificates', [Controller\CertificateController::class, 'index']);
         $this->router->get('/certificates/upload', [Controller\CertificateController::class, 'upload']);
@@ -304,6 +324,8 @@ class App
      */
     public function registerApiRoutes(): void
     {
+        $features = new FeatureFlags();
+
         // Status
         $this->router->get('/api/status', [Api\StatusApi::class, 'index']);
         $this->router->get('/api/status/system', [Api\StatusApi::class, 'system']);
@@ -322,9 +344,11 @@ class App
         $this->router->get('/api/firewall/rules', [Api\FirewallApi::class, 'rules']);
         $this->router->post('/api/firewall/rules', [Api\FirewallApi::class, 'saveRules']);
 
-        // Load Balancer
-        $this->router->get('/api/loadbalancer/status', [Api\LoadBalancerApi::class, 'status']);
-        $this->router->get('/api/loadbalancer/stats', [Api\LoadBalancerApi::class, 'stats']);
+        if ($features->isLoadBalancerAvailable()) {
+            // Load Balancer
+            $this->router->get('/api/loadbalancer/status', [Api\LoadBalancerApi::class, 'status']);
+            $this->router->get('/api/loadbalancer/stats', [Api\LoadBalancerApi::class, 'stats']);
+        }
     }
 
     /**

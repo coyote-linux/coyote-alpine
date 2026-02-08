@@ -3,6 +3,7 @@
 namespace Coyote\WebAdmin\Controller;
 
 use Coyote\WebAdmin\Csrf;
+use Coyote\WebAdmin\FeatureFlags;
 
 /**
  * Base controller with common functionality.
@@ -38,6 +39,10 @@ abstract class BaseController
 
         if (!isset($data['csrfToken']) || !is_string($data['csrfToken']) || $data['csrfToken'] === '') {
             $data['csrfToken'] = Csrf::getToken();
+        }
+
+        if (!isset($data['features']) || !is_array($data['features'])) {
+            $data['features'] = (new FeatureFlags())->toArray();
         }
 
         extract($data);

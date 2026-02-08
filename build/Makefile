@@ -7,7 +7,34 @@ VERSION_MINOR := 0
 BUILD_NUMBER_FILE := .build-number
 BUILD_NUMBER := $(shell cat $(BUILD_NUMBER_FILE) 2>/dev/null || echo 0)
 VERSION := $(VERSION_MAJOR).$(VERSION_MINOR).$(BUILD_NUMBER)
-DEV_BUILD ?= 0
+
+CONFIG_FILE := .config
+DEFAULT_KERNEL_TYPE := custom
+DEFAULT_DEV_BUILD := 0
+DEFAULT_FIRMWARE_SIZE_MB := 512
+DEFAULT_BOOT_PARTITION_SIZE_MIB := 4096
+DEFAULT_DOTNET := 1
+DEFAULT_LOADBALANCER := 1
+DEFAULT_IPSEC := 1
+DEFAULT_OPENVPN := 1
+DEFAULT_WIREGUARD := 1
+
+MIN_FIRMWARE_SIZE_MB := 256
+MIN_BOOT_PARTITION_SIZE_MIB := 512
+
+-include $(CONFIG_FILE)
+
+CONFIG_KERNEL_TYPE ?= $(DEFAULT_KERNEL_TYPE)
+CONFIG_DEV_BUILD ?= $(DEFAULT_DEV_BUILD)
+CONFIG_FIRMWARE_SIZE_MB ?= $(DEFAULT_FIRMWARE_SIZE_MB)
+CONFIG_BOOT_PARTITION_SIZE_MIB ?= $(DEFAULT_BOOT_PARTITION_SIZE_MIB)
+CONFIG_DOTNET ?= $(DEFAULT_DOTNET)
+CONFIG_LOADBALANCER ?= $(DEFAULT_LOADBALANCER)
+CONFIG_IPSEC ?= $(DEFAULT_IPSEC)
+CONFIG_OPENVPN ?= $(DEFAULT_OPENVPN)
+CONFIG_WIREGUARD ?= $(DEFAULT_WIREGUARD)
+
+DEV_BUILD ?= $(CONFIG_DEV_BUILD)
 
 BUILD_DIR := ../output
 ROOTFS_SRC := ../rootfs
@@ -23,7 +50,7 @@ ROOTFS_FILES := $(shell find $(ROOTFS_SRC) -type f 2>/dev/null)
 INITRAMFS_FILES := $(shell find $(INITRAMFS_DIR) -type f 2>/dev/null)
 INITRAMFS_INSTALLER_FILES := $(shell find $(INITRAMFS_INSTALLER_DIR) -type f 2>/dev/null)
 
-.PHONY: all clean firmware installer iso initramfs initramfs-installer kernel rootfs distclean help rebuild-firmware rebuild-iso sign bump-version show-version
+.PHONY: all clean firmware installer iso initramfs initramfs-installer kernel rootfs distclean help rebuild-firmware rebuild-iso sign bump-version show-version menuconfig show-config
 
 all: firmware
 
@@ -32,6 +59,21 @@ show-version:
 	@echo "Current version: $(VERSION)"
 	@echo "Build mode: $(if $(filter 1,$(DEV_BUILD)),development,release)"
 	@echo "Next build will be: $(VERSION_MAJOR).$(VERSION_MINOR).$$(($(BUILD_NUMBER) + 1))"
+
+show-config:
+	@echo "Build configuration"
+	@echo "  Kernel type:          $(CONFIG_KERNEL_TYPE)"
+	@echo "  Development mode:     $(CONFIG_DEV_BUILD)"
+	@echo "  Firmware size limit:  $(CONFIG_FIRMWARE_SIZE_MB) MB"
+	@echo "  Boot partition size:  $(CONFIG_BOOT_PARTITION_SIZE_MIB) MiB"
+	@echo "  DotNet runtime:       $(CONFIG_DOTNET)"
+	@echo "  Load balancer:        $(CONFIG_LOADBALANCER)"
+	@echo "  IPSec VPN:            $(CONFIG_IPSEC)"
+	@echo "  OpenVPN server:       $(CONFIG_OPENVPN)"
+	@echo "  WireGuard server:     $(CONFIG_WIREGUARD)"
+
+menuconfig:
+	./menuconfig.sh
 
 # Increment build number (called automatically by firmware target)
 bump-version:
@@ -45,6 +87,8 @@ help:
 	@echo "Current version: $(VERSION)"
 	@echo ""
 	@echo "Targets:"
+	@echo "  menuconfig          - Configure build options (kernel, features, sizes)"
+	@echo "  show-config         - Display active build configuration"
 	@echo "  rootfs              - Download Alpine and build rootfs"
 	@echo "  firmware            - Build firmware squashfs image (increments build number)"
 	@echo "  sign                - Sign the latest firmware image"
@@ -60,6 +104,7 @@ help:
 	@echo "  distclean           - Remove build outputs and cached downloads"
 	@echo ""
 	@echo "Typical build sequence:"
+	@echo "  make menuconfig # Configure build options"
 	@echo "  make rootfs     # First time or when packages change"
 	@echo "  make iso        # Build bootable ISO installer"
 	@echo ""
@@ -72,6 +117,12 @@ help:
 # Build the Alpine rootfs with Coyote overlay
 rootfs: kernel
 	@echo "Building rootfs..."
+	CONFIG_KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" \
+	CONFIG_DOTNET="$(CONFIG_DOTNET)" \
+	CONFIG_LOADBALANCER="$(CONFIG_LOADBALANCER)" \
+	CONFIG_IPSEC="$(CONFIG_IPSEC)" \
+	CONFIG_OPENVPN="$(CONFIG_OPENVPN)" \
+	CONFIG_WIREGUARD="$(CONFIG_WIREGUARD)" \
 	./mkrootfs.sh
 	@touch $(ROOTFS_BUILD)/.stamp
 
@@ -83,12 +134,40 @@ firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	echo $$NEW_BUILD > $(BUILD_NUMBER_FILE); \
 	NEW_VERSION="$(VERSION_MAJOR).$(VERSION_MINOR).$$NEW_BUILD"; \
 	if [ "$(DEV_BUILD)" = "1" ]; then BUILD_MODE="development"; else BUILD_MODE="release"; fi; \
+	case "$(CONFIG_KERNEL_TYPE)" in custom|alpine-lts) ;; *) echo "Error: CONFIG_KERNEL_TYPE must be 'custom' or 'alpine-lts'"; exit 1 ;; esac; \
+	case "$(CONFIG_FIRMWARE_SIZE_MB)" in ''|*[!0-9]*) echo "Error: CONFIG_FIRMWARE_SIZE_MB must be numeric"; exit 1 ;; esac; \
+	case "$(CONFIG_BOOT_PARTITION_SIZE_MIB)" in ''|*[!0-9]*) echo "Error: CONFIG_BOOT_PARTITION_SIZE_MIB must be numeric"; exit 1 ;; esac; \
+	if [ "$(CONFIG_FIRMWARE_SIZE_MB)" -lt "$(MIN_FIRMWARE_SIZE_MB)" ]; then echo "Error: CONFIG_FIRMWARE_SIZE_MB must be >= $(MIN_FIRMWARE_SIZE_MB)"; exit 1; fi; \
+	if [ "$(CONFIG_BOOT_PARTITION_SIZE_MIB)" -lt "$(MIN_BOOT_PARTITION_SIZE_MIB)" ]; then echo "Error: CONFIG_BOOT_PARTITION_SIZE_MIB must be >= $(MIN_BOOT_PARTITION_SIZE_MIB)"; exit 1; fi; \
 	FIRMWARE_FILE="$(BUILD_DIR)/firmware-$$NEW_VERSION.squashfs"; \
 	echo "Building firmware version $$NEW_VERSION ($$BUILD_MODE mode)..."; \
 	mkdir -p $(BUILD_DIR); \
 	mkdir -p $(ROOTFS_BUILD)/etc/coyote; \
 	echo "$$NEW_VERSION" > $(ROOTFS_BUILD)/etc/coyote/version; \
 	echo "$$BUILD_MODE" > $(ROOTFS_BUILD)/etc/coyote/build-mode; \
+	echo "KERNEL_TYPE=$(CONFIG_KERNEL_TYPE)" > $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	echo "DEV_BUILD=$(DEV_BUILD)" >> $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	echo "FIRMWARE_SIZE_MB=$(CONFIG_FIRMWARE_SIZE_MB)" >> $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	echo "BOOT_PARTITION_SIZE_MIB=$(CONFIG_BOOT_PARTITION_SIZE_MIB)" >> $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	echo "DOTNET=$(CONFIG_DOTNET)" >> $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	echo "LOADBALANCER=$(CONFIG_LOADBALANCER)" >> $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	echo "VPN_IPSEC=$(CONFIG_IPSEC)" >> $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	echo "VPN_OPENVPN=$(CONFIG_OPENVPN)" >> $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	echo "VPN_WIREGUARD=$(CONFIG_WIREGUARD)" >> $(ROOTFS_BUILD)/etc/coyote/build-config; \
+	if [ "$(CONFIG_LOADBALANCER)" = "1" ]; then LB_FEATURE=true; else LB_FEATURE=false; fi; \
+	if [ "$(CONFIG_IPSEC)" = "1" ]; then IPSEC_FEATURE=true; else IPSEC_FEATURE=false; fi; \
+	if [ "$(CONFIG_OPENVPN)" = "1" ]; then OPENVPN_FEATURE=true; else OPENVPN_FEATURE=false; fi; \
+	if [ "$(CONFIG_WIREGUARD)" = "1" ]; then WIREGUARD_FEATURE=true; else WIREGUARD_FEATURE=false; fi; \
+	echo '{' > $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '    "features": {' >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '        "load_balancer":' $$LB_FEATURE',' >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '        "vpn": {' >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '            "ipsec":' $$IPSEC_FEATURE',' >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '            "openvpn":' $$OPENVPN_FEATURE',' >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '            "wireguard":' $$WIREGUARD_FEATURE >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '        }' >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '    }' >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
+	echo '}' >> $(ROOTFS_BUILD)/etc/coyote/features.json; \
 	echo "Coyote Linux $$NEW_VERSION" > $(ROOTFS_BUILD)/etc/issue; \
 	echo "" >> $(ROOTFS_BUILD)/etc/issue; \
 	cp $(ROOTFS_SRC)/etc/motd $(ROOTFS_BUILD)/etc/motd; \
@@ -100,6 +179,13 @@ firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	echo 'HOME_URL="https://www.coyotelinux.com/"' >> $(ROOTFS_BUILD)/etc/os-release; \
 	echo 'BUG_REPORT_URL="https://github.com/coyote-linux/coyote-alpine/issues"' >> $(ROOTFS_BUILD)/etc/os-release; \
 	./mksquashfs.sh $(ROOTFS_BUILD) "$$FIRMWARE_FILE" "$(SQUASHFS_OPTS)"; \
+	MAX_FIRMWARE_BYTES=$$(( $(CONFIG_FIRMWARE_SIZE_MB) * 1024 * 1024 )); \
+	ACTUAL_FIRMWARE_BYTES=$$(stat -c%s "$$FIRMWARE_FILE"); \
+	if [ "$$ACTUAL_FIRMWARE_BYTES" -gt "$$MAX_FIRMWARE_BYTES" ]; then \
+		echo "Error: Firmware image exceeds configured size limit ($(CONFIG_FIRMWARE_SIZE_MB) MB)"; \
+		echo "Actual: $$((ACTUAL_FIRMWARE_BYTES / 1024 / 1024)) MB"; \
+		exit 1; \
+	fi; \
 	sha256sum "$$FIRMWARE_FILE" > "$$FIRMWARE_FILE.sha256"; \
 	if [ -f .local-config ]; then \
 		. ./.local-config; \
@@ -126,13 +212,17 @@ sign:
 
 # Build the custom kernel
 kernel:
-	@echo "Building custom kernel..."
-	@KERNEL_VERSION="$(KERNEL_VERSION)" ../kernel/build-kernel.sh
+	@if [ "$(CONFIG_KERNEL_TYPE)" = "custom" ]; then \
+		echo "Building custom kernel..."; \
+		KERNEL_VERSION="$(KERNEL_VERSION)" ../kernel/build-kernel.sh; \
+	else \
+		echo "Kernel type is alpine-lts; skipping custom kernel build"; \
+	fi
 
 initramfs: kernel
 	@echo "Building kernel and initramfs..."
 	@mkdir -p $(BUILD_DIR)
-	./mkinitramfs.sh
+	KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" ./mkinitramfs.sh
 	@touch $(BUILD_DIR)/.initramfs-stamp
 	@echo "Kernel: $(BUILD_DIR)/vmlinuz"
 	@echo "Initramfs: $(BUILD_DIR)/initramfs.cpio.gz"
@@ -145,7 +235,7 @@ $(BUILD_DIR)/initramfs.cpio.gz: $(BUILD_DIR)/.initramfs-stamp
 initramfs-installer: initramfs
 	@echo "Building installer initramfs..."
 	@mkdir -p $(BUILD_DIR)
-	./mkinitramfs-installer.sh
+	KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" ./mkinitramfs-installer.sh
 	@touch $(BUILD_DIR)/.initramfs-installer-stamp
 	@echo "Installer initramfs: $(BUILD_DIR)/initramfs-installer.cpio.gz"
 

@@ -20,8 +20,12 @@
             <li><a href="/network" class="<?= ($page ?? '') === 'network' ? 'active' : '' ?>">Network</a></li>
             <li><a href="/firewall" class="<?= ($page ?? '') === 'firewall' ? 'active' : '' ?>">Firewall</a></li>
             <li><a href="/nat" class="<?= ($page ?? '') === 'nat' ? 'active' : '' ?>">NAT</a></li>
+            <?php if (($features['vpn'] ?? true)): ?>
             <li><a href="/vpn" class="<?= ($page ?? '') === 'vpn' ? 'active' : '' ?>">VPN</a></li>
+            <?php endif; ?>
+            <?php if (($features['loadbalancer'] ?? true)): ?>
             <li><a href="/loadbalancer" class="<?= ($page ?? '') === 'loadbalancer' ? 'active' : '' ?>">Load Balancer</a></li>
+            <?php endif; ?>
             <li><a href="/services" class="<?= ($page ?? '') === 'services' ? 'active' : '' ?>">Services</a></li>
             <li><a href="/certificates" class="<?= ($page ?? '') === 'certificates' ? 'active' : '' ?>">Certificates</a></li>
             <li><a href="/system" class="<?= ($page ?? '') === 'system' ? 'active' : '' ?>">System</a></li>

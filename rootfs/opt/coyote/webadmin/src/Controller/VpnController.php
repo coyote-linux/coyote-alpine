@@ -10,6 +10,7 @@ use Coyote\Vpn\StrongSwanService;
 use Coyote\Vpn\WireGuardInterface;
 use Coyote\Vpn\WireGuardPeer;
 use Coyote\Vpn\WireGuardService;
+use Coyote\WebAdmin\FeatureFlags;
 use Coyote\WebAdmin\Service\ConfigService;
 
 class VpnController extends BaseController
@@ -20,6 +21,7 @@ class VpnController extends BaseController
     private EasyRsaService $easyRsaService;
     private CertificateStore $certificateStore;
     private WireGuardService $wireGuardService;
+    private FeatureFlags $featureFlags;
 
     public function __construct()
     {
@@ -30,58 +32,78 @@ class VpnController extends BaseController
         $this->easyRsaService = new EasyRsaService();
         $this->certificateStore = new CertificateStore();
         $this->wireGuardService = new WireGuardService();
+        $this->featureFlags = new FeatureFlags();
     }
 
     public function index(array $params = []): void
     {
+        if (!$this->featureFlags->isVpnAvailable()) {
+            $this->flash('error', 'VPN features are disabled in this build');
+            $this->redirect('/dashboard');
+            return;
+        }
+
+        $ipsecAvailable = $this->featureFlags->isIpsecAvailable();
+        $openVpnAvailable = $this->featureFlags->isOpenVpnAvailable();
+        $wireGuardAvailable = $this->featureFlags->isWireGuardAvailable();
+
         $config = $this->configService->getWorkingConfig();
         $vpn = $config->get('vpn', []);
-        $ipsec = is_array($vpn['ipsec'] ?? null) ? $vpn['ipsec'] : [];
-        $tunnels = is_array($ipsec['tunnels'] ?? null) ? $ipsec['tunnels'] : [];
-        $status = $this->strongSwanService->getStatus();
-        $openvpn = is_array($vpn['openvpn'] ?? null) ? $vpn['openvpn'] : [];
-        $openvpnInstances = is_array($openvpn['instances'] ?? null) ? $openvpn['instances'] : [];
+
+        $ipsec = $ipsecAvailable && is_array($vpn['ipsec'] ?? null) ? $vpn['ipsec'] : [];
+        $tunnels = $ipsecAvailable && is_array($ipsec['tunnels'] ?? null) ? $ipsec['tunnels'] : [];
+        $status = $ipsecAvailable ? $this->strongSwanService->getStatus() : ['running' => false, 'connections' => []];
+
+        $openvpn = $openVpnAvailable && is_array($vpn['openvpn'] ?? null) ? $vpn['openvpn'] : [];
+        $openvpnInstances = $openVpnAvailable && is_array($openvpn['instances'] ?? null) ? $openvpn['instances'] : [];
         $openvpnRunningCount = 0;
         $openvpnClientCount = 0;
 
-        foreach ($openvpnInstances as $name => $openvpnInstance) {
-            if (!is_array($openvpnInstance) || !((bool)($openvpnInstance['enabled'] ?? true))) {
-                continue;
-            }
+        if ($openVpnAvailable) {
+            foreach ($openvpnInstances as $name => $openvpnInstance) {
+                if (!is_array($openvpnInstance) || !((bool)($openvpnInstance['enabled'] ?? true))) {
+                    continue;
+                }
 
-            $openvpnStatus = $this->openVpnService->getStatus((string)$name);
-            if ((bool)($openvpnStatus['running'] ?? false)) {
-                $openvpnRunningCount++;
-            }
+                $openvpnStatus = $this->openVpnService->getStatus((string)$name);
+                if ((bool)($openvpnStatus['running'] ?? false)) {
+                    $openvpnRunningCount++;
+                }
 
-            $openvpnClientCount += (int)($openvpnStatus['connected_clients'] ?? 0);
+                $openvpnClientCount += (int)($openvpnStatus['connected_clients'] ?? 0);
+            }
         }
 
-        $wireguard = is_array($vpn['wireguard'] ?? null) ? $vpn['wireguard'] : [];
-        $wireguardInterfaces = is_array($wireguard['interfaces'] ?? null) ? $wireguard['interfaces'] : [];
-        $wireguardStatus = $this->wireGuardService->getInterfaceStatus();
+        $wireguard = $wireGuardAvailable && is_array($vpn['wireguard'] ?? null) ? $vpn['wireguard'] : [];
+        $wireguardInterfaces = $wireGuardAvailable && is_array($wireguard['interfaces'] ?? null) ? $wireguard['interfaces'] : [];
+        $wireguardStatus = $wireGuardAvailable ? $this->wireGuardService->getInterfaceStatus() : [];
         $wireguardRunning = 0;
 
-        foreach ($wireguardInterfaces as $name => $interfaceConfig) {
-            if (!is_array($interfaceConfig)) {
-                continue;
-            }
+        if ($wireGuardAvailable) {
+            foreach ($wireguardInterfaces as $name => $interfaceConfig) {
+                if (!is_array($interfaceConfig)) {
+                    continue;
+                }
 
-            $interfaceStatus = $wireguardStatus[(string)$name] ?? [];
-            if ((bool)($interfaceStatus['up'] ?? false)) {
-                $wireguardRunning++;
+                $interfaceStatus = $wireguardStatus[(string)$name] ?? [];
+                if ((bool)($interfaceStatus['up'] ?? false)) {
+                    $wireguardRunning++;
+                }
             }
         }
 
         $data = [
+            'ipsecAvailable' => $ipsecAvailable,
             'ipsecEnabled' => (bool)($ipsec['enabled'] ?? false),
             'ipsecRunning' => (bool)($status['running'] ?? false),
             'tunnelCount' => count($tunnels),
             'activeCount' => count($status['connections'] ?? []),
+            'openvpnAvailable' => $openVpnAvailable,
             'openvpnEnabled' => (bool)($openvpn['enabled'] ?? false),
             'openvpnCount' => count($openvpnInstances),
             'openvpnRunningCount' => $openvpnRunningCount,
             'openvpnClientCount' => $openvpnClientCount,
+            'wireguardAvailable' => $wireGuardAvailable,
             'wireguardEnabled' => (bool)($wireguard['enabled'] ?? false),
             'wireguardInterfaceCount' => count($wireguardInterfaces),
             'wireguardRunningCount' => $wireguardRunning,

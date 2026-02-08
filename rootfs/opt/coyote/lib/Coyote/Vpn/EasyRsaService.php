@@ -166,29 +166,23 @@ class EasyRsaService
 
     private function runEasyRsa(array $arguments, bool $noPass = false, ?string $requestCn = null): bool
     {
-        $env = [
-            'EASYRSA_PKI=' . escapeshellarg(self::PKI_DIR),
-            'EASYRSA_BATCH=1',
+        $commandPrefix = posix_getuid() === 0 ? '' : 'doas ';
+        $commandParts = [
+            escapeshellarg(self::EASYRSA_BIN),
+            escapeshellarg('--batch'),
+            escapeshellarg('--pki-dir=' . self::PKI_DIR),
         ];
 
+        if ($requestCn !== null && $requestCn !== '') {
+            $commandParts[] = escapeshellarg('--req-cn=' . $requestCn);
+        }
+
         if ($noPass) {
-            $env[] = 'EASYRSA_NO_PASS=1';
+            $commandParts[] = escapeshellarg('--nopass');
         }
 
-        if ($requestCn !== null) {
-            $env[] = 'EASYRSA_REQ_CN=' . escapeshellarg($requestCn);
-        }
-
-        $commandPrefix = posix_getuid() === 0 ? '' : 'doas ';
         $escapedArguments = array_map(static fn(string $arg): string => escapeshellarg($arg), $arguments);
-
-        $command = implode(' ', $env)
-            . ' '
-            . $commandPrefix
-            . escapeshellarg(self::EASYRSA_BIN)
-            . ' '
-            . implode(' ', $escapedArguments)
-            . ' 2>&1';
+        $command = $commandPrefix . implode(' ', array_merge($commandParts, $escapedArguments)) . ' 2>&1';
 
         exec($command, $output, $returnCode);
 

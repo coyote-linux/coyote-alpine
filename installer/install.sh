@@ -33,6 +33,33 @@ trap "rm -f $DIALOG_TEMP" EXIT
 BOOT_MEDIA="${BOOT_MEDIA:-/mnt/boot}"
 FIRMWARE_SRC="${BOOT_MEDIA}/firmware/current.squashfs"
 
+MIN_BOOT_PARTITION_SIZE_MIB=512
+BOOT_PARTITION_SIZE_MIB=4096
+BOOT_PARTITION_LABEL="4GB"
+
+load_build_config() {
+    local config_file="/etc/coyote/build-config"
+
+    if [ -f "$config_file" ]; then
+        # shellcheck source=/dev/null
+        . "$config_file"
+    fi
+
+    case "${BOOT_PARTITION_SIZE_MIB:-}" in
+        ''|*[!0-9]*) BOOT_PARTITION_SIZE_MIB=4096 ;;
+    esac
+
+    if [ "$BOOT_PARTITION_SIZE_MIB" -lt "$MIN_BOOT_PARTITION_SIZE_MIB" ]; then
+        BOOT_PARTITION_SIZE_MIB="$MIN_BOOT_PARTITION_SIZE_MIB"
+    fi
+
+    if [ $((BOOT_PARTITION_SIZE_MIB % 1024)) -eq 0 ]; then
+        BOOT_PARTITION_LABEL="$((BOOT_PARTITION_SIZE_MIB / 1024))GB"
+    else
+        BOOT_PARTITION_LABEL="${BOOT_PARTITION_SIZE_MIB}MiB"
+    fi
+}
+
 # Upgrade mode flag
 UPGRADE_MODE=0
 
@@ -594,7 +621,7 @@ Firmware:     $fw_status
 
 The installer will:
   1. Create a new partition table
-  2. Create a boot partition (4GB, FAT32)
+  2. Create a boot partition ($BOOT_PARTITION_LABEL, FAT32)
   3. Create a config partition (remaining space, ext4)
   4. Install the Coyote Linux bootloader and firmware
 
@@ -625,16 +652,18 @@ Do you want to proceed?" 16 65
 
 partition_disk() {
     (
+        local boot_end_mib=$((BOOT_PARTITION_SIZE_MIB + 1))
+
         echo "10"; echo "Creating partition table..."
         umount ${TARGET_DISK}* >/dev/null 2>&1 || true
         parted -s "$TARGET_DISK" mklabel msdos >/dev/null 2>&1 || exit 1
 
-        echo "30"; echo "Creating boot partition (4GB)..."
-        parted -s "$TARGET_DISK" mkpart primary fat32 1MiB 4097MiB >/dev/null 2>&1 || exit 1
+        echo "30"; echo "Creating boot partition (${BOOT_PARTITION_LABEL})..."
+        parted -s "$TARGET_DISK" mkpart primary fat32 1MiB "${boot_end_mib}MiB" >/dev/null 2>&1 || exit 1
         parted -s "$TARGET_DISK" set 1 boot on >/dev/null 2>&1
 
         echo "50"; echo "Creating config partition..."
-        parted -s "$TARGET_DISK" mkpart primary ext4 4097MiB 100% >/dev/null 2>&1 || exit 1
+        parted -s "$TARGET_DISK" mkpart primary ext4 "${boot_end_mib}MiB" 100% >/dev/null 2>&1 || exit 1
 
         echo "70"; echo "Waiting for partitions..."
         partprobe "$TARGET_DISK" >/dev/null 2>&1 || blockdev --rereadpt "$TARGET_DISK" >/dev/null 2>&1 || true
@@ -739,13 +768,11 @@ install_system() {
         echo "75"; echo "Installing bootloader files..."
         cp "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/menu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
-        cp "${BOOT_MEDIA}/boot/isolinux/vesamenu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/libutil.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/libcom32.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/libmenu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/libgpl.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
         cp "${BOOT_MEDIA}/boot/isolinux/liblua.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
-        cp "${BOOT_MEDIA}/boot/isolinux/coyote-3-square.png" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
 
         echo "80"; echo "Creating bootloader configuration..."
         cat > "$target_boot/boot/syslinux/syslinux.cfg" << 'SYSLINUX_CFG'
@@ -925,7 +952,6 @@ upgrade_system() {
         if [ -f "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" ]; then
             cp "${BOOT_MEDIA}/boot/isolinux/ldlinux.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
             cp "${BOOT_MEDIA}/boot/isolinux/menu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
-            cp "${BOOT_MEDIA}/boot/isolinux/vesamenu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
             cp "${BOOT_MEDIA}/boot/isolinux/libutil.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
             cp "${BOOT_MEDIA}/boot/isolinux/libcom32.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
             cp "${BOOT_MEDIA}/boot/isolinux/libmenu.c32" "$target_boot/boot/syslinux/" >/dev/null 2>&1 || true
@@ -936,7 +962,7 @@ upgrade_system() {
 
         echo "80"; echo "Updating bootloader configuration..."
         cat > "$target_boot/boot/syslinux/syslinux.cfg" << 'SYSLINUX_CFG'
-UI vesamenu.c32
+UI menu.c32
 PROMPT 0
 TIMEOUT 30
 
@@ -1063,6 +1089,8 @@ main() {
         msg_error "Firmware not found at $FIRMWARE_SRC\n\nBoot media may not be mounted correctly.\nBOOT_MEDIA=$BOOT_MEDIA"
         exec /bin/sh
     fi
+
+    load_build_config
 
     # Verify firmware signature
     verify_firmware_source

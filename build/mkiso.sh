@@ -70,9 +70,6 @@ echo "Copying isolinux bootloader..."
 cp "${ISOLINUX_DIR}/isolinux.bin" "${ISO_BUILD}/boot/isolinux/"
 cp "${ISOLINUX_DIR}/ldlinux.c32" "${ISO_BUILD}/boot/isolinux/"
 cp "${ISOLINUX_DIR}/menu.c32" "${ISO_BUILD}/boot/isolinux/"
-if [ -f "${ISOLINUX_DIR}/vesamenu.c32" ]; then
-    cp "${ISOLINUX_DIR}/vesamenu.c32" "${ISO_BUILD}/boot/isolinux/"
-fi
 cp "${ISOLINUX_DIR}/libutil.c32" "${ISO_BUILD}/boot/isolinux/"
 
 # Copy libcom32.c32 if it exists (needed by some menu.c32 versions)

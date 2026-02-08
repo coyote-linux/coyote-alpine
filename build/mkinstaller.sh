@@ -88,9 +88,6 @@ fi
 echo "Copying syslinux modules..."
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/ldlinux.c32" ::/boot/syslinux/
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/menu.c32" ::/boot/syslinux/
-if [ -f "${SYSLINUX_DIR}/vesamenu.c32" ]; then
-    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/vesamenu.c32" ::/boot/syslinux/
-fi
 mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/libutil.c32" ::/boot/syslinux/
 if [ -f "${SYSLINUX_DIR}/libcom32.c32" ]; then
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/libcom32.c32" ::/boot/syslinux/

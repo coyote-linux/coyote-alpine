@@ -7,6 +7,7 @@ use Coyote\System\Network;
 use Coyote\System\Services;
 use Coyote\Firewall\FirewallManager;
 use Coyote\LoadBalancer\LoadBalancerManager;
+use Coyote\WebAdmin\FeatureFlags;
 
 /**
  * Dashboard controller - system overview.
@@ -24,6 +25,7 @@ class DashboardController extends BaseController
         $hardware = new Hardware();
         $network = new Network();
         $services = new Services();
+        $features = new FeatureFlags();
 
         $data = [
             'system' => [
@@ -36,9 +38,10 @@ class DashboardController extends BaseController
             'network' => [
                 'interfaces' => $network->getInterfaces(),
             ],
-            'services' => $this->getServiceStatus($services),
+            'services' => $this->getServiceStatus($services, $features),
             'firewall' => $this->getFirewallStatus(),
-            'loadbalancer' => $this->getLoadBalancerStatus(),
+            'loadbalancer' => $features->isLoadBalancerAvailable() ? $this->getLoadBalancerStatus() : ['running' => false],
+            'features' => $features->toArray(),
         ];
 
         $this->render('pages/dashboard', $data);
@@ -70,7 +73,7 @@ class DashboardController extends BaseController
      * @param Services $services Services instance
      * @return array Service status
      */
-    private function getServiceStatus(Services $services): array
+    private function getServiceStatus(Services $services, FeatureFlags $features): array
     {
         // Service name => display name mapping
         $keyServices = [
@@ -80,6 +83,15 @@ class DashboardController extends BaseController
             'haproxy' => 'Load Balancer',
             'strongswan' => 'VPN',
         ];
+
+        if (!$features->isLoadBalancerAvailable()) {
+            unset($keyServices['haproxy']);
+        }
+
+        if (!$features->isIpsecAvailable()) {
+            unset($keyServices['strongswan']);
+        }
+
         $status = [];
 
         foreach ($keyServices as $service => $displayName) {

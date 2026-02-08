@@ -3,6 +3,7 @@
 namespace Coyote\WebAdmin\Controller;
 
 use Coyote\System\Services;
+use Coyote\WebAdmin\FeatureFlags;
 
 /**
  * Services management controller.
@@ -26,6 +27,21 @@ class ServicesController extends BaseController
      * Access is controlled via firewall ACLs, not by stopping the service.
      */
     private array $coreServices = ['lighttpd', 'dropbear'];
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        $features = new FeatureFlags();
+
+        if (!$features->isLoadBalancerAvailable()) {
+            unset($this->allowedServices['haproxy']);
+        }
+
+        if (!$features->isIpsecAvailable()) {
+            unset($this->allowedServices['strongswan']);
+        }
+    }
 
     /**
      * Display services overview.

@@ -31,6 +31,34 @@ COYOTE_ROOTFS="${SCRIPT_DIR}/../rootfs"
 PACKAGES_FILE="${SCRIPT_DIR}/apk-packages.txt"
 CUSTOM_KERNEL_ROOT="${SCRIPT_DIR}/../kernel"
 
+CONFIG_KERNEL_TYPE="${CONFIG_KERNEL_TYPE:-custom}"
+CONFIG_DOTNET="${CONFIG_DOTNET:-1}"
+CONFIG_LOADBALANCER="${CONFIG_LOADBALANCER:-1}"
+CONFIG_IPSEC="${CONFIG_IPSEC:-1}"
+CONFIG_OPENVPN="${CONFIG_OPENVPN:-1}"
+CONFIG_WIREGUARD="${CONFIG_WIREGUARD:-1}"
+
+normalize_bool() {
+    case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
+        1|y|yes|true|on|enabled) echo "1" ;;
+        *) echo "0" ;;
+    esac
+}
+
+case "$CONFIG_KERNEL_TYPE" in
+    custom|alpine-lts) ;;
+    *)
+        echo "Warning: Invalid CONFIG_KERNEL_TYPE='$CONFIG_KERNEL_TYPE', defaulting to custom"
+        CONFIG_KERNEL_TYPE="custom"
+        ;;
+esac
+
+CONFIG_DOTNET="$(normalize_bool "$CONFIG_DOTNET")"
+CONFIG_LOADBALANCER="$(normalize_bool "$CONFIG_LOADBALANCER")"
+CONFIG_IPSEC="$(normalize_bool "$CONFIG_IPSEC")"
+CONFIG_OPENVPN="$(normalize_bool "$CONFIG_OPENVPN")"
+CONFIG_WIREGUARD="$(normalize_bool "$CONFIG_WIREGUARD")"
+
 # Create directories
 mkdir -p "$BUILD_DIR" "$CACHE_DIR" "$ROOTFS_DIR"
 
@@ -190,8 +218,52 @@ install_packages() {
 
     echo "Installing packages from: $PACKAGES_FILE"
 
-    # Read packages, filter comments and empty lines
-    local packages=$(grep -v '^#' "$PACKAGES_FILE" | grep -v '^$' | tr '\n' ' ')
+    should_include_package() {
+        local package_name="$1"
+
+        case "$package_name" in
+            linux-lts)
+                [ "$CONFIG_KERNEL_TYPE" = "alpine-lts" ]
+                return
+                ;;
+            dotnet10-runtime|dotnet10-sdk)
+                [ "$CONFIG_DOTNET" = "1" ]
+                return
+                ;;
+            haproxy)
+                [ "$CONFIG_LOADBALANCER" = "1" ]
+                return
+                ;;
+            strongswan)
+                [ "$CONFIG_IPSEC" = "1" ]
+                return
+                ;;
+            openvpn|easy-rsa)
+                [ "$CONFIG_OPENVPN" = "1" ]
+                return
+                ;;
+            wireguard-tools)
+                [ "$CONFIG_WIREGUARD" = "1" ]
+                return
+                ;;
+        esac
+
+        return 0
+    }
+
+    local packages=""
+    local package
+    while IFS= read -r package || [ -n "$package" ]; do
+        package="${package%%#*}"
+        package="${package#${package%%[![:space:]]*}}"
+        package="${package%${package##*[![:space:]]}}"
+
+        [ -z "$package" ] && continue
+
+        if should_include_package "$package"; then
+            packages="${packages} ${package}"
+        fi
+    done < "$PACKAGES_FILE"
 
     echo "Packages to install: $packages"
 
@@ -258,6 +330,16 @@ create_busybox_symlinks() {
 }
 
 install_custom_kernel_modules() {
+    if [ "$CONFIG_KERNEL_TYPE" = "alpine-lts" ]; then
+        if [ -d "${ROOTFS_DIR}/lib/modules" ] && [ -n "$(ls -A "${ROOTFS_DIR}/lib/modules" 2>/dev/null)" ]; then
+            echo "Using Alpine LTS kernel modules from package install"
+            return 0
+        fi
+
+        echo "Warning: Alpine LTS kernel modules not found in rootfs"
+        return 0
+    fi
+
     local archive=""
 
     if [ -n "${KERNEL_VERSION:-}" ]; then
@@ -463,8 +545,8 @@ cleanup_rootfs() {
 
     # Remove APK package database to save space (optional, makes image smaller)
     # Uncomment if you don't need apk in the final image:
-    # rm -rf "${ROOTFS_DIR}/lib/apk"
-    # rm -rf "${ROOTFS_DIR}/etc/apk"
+    rm -rf "${ROOTFS_DIR}/lib/apk"
+    rm -rf "${ROOTFS_DIR}/etc/apk"
 
     # Remove unnecessary files
     rm -rf "${ROOTFS_DIR}/usr/share/man"
@@ -648,6 +730,8 @@ main() {
     echo "=========================================="
     echo "Coyote Linux Rootfs Builder"
     echo "Alpine Linux ${ALPINE_VERSION} (${ARCH})"
+    echo "Kernel type: ${CONFIG_KERNEL_TYPE}"
+    echo "Feature set: dotnet=${CONFIG_DOTNET} loadbalancer=${CONFIG_LOADBALANCER} ipsec=${CONFIG_IPSEC} openvpn=${CONFIG_OPENVPN} wireguard=${CONFIG_WIREGUARD}"
     echo "=========================================="
     echo ""
 

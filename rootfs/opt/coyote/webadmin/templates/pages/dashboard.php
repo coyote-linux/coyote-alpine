@@ -80,17 +80,29 @@
 
     <div class="card">
         <h3>Firewall</h3>
-        <p>
-            Status:
-            <span class="status-badge status-<?= ($firewall['enabled'] ?? false) ? 'up' : 'down' ?>">
-                <?= ($firewall['enabled'] ?? false) ? 'Enabled' : 'Disabled' ?>
-            </span>
-        </p>
-        <?php if (isset($firewall['connections'])): ?>
-        <p>Active connections: <?= $firewall['connections']['count'] ?? 0 ?></p>
-        <?php endif; ?>
+        <table>
+            <tbody>
+                <tr>
+                    <td>Status</td>
+                    <td>
+                        <span class="status-badge status-<?= ($firewall['enabled'] ?? false) ? 'up' : 'down' ?>">
+                            <?= ($firewall['enabled'] ?? false) ? 'Enabled' : 'Disabled' ?>
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Connections</td>
+                    <td>
+                        <?php if (isset($firewall['connections'])): ?>
+                        <p><?= $firewall['connections']['count'] ?? 0 ?></p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
+    <?php if (($features['loadbalancer'] ?? true)): ?>
     <div class="card">
         <h3>Load Balancer</h3>
         <p>
@@ -100,6 +112,7 @@
             </span>
         </p>
     </div>
+    <?php endif; ?>
 </div>
 
 <?php

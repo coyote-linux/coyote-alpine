@@ -8,6 +8,9 @@ alpine-base
 busybox
 openrc
 
+# Kernel package (used when CONFIG_KERNEL_TYPE=alpine-lts)
+linux-lts
+
 # Shell and utilities
 bash
 nano
