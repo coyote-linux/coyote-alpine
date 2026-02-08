@@ -2,6 +2,7 @@
 
 namespace Coyote\Certificate;
 
+use Coyote\System\PrivilegedExecutor;
 use InvalidArgumentException;
 
 class CertificateStore
@@ -20,9 +21,11 @@ class CertificateStore
     ];
 
     private array $index = [];
+    private PrivilegedExecutor $executor;
 
     public function __construct()
     {
+        $this->executor = new PrivilegedExecutor();
         $this->index = $this->loadIndex();
     }
 
@@ -32,40 +35,17 @@ class CertificateStore
             return true;
         }
 
-        if (!$this->remountConfig(true)) {
+        $this->remountConfig(true);
+        $result = $this->executor->initCertStore();
+        $this->remountConfig(false);
+
+        if (!$result['success']) {
             return false;
         }
 
-        $initialized = false;
-        $remountedReadOnly = false;
+        $this->index = $this->loadIndex();
 
-        try {
-            if (!is_dir(self::STORE_PATH) && !mkdir(self::STORE_PATH, 0755, true)) {
-                return false;
-            }
-
-            foreach (self::VALID_TYPES as $type) {
-                $directoryPath = self::STORE_PATH . '/' . $this->getSubdir($type);
-                if (!is_dir($directoryPath) && !mkdir($directoryPath, 0755, true)) {
-                    return false;
-                }
-            }
-
-            if (!file_exists(self::INDEX_FILE)) {
-                $this->index = [];
-                if (!$this->saveIndex()) {
-                    return false;
-                }
-            } else {
-                $this->index = $this->loadIndex();
-            }
-
-            $initialized = true;
-        } finally {
-            $remountedReadOnly = $this->remountConfig(false);
-        }
-
-        return $initialized && $remountedReadOnly;
+        return true;
     }
 
     public function store(string $type, string $name, string $pemContent, array $metadata = []): string|false
@@ -344,11 +324,11 @@ class CertificateStore
 
     private function remountConfig(bool $writable): bool
     {
-        $mode = $writable ? 'rw' : 'ro';
-        $command = (posix_getuid() === 0) ? 'mount' : 'doas mount';
-        exec("{$command} -o remount,{$mode} " . escapeshellarg('/mnt/config') . ' 2>&1', $output, $returnCode);
+        $result = $writable
+            ? $this->executor->mountConfigRw()
+            : $this->executor->mountConfigRo();
 
-        return $returnCode === 0;
+        return $result['success'];
     }
 
     private function generateId(): string

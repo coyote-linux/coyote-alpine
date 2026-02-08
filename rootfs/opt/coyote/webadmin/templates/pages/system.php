@@ -1,12 +1,11 @@
 <?php $pageTitle = 'System'; $page = 'system'; ?>
 
 <?php
-// Get apply status from controller
 $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChanges' => false];
+$forcePasswordChange = $forcePasswordChange ?? false;
 ?>
 
-<?php if ($applyStatus['pending']): ?>
-<!-- Confirmation countdown modal -->
+<?php if (!$forcePasswordChange && $applyStatus['pending']): ?>
 <div class="apply-countdown-overlay" id="countdown-overlay">
     <div class="apply-countdown-modal">
         <h3>Configuration Applied</h3>
@@ -38,7 +37,6 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
         }
         if (remaining <= 0) {
             clearInterval(timer);
-            // Auto-refresh to show rollback message
             window.location.reload();
         }
     }, 1000);
@@ -46,8 +44,12 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
 </script>
 <?php endif; ?>
 
+<?php if ($forcePasswordChange): ?>
+<div class="alert alert-warning">You must set a new admin password before continuing. The default password cannot be used.</div>
+<?php endif; ?>
+
 <div class="dashboard-grid">
-    <?php if ($applyStatus['hasChanges'] && !$applyStatus['pending']): ?>
+    <?php if (!$forcePasswordChange && $applyStatus['hasChanges'] && !$applyStatus['pending']): ?>
     <div class="card apply-config-card <?= $applyStatus['requiresCountdown'] ? 'countdown-required' : 'no-countdown' ?>">
         <h3>Pending Configuration Changes</h3>
         <?php if ($applyStatus['requiresCountdown']): ?>
@@ -72,6 +74,7 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
     </div>
     <?php endif; ?>
 
+    <?php if (!$forcePasswordChange): ?>
     <div class="card">
         <h3>Basic Settings</h3>
         <form method="post" action="/system">
@@ -100,6 +103,33 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
             <small class="form-note">Changes are saved but not applied until you click "Apply Configuration"</small>
         </form>
     </div>
+
+    <?php endif; ?>
+
+    <div class="card" id="password">
+        <h3><?= $forcePasswordChange ? 'Set Admin Password' : 'Change Admin Password' ?></h3>
+        <form method="post" action="/system/password">
+            <?php if (!$forcePasswordChange): ?>
+            <div class="form-group">
+                <label for="current_password">Current Password</label>
+                <input type="password" id="current_password" name="current_password" placeholder="Required once an admin password is set">
+                <small>Required when an admin password already exists</small>
+            </div>
+            <?php endif; ?>
+            <div class="form-group">
+                <label for="new_password">New Password</label>
+                <input type="password" id="new_password" name="new_password" required minlength="8" autofocus>
+                <small>Minimum 8 characters</small>
+            </div>
+            <div class="form-group">
+                <label for="confirm_password">Confirm New Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
+            </div>
+            <button type="submit" class="btn btn-primary"><?= $forcePasswordChange ? 'Set Password' : 'Change Password' ?></button>
+        </form>
+    </div>
+
+    <?php if (!$forcePasswordChange): ?>
 
     <div class="card" id="ssl-certificate">
         <h3>SSL Certificate</h3>
@@ -137,27 +167,6 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
         <p>No server certificates are available.</p>
         <a href="/certificates/upload" class="btn btn-primary">Upload Certificate</a>
         <?php endif; ?>
-    </div>
-
-    <div class="card" id="password">
-        <h3>Change Admin Password</h3>
-        <form method="post" action="/system/password">
-            <div class="form-group">
-                <label for="current_password">Current Password</label>
-                <input type="password" id="current_password" name="current_password" placeholder="Required once an admin password is set">
-                <small>Required when an admin password already exists</small>
-            </div>
-            <div class="form-group">
-                <label for="new_password">New Password</label>
-                <input type="password" id="new_password" name="new_password" required minlength="8">
-                <small>Minimum 8 characters</small>
-            </div>
-            <div class="form-group">
-                <label for="confirm_password">Confirm New Password</label>
-                <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
-            </div>
-            <button type="submit" class="btn btn-primary" data-confirm="Change the admin password?">Change Password</button>
-        </form>
     </div>
 
     <div class="card">
@@ -227,4 +236,6 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
             </div>
         </form>
     </div>
+
+    <?php endif; ?>
 </div>

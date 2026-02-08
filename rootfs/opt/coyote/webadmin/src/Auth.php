@@ -221,17 +221,11 @@ class Auth
             return false;
         }
 
-        $configManager = new ConfigManager();
-        $configManager->load();
-        $config = $configManager->getRunningConfig();
-
-        if ($config === null) {
-            return true;
-        }
+        $configService = new \Coyote\WebAdmin\Service\ConfigService();
+        $config = $configService->getRunningConfig();
 
         $users = $config->get('users', []);
 
-        // If no users configured, admin is using default password
         return empty($users);
     }
 }

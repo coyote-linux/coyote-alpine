@@ -280,6 +280,11 @@ class App
         $this->router->get('/firmware', [Controller\FirmwareController::class, 'index']);
         $this->router->post('/firmware/upload', [Controller\FirmwareController::class, 'upload']);
 
+        // Tools
+        $this->router->get('/tools', [Controller\ToolsController::class, 'index']);
+        $this->router->get('/tools/subnet', [Controller\ToolsController::class, 'subnetCalculator']);
+        $this->router->get('/tools/password', [Controller\ToolsController::class, 'passwordGenerator']);
+
         if ($this->isDevelopmentBuild()) {
             $this->router->get('/debug', [Controller\DebugController::class, 'index']);
             $this->router->get('/debug/logs/apply', [Controller\DebugController::class, 'applyLog']);

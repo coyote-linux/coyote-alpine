@@ -230,6 +230,32 @@ cmd_poweroff() {
     /sbin/poweroff
 }
 
+# Command: init-cert-store
+# Create the certificate store directory tree and index under /mnt/config/certificates
+cmd_init_cert_store() {
+    local base="/mnt/config/certificates"
+
+    log_action "init-cert-store: initializing $base"
+
+    for dir in "$base" "$base/ca" "$base/server" "$base/client" "$base/private"; do
+        if [ ! -d "$dir" ]; then
+            mkdir -p "$dir"
+            chown lighttpd:lighttpd "$dir"
+            chmod 755 "$dir"
+        fi
+    done
+
+    chmod 700 "$base/private"
+
+    if [ ! -f "$base/index.json" ]; then
+        printf '{}' > "$base/index.json"
+        chown lighttpd:lighttpd "$base/index.json"
+        chmod 644 "$base/index.json"
+    fi
+
+    echo "OK"
+}
+
 # Command: mount-rw (remount /mnt/config read-write)
 cmd_mount_rw() {
     log_action "mount-rw: remounting /mnt/config read-write"
@@ -291,6 +317,9 @@ main() {
             ;;
         mount-ro)
             cmd_mount_ro
+            ;;
+        init-cert-store)
+            cmd_init_cert_store
             ;;
         *)
             die "Unknown command: $cmd"

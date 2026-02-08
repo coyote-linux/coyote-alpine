@@ -28,6 +28,9 @@
             <li><a href="/firmware" class="<?= ($page ?? '') === 'firmware' ? 'active' : '' ?>">Firmware</a></li>
         </ul>
         <div class="nav-footer">
+            <ul class="nav-menu nav-menu-footer">
+                <li><a href="/tools" class="<?= ($page ?? '') === 'tools' ? 'active' : '' ?>">Tools</a></li>
+            </ul>
             <form method="post" action="/logout">
                 <button type="submit" class="nav-logout-button">Logout</button>
             </form>

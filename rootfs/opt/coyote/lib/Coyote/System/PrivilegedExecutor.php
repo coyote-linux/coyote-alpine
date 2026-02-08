@@ -249,6 +249,21 @@ class PrivilegedExecutor
     }
 
     /**
+     * Create the certificate store directory tree and index file.
+     *
+     * @return array{success: bool, output: string}
+     */
+    public function initCertStore(): array
+    {
+        $result = $this->execute('init-cert-store');
+
+        return [
+            'success' => $result['success'],
+            'output' => $result['output'],
+        ];
+    }
+
+    /**
      * Remount /mnt/config read-write.
      *
      * @return array{success: bool, output: string}

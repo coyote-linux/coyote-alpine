@@ -268,20 +268,11 @@ class SystemController extends BaseController
 
         $config->set('users', $users);
 
-        // Save to both working config and running config so the password
-        // takes effect immediately without requiring an apply cycle
-        $saved = $configService->saveWorkingConfig($config);
+        $configService->saveWorkingConfig($config);
+        $configService->promoteWorkingToRunning();
+        $persisted = $configService->saveRunningToPersistent();
 
-        // Also update running config directly for immediate effect
-        $runningConfig = $configService->getRunningConfig();
-        $runningConfig->set('users', $users);
-        $runningFile = '/tmp/running-config/system.json';
-        if (is_dir('/tmp/running-config')) {
-            $writer = new \Coyote\Config\ConfigWriter();
-            $writer->write($runningFile, $runningConfig->toArray());
-        }
-
-        if ($saved) {
+        if ($persisted) {
             $this->flash('success', 'Admin password changed successfully');
         } else {
             $this->flash('error', 'Failed to save password');
@@ -373,18 +364,8 @@ class SystemController extends BaseController
     {
         $this->flash('info', 'System is rebooting...');
 
-        // Send response before rebooting
-        $this->redirect('/system');
+        $this->sendRedirectAndFinish('/system');
 
-        // Flush output to browser
-        if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
-        }
-
-        // Give the browser time to receive the redirect
-        sleep(1);
-
-        // Execute reboot via privileged helper
         $executor = new PrivilegedExecutor();
         $executor->reboot();
     }
@@ -396,18 +377,8 @@ class SystemController extends BaseController
     {
         $this->flash('info', 'System is shutting down...');
 
-        // Send response before shutdown
-        $this->redirect('/system');
+        $this->sendRedirectAndFinish('/system');
 
-        // Flush output to browser
-        if (function_exists('fastcgi_finish_request')) {
-            fastcgi_finish_request();
-        }
-
-        // Give the browser time to receive the redirect
-        sleep(1);
-
-        // Execute shutdown via privileged helper
         $executor = new PrivilegedExecutor();
         $executor->poweroff();
     }
@@ -578,8 +549,37 @@ class SystemController extends BaseController
         $this->redirect('/system');
     }
 
+    /**
+     * Send a redirect response and flush it to the client without exiting.
+     *
+     * Used by reboot/shutdown so the browser receives the redirect
+     * before the system goes down.
+     *
+     * @param string $uri Target URI
+     * @return void
+     */
+    private function sendRedirectAndFinish(string $uri): void
+    {
+        header('Location: ' . $uri);
+        http_response_code(302);
+
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } else {
+            if (ob_get_level() > 0) {
+                ob_end_flush();
+            }
+            flush();
+        }
+
+        sleep(1);
+    }
+
     private function buildSystemPageData(): array
     {
+        $auth = new Auth();
+        $forcePasswordChange = $auth->needsPasswordChange();
+
         $config = $this->configService->getWorkingConfig()->toArray();
 
         $data = [
@@ -590,6 +590,7 @@ class SystemController extends BaseController
             'timezones' => \DateTimeZone::listIdentifiers(),
             'backups' => $this->listBackups(),
             'applyStatus' => $this->applyService->getStatus(),
+            'forcePasswordChange' => $forcePasswordChange,
         ];
 
         return array_merge($data, $this->buildSslCertificateData($config));

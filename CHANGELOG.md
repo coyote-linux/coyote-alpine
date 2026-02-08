@@ -4,6 +4,36 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.136] - 2026-02-07
+
+### Added
+
+#### Web Admin Utilities
+- Tools section added to sidebar navigation (above Logout)
+- IP Subnet Calculator supporting both IPv4 and IPv6 with full client-side computation
+- Password Generator with complex, readable, and pronounceable modes using cryptographic randomness
+- Tools hub page at `/tools` linking to individual utilities
+
+#### Privileged Certificate Store Initialization
+- `init-cert-store` command added to `coyote-apply-helper` for creating the certificate directory tree as root
+- Certificate store directories are now owned by `lighttpd` so the web server can write certificates after initialization
+
+### Fixed
+
+#### First-Login Password Change Flow
+- Password change enforcement now reads running config instead of persistent storage, so the gate opens immediately after setting a password
+- Password changes are persisted to disk via the existing `ConfigService` pipeline instead of a custom write path
+- System page now hides all cards except the password form when a password change is required, with a clear warning banner
+- Password card hides the "Current Password" field on first-login since no password exists yet
+- Removed stale working-config diff after password change so no spurious "Pending Changes" banner appears
+
+#### Certificate Store Permissions
+- Certificate store initialization now uses `PrivilegedExecutor` instead of direct `mkdir` calls that failed with permission denied
+- Certificate store remount operations now use `PrivilegedExecutor` for consistent privilege escalation
+
+#### System Reboot and Shutdown
+- Reboot and shutdown commands now execute correctly; previously `redirect()` called `exit` which prevented the privileged helper from running
+
 ## [4.0.131] - 2026-02-07
 
 ### Added
