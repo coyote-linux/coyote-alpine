@@ -4,6 +4,24 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.146] - 2026-02-09
+
+### Changed
+
+#### Custom Kernel Upgrade to 6.19.0
+- Upgraded custom kernel from 6.18.8 to 6.19.0
+- Updated `kernel/build-kernel.sh` default version to 6.19.0
+- Updated `build/mkinitramfs.sh` with explicit `KERNEL_VERSION` variable and 6.19.0 fallback defaults
+- Regenerated `kernel/configs/coyote-x86_64.defconfig` for Linux 6.19.0
+
+#### Kernel Configuration Refinements
+- Enabled additional NIC drivers for broader hardware support (3COM, AMD, Atheros, Cisco, DEC/Tulip, D-Link, HiSilicon, Marvell, nVidia, Packet Engines, Pensando, QLogic, Brocade, Qualcomm, Samsung, Silan, SIS, SMSC, VIA, Wiznet, Xilinx)
+- Enabled Amazon ENA driver for AWS cloud deployments
+- Disabled embedded/mobile hardware drivers not relevant to firewall appliance (regulators, IR/RC, PWM, battery/charger, gameport, speakup, I2C HID, Intel ISH/THC, AMD SFH, STM/Intel TH tracing)
+- Disabled CHECKPOINT_RESTORE and PROFILING for reduced attack surface
+- New IOMMU page table infrastructure (generic PT, AMDV1, VTDSS, X86_64)
+- POLYVAL crypto moved from module to crypto library with arch-optimized implementation
+
 ## [4.0.143] - 2026-02-08
 
 ### Added

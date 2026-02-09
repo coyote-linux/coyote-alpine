@@ -4,7 +4,7 @@ set -eu
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-KERNEL_VERSION="${1:-${KERNEL_VERSION:-6.18.8}}"
+KERNEL_VERSION="${1:-${KERNEL_VERSION:-6.19.0}}"
 ARCH="${ARCH:-x86_64}"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
 
