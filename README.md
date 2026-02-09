@@ -1,4 +1,4 @@
-# Coyote Linux 4 - Alpine Base System
+# Coyote Linux 4 - System Build Root
 
 Base system, installer, boot sequence, and core configuration scripts for Coyote Linux 4.
 
