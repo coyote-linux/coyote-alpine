@@ -2,8 +2,6 @@
 
 namespace Coyote\WebAdmin\Controller;
 
-use Coyote\Certificate\CertificateInfo;
-use Coyote\Certificate\CertificateStore;
 use Coyote\Config\ConfigManager;
 use Coyote\System\PrivilegedExecutor;
 use Coyote\WebAdmin\Auth;
@@ -49,7 +47,6 @@ class SystemController extends BaseController
         $timezone = trim($this->post('timezone', 'UTC'));
         $nameservers = $this->post('nameservers', '');
 
-        // Validation
         $errors = [];
 
         if (empty($hostname)) {
@@ -62,7 +59,6 @@ class SystemController extends BaseController
             $errors[] = 'Invalid domain format';
         }
 
-        // Parse nameservers (comma or newline separated)
         $dnsServers = [];
         if (!empty($nameservers)) {
             $servers = preg_split('/[\s,]+/', $nameservers);
@@ -83,7 +79,6 @@ class SystemController extends BaseController
             return;
         }
 
-        // Load working config (or running config if no working config exists)
         $config = $this->configService->getWorkingConfig();
         $config->set('system.hostname', $hostname);
         $config->set('system.domain', $domain);
@@ -92,7 +87,6 @@ class SystemController extends BaseController
             $config->set('system.nameservers', $dnsServers);
         }
 
-        // Save to working configuration
         if ($this->configService->saveWorkingConfig($config)) {
             $this->flash('success', 'Settings saved. Click "Apply Configuration" to activate changes.');
         } else {
@@ -102,78 +96,74 @@ class SystemController extends BaseController
         $this->redirect('/system');
     }
 
-    public function sslCertificate(array $params = []): void
+    public function saveSyslog(array $params = []): void
     {
-        $this->render('pages/system', $this->buildSystemPageData());
+        $enabled = (bool)$this->post('syslog_remote_enabled', false);
+        $host = trim($this->post('syslog_remote_host', ''));
+        $port = (int)$this->post('syslog_remote_port', 514);
+        $protocol = trim($this->post('syslog_remote_protocol', 'udp'));
+
+        if ($port < 1 || $port > 65535) {
+            $port = 514;
+        }
+        if (!in_array($protocol, ['udp', 'tcp'], true)) {
+            $protocol = 'udp';
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $config->set('services.syslog.remote_enabled', $enabled);
+        $config->set('services.syslog.remote_host', $host);
+        $config->set('services.syslog.remote_port', $port);
+        $config->set('services.syslog.remote_protocol', $protocol);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'Syslog settings saved. Click "Apply Configuration" to activate changes.');
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/system');
     }
 
-    public function saveSslCertificate(array $params = []): void
+    public function saveNtp(array $params = []): void
     {
-        $certificateId = trim((string)$this->post('ssl_cert_id', ''));
-        if ($certificateId === '') {
-            $this->flash('error', 'Please select a server certificate');
-            $this->redirect('/system#ssl-certificate');
-            return;
+        $enabled = (bool)$this->post('ntp_enabled', false);
+        $ntpServers = $this->post('ntp_servers', '');
+
+        $errors = [];
+        $serverList = [];
+        if (!empty($ntpServers)) {
+            $servers = preg_split('/[\s,]+/', $ntpServers);
+            foreach ($servers as $server) {
+                $server = trim($server);
+                if (empty($server)) continue;
+                if (!filter_var($server, FILTER_VALIDATE_IP) && !preg_match('/^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/', $server)) {
+                    $errors[] = "Invalid NTP server: {$server}";
+                } else {
+                    $serverList[] = $server;
+                }
+            }
         }
 
-        $store = new CertificateStore();
-        if (!$store->initialize()) {
-            $this->flash('error', 'Unable to initialize certificate store');
-            $this->redirect('/system#ssl-certificate');
-            return;
-        }
-
-        $entry = $store->get($certificateId);
-        if ($entry === null || ($entry['type'] ?? '') !== CertificateStore::DIR_SERVER) {
-            $this->flash('error', 'Selected certificate is not available');
-            $this->redirect('/system#ssl-certificate');
-            return;
-        }
-
-        $certificatePath = (string)($store->getPath($certificateId) ?? '');
-        if ($certificatePath === '' || !file_exists($certificatePath)) {
-            $this->flash('error', 'Selected certificate path could not be resolved');
-            $this->redirect('/system#ssl-certificate');
-            return;
-        }
-
-        $certContent = file_get_contents($certificatePath);
-        if (!is_string($certContent) || trim($certContent) === '') {
-            $this->flash('error', 'Unable to read selected certificate');
-            $this->redirect('/system#ssl-certificate');
-            return;
-        }
-
-        $combinedPem = $this->buildCombinedPem($store, $certContent);
-        if ($combinedPem === '') {
-            $this->flash('error', 'No matching private key was found for the selected certificate');
-            $this->redirect('/system#ssl-certificate');
-            return;
-        }
-
-        if (!$this->writeWebAdminSslPem($combinedPem)) {
-            $this->flash('error', 'Failed to write SSL certificate file');
-            $this->redirect('/system#ssl-certificate');
+        if (!empty($errors)) {
+            $this->flash('error', implode('. ', $errors));
+            $this->redirect('/system');
             return;
         }
 
         $config = $this->configService->getWorkingConfig();
-        $config->set('services.webadmin.ssl_cert_id', $certificateId);
-        $config->set('services.webadmin.ssl_cert_path', '/mnt/config/ssl/server.pem');
-        if (!$this->configService->saveWorkingConfig($config)) {
-            $this->flash('warning', 'SSL certificate applied, but selection could not be saved to configuration');
-            $this->redirect('/system#ssl-certificate');
-            return;
+        $config->set('services.ntp.enabled', $enabled);
+        if (!empty($serverList)) {
+            $config->set('services.ntp.servers', $serverList);
         }
 
-        if (!$this->reloadLighttpd()) {
-            $this->flash('error', 'Certificate updated, but failed to reload lighttpd');
-            $this->redirect('/system#ssl-certificate');
-            return;
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'NTP settings saved. Click "Apply Configuration" to activate changes.');
+        } else {
+            $this->flash('error', 'Failed to save configuration');
         }
 
-        $this->flash('success', 'Web admin SSL certificate updated');
-        $this->redirect('/system#ssl-certificate');
+        $this->redirect('/system');
     }
 
     /**
@@ -582,7 +572,7 @@ class SystemController extends BaseController
 
         $config = $this->configService->getWorkingConfig()->toArray();
 
-        $data = [
+        return [
             'hostname' => $config['system']['hostname'] ?? 'coyote',
             'domain' => $config['system']['domain'] ?? '',
             'timezone' => $config['system']['timezone'] ?? 'UTC',
@@ -591,148 +581,13 @@ class SystemController extends BaseController
             'backups' => $this->listBackups(),
             'applyStatus' => $this->applyService->getStatus(),
             'forcePasswordChange' => $forcePasswordChange,
+            'syslogRemoteEnabled' => $config['services']['syslog']['remote_enabled'] ?? false,
+            'syslogRemoteHost' => $config['services']['syslog']['remote_host'] ?? '',
+            'syslogRemotePort' => $config['services']['syslog']['remote_port'] ?? 514,
+            'syslogRemoteProtocol' => $config['services']['syslog']['remote_protocol'] ?? 'udp',
+            'ntpEnabled' => $config['services']['ntp']['enabled'] ?? true,
+            'ntpServers' => $config['services']['ntp']['servers'] ?? ['pool.ntp.org'],
         ];
-
-        return array_merge($data, $this->buildSslCertificateData($config));
-    }
-
-    private function buildSslCertificateData(array $config): array
-    {
-        $store = new CertificateStore();
-        $storeReady = $store->initialize();
-        $serverCerts = [];
-
-        if ($storeReady) {
-            foreach ($store->listByType(CertificateStore::DIR_SERVER) as $entry) {
-                $id = (string)($entry['id'] ?? '');
-                if ($id === '') {
-                    continue;
-                }
-
-                $content = $store->getContent($id);
-                $entry['info'] = is_string($content) ? CertificateInfo::parse($content) : null;
-                $serverCerts[] = $entry;
-            }
-        }
-
-        usort($serverCerts, static function (array $left, array $right): int {
-            return strcmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
-        });
-
-        $currentSslCertId = (string)($config['services']['webadmin']['ssl_cert_id'] ?? '');
-        $currentSslCertPath = (string)($config['services']['webadmin']['ssl_cert_path'] ?? '');
-
-        if ($currentSslCertPath === '') {
-            $currentSslCertPath = $this->readLighttpdPemFilePath();
-        }
-        if ($currentSslCertPath === '' && file_exists('/mnt/config/ssl/server.pem')) {
-            $currentSslCertPath = '/mnt/config/ssl/server.pem';
-        }
-
-        $currentSslCertInfo = null;
-        if ($currentSslCertPath !== '' && file_exists($currentSslCertPath)) {
-            $currentContent = file_get_contents($currentSslCertPath);
-            if (is_string($currentContent)) {
-                $currentSslCertInfo = CertificateInfo::parse($currentContent);
-            }
-        }
-
-        if (!is_array($currentSslCertInfo) && $currentSslCertId !== '' && $storeReady) {
-            $selectedContent = $store->getContent($currentSslCertId);
-            if (is_string($selectedContent)) {
-                $currentSslCertInfo = CertificateInfo::parse($selectedContent);
-            }
-        }
-
-        return [
-            'serverCerts' => $serverCerts,
-            'currentSslCertId' => $currentSslCertId,
-            'currentSslCertPath' => $currentSslCertPath,
-            'currentSslCertInfo' => $currentSslCertInfo,
-        ];
-    }
-
-    private function buildCombinedPem(CertificateStore $store, string $certificateContent): string
-    {
-        $certificateContent = trim($certificateContent);
-        if ($certificateContent === '') {
-            return '';
-        }
-
-        if (CertificateInfo::isPemPrivateKey($certificateContent)) {
-            return $certificateContent . "\n";
-        }
-
-        foreach ($store->listByType(CertificateStore::DIR_PRIVATE) as $entry) {
-            $keyId = (string)($entry['id'] ?? '');
-            if ($keyId === '') {
-                continue;
-            }
-
-            $keyContent = $store->getContent($keyId);
-            if (!is_string($keyContent) || !CertificateInfo::isPemPrivateKey($keyContent)) {
-                continue;
-            }
-
-            if (CertificateInfo::certMatchesKey($certificateContent, $keyContent)) {
-                return $certificateContent . "\n" . trim($keyContent) . "\n";
-            }
-        }
-
-        return '';
-    }
-
-    private function writeWebAdminSslPem(string $pemContent): bool
-    {
-        if (!$this->remountConfig(true)) {
-            return false;
-        }
-
-        $written = false;
-        $remountedReadOnly = false;
-
-        try {
-            if (!is_dir('/mnt/config/ssl') && !mkdir('/mnt/config/ssl', 0700, true)) {
-                return false;
-            }
-
-            if (file_put_contents('/mnt/config/ssl/server.pem', $pemContent) === false) {
-                return false;
-            }
-
-            chmod('/mnt/config/ssl', 0700);
-            chmod('/mnt/config/ssl/server.pem', 0600);
-            $written = true;
-        } finally {
-            $remountedReadOnly = $this->remountConfig(false);
-        }
-
-        return $written && $remountedReadOnly;
-    }
-
-    private function reloadLighttpd(): bool
-    {
-        $command = (posix_getuid() === 0) ? 'rc-service lighttpd reload' : 'doas rc-service lighttpd reload';
-        exec($command . ' 2>&1', $output, $returnCode);
-        return $returnCode === 0;
-    }
-
-    private function readLighttpdPemFilePath(): string
-    {
-        if (!is_readable('/etc/lighttpd/lighttpd.conf')) {
-            return '';
-        }
-
-        $contents = file_get_contents('/etc/lighttpd/lighttpd.conf');
-        if (!is_string($contents)) {
-            return '';
-        }
-
-        if (preg_match('/^\s*ssl\.pemfile\s*=\s*"([^"]+)"/m', $contents, $matches) !== 1) {
-            return '';
-        }
-
-        return trim((string)$matches[1]);
     }
 
     /**

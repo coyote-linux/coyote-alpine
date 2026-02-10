@@ -66,7 +66,7 @@ $managedCertificates = is_array($managedCertificates ?? null) ? $managedCertific
                     <input type="hidden" name="domain" value="<?= htmlspecialchars($domain) ?>">
                     <button type="submit" class="btn btn-small">Renew</button>
                 </form>
-                <a href="/system#ssl-certificate" class="btn btn-small btn-primary">Assign to service</a>
+                <a href="/certificates#ssl-certificate" class="btn btn-small btn-primary">Assign to service</a>
             </td>
         </tr>
         <?php endforeach; ?>

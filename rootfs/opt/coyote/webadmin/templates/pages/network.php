@@ -136,7 +136,7 @@ $applyStatus = $applyStatus ?? ['pending' => false, 'remaining' => 0, 'hasChange
     </div>
 
     <div class="card full-width">
-        <h3>Routing Table</h3>
+        <h3>Routing Table <a href="/network/routes" class="btn btn-small btn-primary" style="margin-left: 1rem;">Edit Routes</a></h3>
         <table>
             <thead>
                 <tr>

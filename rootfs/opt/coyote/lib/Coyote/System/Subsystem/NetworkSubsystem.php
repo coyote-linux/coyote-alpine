@@ -327,32 +327,53 @@ class NetworkSubsystem extends AbstractSubsystem
         $dest = $route['destination'] ?? null;
         $gateway = $route['gateway'] ?? null;
         $dev = $route['interface'] ?? $route['device'] ?? null;
+        $metric = $route['metric'] ?? null;
 
         if (!$dest) {
             return;
         }
 
+        // Detect IPv6 by checking for colons in destination or gateway
+        $isIpv6 = (strpos($dest, ':') !== false) || (strpos($gateway ?? '', ':') !== false);
+
+        // Build ip command arguments
+        $ipArgs = [];
+
+        // Add -6 flag for IPv6
+        if ($isIpv6) {
+            $ipArgs[] = '-6';
+        }
+
         // Handle default route specially
         if ($dest === 'default') {
             // Remove existing default route first
-            $priv->ip('route', 'del', 'default');
+            $priv->ip(...array_merge($ipArgs, ['route', 'del', 'default']));
 
-            $args = ['route', 'add', 'default'];
+            $ipArgs[] = 'route';
+            $ipArgs[] = 'add';
+            $ipArgs[] = 'default';
         } else {
-            $args = ['route', 'replace', $dest];
+            $ipArgs[] = 'route';
+            $ipArgs[] = 'replace';
+            $ipArgs[] = $dest;
         }
 
         if ($gateway) {
-            $args[] = 'via';
-            $args[] = $gateway;
+            $ipArgs[] = 'via';
+            $ipArgs[] = $gateway;
         }
 
         if ($dev) {
-            $args[] = 'dev';
-            $args[] = $dev;
+            $ipArgs[] = 'dev';
+            $ipArgs[] = $dev;
         }
 
-        $result = $priv->ip(...$args);
+        if ($metric !== null && $metric > 0) {
+            $ipArgs[] = 'metric';
+            $ipArgs[] = (string)$metric;
+        }
+
+        $result = $priv->ip(...$ipArgs);
 
         if (!$result['success']) {
             $errors[] = "Failed to add route to {$dest}: " . $result['output'];

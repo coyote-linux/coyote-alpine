@@ -4,6 +4,63 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.149] - 2026-02-10
+
+### Added
+
+#### DHCP Server Management
+- New DHCP controller and template pages for managing DHCP server settings
+- DHCP static reservation management with add/edit/delete support
+- `DhcpSubsystem` for applying DHCP configuration changes via dnsmasq
+
+#### Static Route Management
+- Network routes page at `/network/routes` for editing IPv4 and IPv6 static routes
+- Routes displayed from configured (working) config rather than active system state
+- Edit Routes link added to the network overview Routing Table section header
+
+#### Remote Syslog Configuration
+- Remote syslog server settings (host, port, protocol) on the system page
+- `SyslogSubsystem` for applying syslog configuration changes
+
+#### NTP Time Synchronization Configuration
+- NTP server settings (enable/disable, server list) on the system page
+- `NtpSubsystem` for applying NTP configuration changes via chrony
+
+#### Apply Configuration Page
+- Dedicated Apply Configuration page with its own menu entry
+- Highlighted menu item when uncommitted changes are pending
+
+#### Firmware Update Management
+- Check for latest release from GitHub releases API
+- Download firmware update archives with progress feedback
+- Upload firmware archives manually
+- Stage, verify, and apply firmware updates via reboot
+- `FirmwareService` encapsulating update check, download, upload, staging, and apply logic
+
+### Changed
+
+#### System Page Reorganization
+- Split the Basic Settings card into three focused cards: Basic Settings, Remote Syslog, and Time Synchronization
+- Checkbox fields for syslog and NTP use inline layout so the checkbox and label sit on the same line
+- Separate POST endpoints for syslog (`/system/syslog`) and NTP (`/system/ntp`) settings
+
+#### SSL Certificate Management Moved to Certificates Page
+- SSL certificate assignment card moved from the system page to the certificates page at `/certificates#ssl-certificate`
+- `saveSslCertificate` and all supporting helpers relocated from `SystemController` to `CertificateController`
+- ACME table "Assign to service" link now points to `/certificates#ssl-certificate`
+
+#### Configuration Subsystem Integration
+- `SubsystemManager` now registers DHCP, NTP, and Syslog subsystems
+- `NetworkSubsystem` extended with static route apply logic
+- `PrivilegedExecutor` extended with service restart commands for dnsmasq, chronyd, and syslog
+- `coyote-apply-helper` extended with corresponding privileged operations
+
+### Fixed
+
+#### UI Visual Improvements
+- Alert boxes now have sufficient padding for nested lists; bullet markers no longer overlap the container border
+- Buttons rendered side-by-side or stacked now have consistent spacing between them via inline-form margin rules
+
 ## [4.0.146] - 2026-02-09
 
 ### Changed

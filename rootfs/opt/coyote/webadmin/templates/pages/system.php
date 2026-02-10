@@ -104,6 +104,56 @@ $forcePasswordChange = $forcePasswordChange ?? false;
         </form>
     </div>
 
+    <div class="card">
+        <h3>Remote Syslog</h3>
+        <form method="post" action="/system/syslog">
+            <div class="form-group-inline">
+                <label>
+                    <input type="checkbox" name="syslog_remote_enabled" value="1" <?= ($syslogRemoteEnabled ?? false) ? 'checked' : '' ?>>
+                    Enable Remote Syslog
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="syslog_remote_host">Remote Host</label>
+                <input type="text" id="syslog_remote_host" name="syslog_remote_host" value="<?= htmlspecialchars($syslogRemoteHost ?? '') ?>" placeholder="syslog.example.com">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="syslog_remote_port">Port</label>
+                    <input type="number" id="syslog_remote_port" name="syslog_remote_port" value="<?= htmlspecialchars($syslogRemotePort ?? '514') ?>" placeholder="514">
+                </div>
+                <div class="form-group">
+                    <label for="syslog_remote_protocol">Protocol</label>
+                    <select id="syslog_remote_protocol" name="syslog_remote_protocol">
+                        <option value="udp" <?= ($syslogRemoteProtocol ?? 'udp') === 'udp' ? 'selected' : '' ?>>UDP</option>
+                        <option value="tcp" <?= ($syslogRemoteProtocol ?? 'udp') === 'tcp' ? 'selected' : '' ?>>TCP</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <small class="form-note">Changes are saved but not applied until you click "Apply Configuration"</small>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Time Synchronization</h3>
+        <form method="post" action="/system/ntp">
+            <div class="form-group-inline">
+                <label>
+                    <input type="checkbox" name="ntp_enabled" value="1" <?= ($ntpEnabled ?? true) ? 'checked' : '' ?>>
+                    Enable NTP Time Synchronization
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="ntp_servers">NTP Servers</label>
+                <input type="text" id="ntp_servers" name="ntp_servers" value="<?= htmlspecialchars(implode(', ', $ntpServers ?? ['pool.ntp.org'])) ?>" placeholder="pool.ntp.org, time.nist.gov">
+                <small>Comma-separated list of NTP server hostnames or IP addresses</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <small class="form-note">Changes are saved but not applied until you click "Apply Configuration"</small>
+        </form>
+    </div>
+
     <?php endif; ?>
 
     <div class="card" id="password">
@@ -130,44 +180,6 @@ $forcePasswordChange = $forcePasswordChange ?? false;
     </div>
 
     <?php if (!$forcePasswordChange): ?>
-
-    <div class="card" id="ssl-certificate">
-        <h3>SSL Certificate</h3>
-        <?php if (!empty($currentSslCertInfo)): ?>
-        <p><strong>Current Subject:</strong> <?= htmlspecialchars((string)($currentSslCertInfo['subject'] ?? 'Unknown')) ?></p>
-        <p><strong>Expires:</strong> <?= htmlspecialchars((string)($currentSslCertInfo['valid_to_human'] ?? 'Unknown')) ?></p>
-        <?php if (!empty($currentSslCertPath)): ?>
-        <p><strong>Path:</strong> <code><?= htmlspecialchars((string)$currentSslCertPath) ?></code></p>
-        <?php endif; ?>
-        <?php elseif (!empty($currentSslCertPath)): ?>
-        <p><strong>Current certificate path:</strong> <code><?= htmlspecialchars((string)$currentSslCertPath) ?></code></p>
-        <?php else: ?>
-        <p><em>No active SSL certificate detected.</em></p>
-        <?php endif; ?>
-
-        <?php if (!empty($serverCerts)): ?>
-        <form method="post" action="/system/ssl">
-            <div class="form-group">
-                <label for="ssl_cert_id">Server Certificate</label>
-                <select id="ssl_cert_id" name="ssl_cert_id" required>
-                    <option value="">Select a certificate</option>
-                    <?php foreach ($serverCerts as $cert): ?>
-                    <option value="<?= htmlspecialchars((string)($cert['id'] ?? '')) ?>" <?= ($currentSslCertId ?? '') === ($cert['id'] ?? '') ? 'selected' : '' ?>>
-                        <?= htmlspecialchars((string)($cert['name'] ?? 'Unnamed')) ?>
-                        <?php if (isset($cert['info']['subject'])): ?> (<?= htmlspecialchars((string)$cert['info']['subject']) ?>)<?php endif; ?>
-                    </option>
-                    <?php endforeach; ?>
-                </select>
-                <small>Select a server certificate for the web admin HTTPS endpoint.</small>
-            </div>
-            <button type="submit" class="btn btn-primary">Save Certificate</button>
-            <a href="/certificates/upload" class="btn">Upload New Certificate</a>
-        </form>
-        <?php else: ?>
-        <p>No server certificates are available.</p>
-        <a href="/certificates/upload" class="btn btn-primary">Upload Certificate</a>
-        <?php endif; ?>
-    </div>
 
     <div class="card">
         <h3>Backup Configuration</h3>
