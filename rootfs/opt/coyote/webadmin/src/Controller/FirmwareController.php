@@ -2,33 +2,121 @@
 
 namespace Coyote\WebAdmin\Controller;
 
-/**
- * Firmware management controller.
- */
+use Coyote\WebAdmin\Service\FirmwareService;
+
 class FirmwareController extends BaseController
 {
-    /**
-     * Display firmware status.
-     */
+    private FirmwareService $firmwareService;
+
+    public function __construct()
+    {
+        parent::__construct();
+        $this->firmwareService = new FirmwareService();
+    }
+
     public function index(array $params = []): void
     {
         $firmwarePath = '/mnt/boot/firmware/current.squashfs';
         $firmwareExists = file_exists($firmwarePath);
 
+        $currentVersion = $this->firmwareService->getCurrentVersion();
+        $stagedUpdate = $this->firmwareService->getStagedUpdate();
+
         $data = [
+            'current_version' => $currentVersion,
             'firmware_date' => $firmwareExists ? date('Y-m-d H:i:s', filemtime($firmwarePath)) : 'N/A',
             'firmware_size' => $firmwareExists ? $this->formatBytes(filesize($firmwarePath)) : 'N/A',
+            'staged_update' => $stagedUpdate,
         ];
 
         $this->render('pages/firmware', $data);
     }
 
-    /**
-     * Handle firmware upload.
-     */
+    public function checkUpdate(array $params = []): void
+    {
+        $result = $this->firmwareService->checkForUpdates();
+
+        if (!$result['success']) {
+            $this->flash('error', $result['error']);
+            $this->redirect('/firmware');
+            return;
+        }
+
+        if ($result['available']) {
+            $this->flash('success', "Update available: version {$result['latest_version']}");
+            $_SESSION['firmware_update_info'] = $result;
+        } else {
+            $this->flash('info', 'Your firmware is up to date (version ' . $result['current_version'] . ')');
+        }
+
+        $this->redirect('/firmware');
+    }
+
+    public function downloadUpdate(array $params = []): void
+    {
+        $updateInfo = $_SESSION['firmware_update_info'] ?? null;
+
+        if (!$updateInfo || empty($updateInfo['url'])) {
+            $this->flash('error', 'No update information available. Please check for updates first.');
+            $this->redirect('/firmware');
+            return;
+        }
+
+        $result = $this->firmwareService->downloadUpdate(
+            $updateInfo['url'],
+            $updateInfo['checksum'] ?? null
+        );
+
+        if ($result['success']) {
+            $this->flash('success', 'Firmware downloaded and staged successfully. You can now apply the update.');
+            unset($_SESSION['firmware_update_info']);
+        } else {
+            $this->flash('error', 'Download failed: ' . $result['error']);
+        }
+
+        $this->redirect('/firmware');
+    }
+
     public function upload(array $params = []): void
     {
-        $this->flash('warning', 'Firmware upload not yet implemented');
+        if (empty($_FILES['firmware_file'])) {
+            $this->flash('error', 'No file uploaded');
+            $this->redirect('/firmware');
+            return;
+        }
+
+        $result = $this->firmwareService->uploadUpdate($_FILES['firmware_file']);
+
+        if ($result['success']) {
+            $this->flash('success', 'Firmware uploaded and staged successfully. You can now apply the update.');
+        } else {
+            $this->flash('error', 'Upload failed: ' . $result['error']);
+        }
+
+        $this->redirect('/firmware');
+    }
+
+    public function applyUpdate(array $params = []): void
+    {
+        $result = $this->firmwareService->applyUpdate();
+
+        if ($result['success']) {
+            $this->flash('success', 'Firmware update initiated. System will reboot now...');
+        } else {
+            $this->flash('error', 'Failed to apply update: ' . $result['error']);
+        }
+
+        $this->redirect('/firmware');
+    }
+
+    public function clearStaged(array $params = []): void
+    {
+        if ($this->firmwareService->clearStaged()) {
+            $this->flash('success', 'Staged firmware cleared');
+        } else {
+            $this->flash('error', 'Failed to clear staged firmware');
+        }
+
         $this->redirect('/firmware');
     }
 
