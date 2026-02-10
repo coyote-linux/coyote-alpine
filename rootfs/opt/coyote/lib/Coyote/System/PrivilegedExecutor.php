@@ -165,6 +165,18 @@ class PrivilegedExecutor
     }
 
     /**
+     * Control a service via rc-service.
+     *
+     * @param string $service Service name (must be in allowlist)
+     * @param string $action Action to perform (start, stop, restart, reload)
+     * @return array{success: bool, output: string, code: int}
+     */
+    public function rcService(string $service, string $action): array
+    {
+        return $this->execute('rc-service', [$service, $action]);
+    }
+
+    /**
      * Start/stop dhcpcd DHCP client.
      *
      * @param string ...$args Arguments for dhcpcd

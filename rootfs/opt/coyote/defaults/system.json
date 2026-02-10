@@ -22,10 +22,15 @@
         },
         "dhcpd": {
             "enabled": false,
-            "interface": "lan",
-            "range_start": "192.168.1.100",
-            "range_end": "192.168.1.200",
-            "lease_time": 86400
+            "interface": "",
+            "range_start": "",
+            "range_end": "",
+            "subnet_mask": "",
+            "gateway": "",
+            "domain": "",
+            "dns_servers": [],
+            "lease_time": 86400,
+            "reservations": []
         },
         "dns": {
             "enabled": false,
@@ -46,6 +51,16 @@
             "interface": "lan",
             "external_interface": "wan",
             "secure_mode": true
+        },
+        "syslog": {
+            "remote_enabled": false,
+            "remote_host": "",
+            "remote_port": 514,
+            "remote_protocol": "udp"
+        },
+        "ntp": {
+            "enabled": true,
+            "servers": ["pool.ntp.org"]
         }
     },
     "firewall": {

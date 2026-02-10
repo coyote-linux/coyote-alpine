@@ -33,6 +33,9 @@ ALLOWED_WRITE_FILES="
 /etc/resolv.conf
 /etc/timezone
 /etc/ppp/peers/pppoe-*
+/etc/dnsmasq.d/*
+/etc/conf.d/syslog
+/etc/conf.d/ntpd
 "
 
 # Allowlist of symlink destinations
@@ -43,6 +46,21 @@ ALLOWED_SYMLINKS="
 # Allowlist of kernel modules that can be loaded
 ALLOWED_MODULES="
 8021q
+"
+
+# Allowlist of services that can be controlled via rc-service
+ALLOWED_SERVICES="
+dnsmasq
+syslogd
+ntpd
+"
+
+# Allowlist of rc-service actions
+ALLOWED_ACTIONS="
+start
+stop
+restart
+reload
 "
 
 log_action() {
@@ -173,6 +191,35 @@ cmd_modprobe() {
     echo "OK"
 }
 
+# Command: rc-service <service> <action>
+cmd_rc_service() {
+    local service="$1"
+    local action="$2"
+
+    [ -z "$service" ] && die "rc-service: service name required"
+    [ -z "$action" ] && die "rc-service: action required"
+
+    # Validate service is in allowlist
+    local service_allowed=0
+    for s in $ALLOWED_SERVICES; do
+        [ "$service" = "$s" ] && service_allowed=1 && break
+    done
+
+    [ $service_allowed -eq 0 ] && die "rc-service: service not allowed: $service"
+
+    # Validate action is in allowlist
+    local action_allowed=0
+    for a in $ALLOWED_ACTIONS; do
+        [ "$action" = "$a" ] && action_allowed=1 && break
+    done
+
+    [ $action_allowed -eq 0 ] && die "rc-service: action not allowed: $action"
+
+    log_action "rc-service: $service $action"
+    rc-service "$service" "$action"
+    echo "OK"
+}
+
 # Command: dhcpcd <args...>
 cmd_dhcpcd() {
     [ $# -eq 0 ] && die "dhcpcd: arguments required"
@@ -293,6 +340,9 @@ main() {
             ;;
         modprobe)
             cmd_modprobe "$@"
+            ;;
+        rc-service)
+            cmd_rc_service "$@"
             ;;
         dhcpcd)
             cmd_dhcpcd "$@"
