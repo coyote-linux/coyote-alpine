@@ -421,4 +421,158 @@ class NetworkController extends BaseController
         // Accept formats: 00:00:00:00:00:00 or 00-00-00-00-00-00
         return preg_match('/^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$/', $mac) === 1;
     }
+
+    /**
+     * Display static routes configuration.
+     */
+    public function routes(array $params = []): void
+    {
+        $config = $this->configService->getWorkingConfig();
+        $routes = $config->get('network.routes', []);
+        $interfaces = $config->get('network.interfaces', []);
+
+        // Build list of interface names for dropdown
+        $interfaceNames = [];
+        foreach ($interfaces as $iface) {
+            if (!empty($iface['name'])) {
+                $interfaceNames[] = $iface['name'];
+            }
+        }
+
+        $this->render('pages/network/routes', [
+            'page' => 'network',
+            'title' => 'Static Routes',
+            'routes' => $routes,
+            'interfaceNames' => $interfaceNames,
+        ]);
+    }
+
+    /**
+     * Save static routes configuration.
+     */
+    public function saveRoutes(array $params = []): void
+    {
+        $destinations = $this->post('destination', []);
+        $gateways = $this->post('gateway', []);
+        $metrics = $this->post('metric', []);
+        $devices = $this->post('device', []);
+
+        $errors = [];
+        $routes = [];
+
+        if (!is_array($destinations)) {
+            $destinations = [];
+        }
+        if (!is_array($gateways)) {
+            $gateways = [];
+        }
+        if (!is_array($metrics)) {
+            $metrics = [];
+        }
+        if (!is_array($devices)) {
+            $devices = [];
+        }
+
+        $count = max(count($destinations), count($gateways), count($metrics), count($devices));
+
+        for ($i = 0; $i < $count; $i++) {
+            $dest = trim($destinations[$i] ?? '');
+            $gw = trim($gateways[$i] ?? '');
+            $metric = trim($metrics[$i] ?? '');
+            $device = trim($devices[$i] ?? '');
+
+            // Skip empty rows
+            if (empty($dest) && empty($gw)) {
+                continue;
+            }
+
+            // Validate destination (CIDR notation required)
+            if (empty($dest)) {
+                $errors[] = "Row " . ($i + 1) . ": Destination is required";
+                continue;
+            }
+
+            if (!$this->isValidCidr($dest) && !$this->isValidCidrV6($dest)) {
+                $errors[] = "Row " . ($i + 1) . ": Invalid destination CIDR: $dest";
+                continue;
+            }
+
+            // Validate gateway (IP address required)
+            if (empty($gw)) {
+                $errors[] = "Row " . ($i + 1) . ": Gateway is required";
+                continue;
+            }
+
+            if (!filter_var($gw, FILTER_VALIDATE_IP)) {
+                $errors[] = "Row " . ($i + 1) . ": Invalid gateway IP: $gw";
+                continue;
+            }
+
+            // Validate metric (optional, 1-1000)
+            if (!empty($metric)) {
+                if (!is_numeric($metric) || $metric < 1 || $metric > 1000) {
+                    $errors[] = "Row " . ($i + 1) . ": Metric must be between 1 and 1000";
+                    continue;
+                }
+                $metric = (int)$metric;
+            } else {
+                $metric = null;
+            }
+
+            // Detect address family from destination
+            $family = 'ipv4';
+            if (strpos($dest, ':') !== false) {
+                $family = 'ipv6';
+            }
+
+            $route = [
+                'destination' => $dest,
+                'gateway' => $gw,
+                'interface' => $device ?: null,
+                'metric' => $metric,
+                'family' => $family,
+            ];
+
+            $routes[] = $route;
+        }
+
+        if (!empty($errors)) {
+            $this->flash('error', implode('. ', $errors));
+            $this->redirect('/network/routes');
+            return;
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $config->set('network.routes', $routes);
+
+        if ($this->configService->saveWorkingConfig($config)) {
+            $this->flash('success', 'Static routes saved. Click "Apply Configuration" to activate changes.');
+        } else {
+            $this->flash('error', 'Failed to save configuration');
+        }
+
+        $this->redirect('/network/routes');
+    }
+
+    /**
+     * Validate IPv6 CIDR notation.
+     */
+    private function isValidCidrV6(string $cidr): bool
+    {
+        if (strpos($cidr, '/') === false) {
+            return false;
+        }
+
+        [$ip, $prefix] = explode('/', $cidr, 2);
+
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            return false;
+        }
+
+        if (!is_numeric($prefix) || $prefix < 0 || $prefix > 128) {
+            return false;
+        }
+
+        return true;
+    }
 }
