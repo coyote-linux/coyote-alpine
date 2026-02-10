@@ -133,6 +133,8 @@ class App
         $this->router->get('/network/interface/{name}', [Controller\NetworkController::class, 'editInterface']);
         $this->router->post('/network/interface/{name}', [Controller\NetworkController::class, 'saveInterface']);
         $this->router->post('/network/interface/{name}/delete', [Controller\NetworkController::class, 'deleteInterface']);
+        $this->router->get('/network/routes', [Controller\NetworkController::class, 'routes']);
+        $this->router->post('/network/routes', [Controller\NetworkController::class, 'saveRoutes']);
 
         // Firewall
         $this->router->get('/firewall', [Controller\FirewallController::class, 'index']);
@@ -265,6 +267,7 @@ class App
         $this->router->post('/certificates/acme/request', [Controller\CertificateController::class, 'acmeRequest']);
         $this->router->post('/certificates/acme/renew', [Controller\CertificateController::class, 'acmeRenew']);
         $this->router->post('/certificates/acme/renew-all', [Controller\CertificateController::class, 'acmeRenewAll']);
+        $this->router->post('/certificates/ssl', [Controller\CertificateController::class, 'saveSslCertificate']);
         $this->router->get('/certificates/{id}', [Controller\CertificateController::class, 'view']);
         $this->router->post('/certificates/{id}/delete', [Controller\CertificateController::class, 'delete']);
 
@@ -279,8 +282,9 @@ class App
         // System
         $this->router->get('/system', [Controller\SystemController::class, 'index']);
         $this->router->post('/system', [Controller\SystemController::class, 'save']);
-        $this->router->get('/system/ssl', [Controller\SystemController::class, 'sslCertificate']);
-        $this->router->post('/system/ssl', [Controller\SystemController::class, 'saveSslCertificate']);
+        $this->router->post('/system/syslog', [Controller\SystemController::class, 'saveSyslog']);
+        $this->router->post('/system/ntp', [Controller\SystemController::class, 'saveNtp']);
+
         $this->router->get('/system/password', [Controller\SystemController::class, 'showPasswordForm']);
         $this->router->post('/system/password', [Controller\SystemController::class, 'changePassword']);
         $this->router->post('/system/config/apply', [Controller\SystemController::class, 'applyConfig']);
@@ -296,9 +300,27 @@ class App
         $this->router->post('/system/restore/upload', [Controller\SystemController::class, 'uploadRestore']);
         $this->router->post('/system/backup/delete', [Controller\SystemController::class, 'deleteBackup']);
 
+        // Apply Configuration
+        $this->router->get('/apply', [Controller\ApplyController::class, 'index']);
+        $this->router->post('/apply', [Controller\ApplyController::class, 'apply']);
+        $this->router->post('/apply/confirm', [Controller\ApplyController::class, 'confirm']);
+        $this->router->post('/apply/cancel', [Controller\ApplyController::class, 'cancel']);
+        $this->router->post('/apply/discard', [Controller\ApplyController::class, 'discard']);
+        $this->router->get('/apply/status', [Controller\ApplyController::class, 'status']);
+
+        // DHCP
+        $this->router->get('/dhcp', [Controller\DhcpController::class, 'index']);
+        $this->router->post('/dhcp', [Controller\DhcpController::class, 'save']);
+        $this->router->get('/dhcp/reservations', [Controller\DhcpController::class, 'reservations']);
+        $this->router->post('/dhcp/reservations', [Controller\DhcpController::class, 'saveReservations']);
+
         // Firmware
         $this->router->get('/firmware', [Controller\FirmwareController::class, 'index']);
+        $this->router->post('/firmware/check', [Controller\FirmwareController::class, 'checkUpdate']);
+        $this->router->post('/firmware/download', [Controller\FirmwareController::class, 'downloadUpdate']);
         $this->router->post('/firmware/upload', [Controller\FirmwareController::class, 'upload']);
+        $this->router->post('/firmware/apply', [Controller\FirmwareController::class, 'applyUpdate']);
+        $this->router->post('/firmware/clear', [Controller\FirmwareController::class, 'clearStaged']);
 
         // Tools
         $this->router->get('/tools', [Controller\ToolsController::class, 'index']);

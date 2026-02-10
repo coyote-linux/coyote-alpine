@@ -6,15 +6,21 @@ use Coyote\Certificate\AcmeService;
 use Coyote\Certificate\CertificateInfo;
 use Coyote\Certificate\CertificateStore;
 use Coyote\Certificate\CertificateValidator;
+use Coyote\System\PrivilegedExecutor;
+use Coyote\WebAdmin\Service\ConfigService;
 
 class CertificateController extends BaseController
 {
     private CertificateStore $store;
 
+    /** @var ConfigService */
+    private ConfigService $configService;
+
     public function __construct()
     {
         parent::__construct();
         $this->store = new CertificateStore();
+        $this->configService = new ConfigService();
     }
 
     public function index(array $params = []): void
@@ -65,14 +71,14 @@ class CertificateController extends BaseController
             return ((int)($right['created_at'] ?? 0)) <=> ((int)($left['created_at'] ?? 0));
         });
 
-        $this->render('pages/certificates', [
+        $this->render('pages/certificates', array_merge([
             'certificates' => $certificates,
             'caCount' => $counts[CertificateStore::DIR_CA],
             'serverCount' => $counts[CertificateStore::DIR_SERVER],
             'clientCount' => $counts[CertificateStore::DIR_CLIENT],
             'privateCount' => $counts[CertificateStore::DIR_PRIVATE],
             'totalCount' => count($certificates),
-        ]);
+        ], $this->buildSslCertificateData()));
     }
 
     public function upload(array $params = []): void
@@ -338,6 +344,251 @@ class CertificateController extends BaseController
         }
 
         $this->redirect('/certificates');
+    }
+
+    /**
+     * Apply a server certificate as the web admin SSL certificate.
+     */
+    public function saveSslCertificate(array $params = []): void
+    {
+        $certificateId = trim((string)$this->post('ssl_cert_id', ''));
+        if ($certificateId === '') {
+            $this->flash('error', 'Please select a server certificate');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        if (!$this->store->initialize()) {
+            $this->flash('error', 'Unable to initialize certificate store');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        $entry = $this->store->get($certificateId);
+        if ($entry === null || ($entry['type'] ?? '') !== CertificateStore::DIR_SERVER) {
+            $this->flash('error', 'Selected certificate is not available');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        $certificatePath = (string)($this->store->getPath($certificateId) ?? '');
+        if ($certificatePath === '' || !file_exists($certificatePath)) {
+            $this->flash('error', 'Selected certificate path could not be resolved');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        $certContent = file_get_contents($certificatePath);
+        if (!is_string($certContent) || trim($certContent) === '') {
+            $this->flash('error', 'Unable to read selected certificate');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        $combinedPem = $this->buildCombinedPem($certContent);
+        if ($combinedPem === '') {
+            $this->flash('error', 'No matching private key was found for the selected certificate');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        if (!$this->writeWebAdminSslPem($combinedPem)) {
+            $this->flash('error', 'Failed to write SSL certificate file');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        $config = $this->configService->getWorkingConfig();
+        $config->set('services.webadmin.ssl_cert_id', $certificateId);
+        $config->set('services.webadmin.ssl_cert_path', '/mnt/config/ssl/server.pem');
+        if (!$this->configService->saveWorkingConfig($config)) {
+            $this->flash('warning', 'SSL certificate applied, but selection could not be saved to configuration');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        if (!$this->reloadLighttpd()) {
+            $this->flash('error', 'Certificate updated, but failed to reload lighttpd');
+            $this->redirect('/certificates#ssl-certificate');
+            return;
+        }
+
+        $this->flash('success', 'Web admin SSL certificate updated');
+        $this->redirect('/certificates#ssl-certificate');
+    }
+
+    /**
+     * Build a combined PEM (certificate + private key) for lighttpd.
+     */
+    private function buildCombinedPem(string $certificateContent): string
+    {
+        $certificateContent = trim($certificateContent);
+        if ($certificateContent === '') {
+            return '';
+        }
+
+        if (CertificateInfo::isPemPrivateKey($certificateContent)) {
+            return $certificateContent . "\n";
+        }
+
+        foreach ($this->store->listByType(CertificateStore::DIR_PRIVATE) as $entry) {
+            $keyId = (string)($entry['id'] ?? '');
+            if ($keyId === '') {
+                continue;
+            }
+
+            $keyContent = $this->store->getContent($keyId);
+            if (!is_string($keyContent) || !CertificateInfo::isPemPrivateKey($keyContent)) {
+                continue;
+            }
+
+            if (CertificateInfo::certMatchesKey($certificateContent, $keyContent)) {
+                return $certificateContent . "\n" . trim($keyContent) . "\n";
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Write the combined PEM file for lighttpd.
+     */
+    private function writeWebAdminSslPem(string $pemContent): bool
+    {
+        if (!$this->remountConfig(true)) {
+            return false;
+        }
+
+        $written = false;
+
+        try {
+            if (!is_dir('/mnt/config/ssl') && !mkdir('/mnt/config/ssl', 0700, true)) {
+                return false;
+            }
+
+            if (file_put_contents('/mnt/config/ssl/server.pem', $pemContent) === false) {
+                return false;
+            }
+
+            chmod('/mnt/config/ssl', 0700);
+            chmod('/mnt/config/ssl/server.pem', 0600);
+            $written = true;
+        } finally {
+            $remountedReadOnly = $this->remountConfig(false);
+        }
+
+        return $written && $remountedReadOnly;
+    }
+
+    /**
+     * Reload lighttpd to pick up the new certificate.
+     */
+    private function reloadLighttpd(): bool
+    {
+        $command = (posix_getuid() === 0) ? 'rc-service lighttpd reload' : 'doas rc-service lighttpd reload';
+        exec($command . ' 2>&1', $output, $returnCode);
+        return $returnCode === 0;
+    }
+
+    /**
+     * Remount the config partition.
+     *
+     * @param bool $writable True for read-write, false for read-only
+     * @return bool True if successful
+     */
+    private function remountConfig(bool $writable): bool
+    {
+        $executor = new PrivilegedExecutor();
+
+        if ($writable) {
+            $result = $executor->mountConfigRw();
+        } else {
+            $result = $executor->mountConfigRo();
+        }
+
+        return $result['success'];
+    }
+
+    /**
+     * Build template data for the SSL certificate assignment card.
+     *
+     * @return array Template variables for SSL certificate selection
+     */
+    private function buildSslCertificateData(): array
+    {
+        $storeReady = $this->store->initialize();
+        $serverCerts = [];
+
+        if ($storeReady) {
+            foreach ($this->store->listByType(CertificateStore::DIR_SERVER) as $entry) {
+                $id = (string)($entry['id'] ?? '');
+                if ($id === '') {
+                    continue;
+                }
+
+                $content = $this->store->getContent($id);
+                $entry['info'] = is_string($content) ? CertificateInfo::parse($content) : null;
+                $serverCerts[] = $entry;
+            }
+        }
+
+        usort($serverCerts, static function (array $left, array $right): int {
+            return strcmp((string)($left['name'] ?? ''), (string)($right['name'] ?? ''));
+        });
+
+        $config = $this->configService->getWorkingConfig()->toArray();
+        $currentSslCertId = (string)($config['services']['webadmin']['ssl_cert_id'] ?? '');
+        $currentSslCertPath = (string)($config['services']['webadmin']['ssl_cert_path'] ?? '');
+
+        if ($currentSslCertPath === '') {
+            $currentSslCertPath = $this->readLighttpdPemFilePath();
+        }
+        if ($currentSslCertPath === '' && file_exists('/mnt/config/ssl/server.pem')) {
+            $currentSslCertPath = '/mnt/config/ssl/server.pem';
+        }
+
+        $currentSslCertInfo = null;
+        if ($currentSslCertPath !== '' && file_exists($currentSslCertPath)) {
+            $currentContent = file_get_contents($currentSslCertPath);
+            if (is_string($currentContent)) {
+                $currentSslCertInfo = CertificateInfo::parse($currentContent);
+            }
+        }
+
+        if (!is_array($currentSslCertInfo) && $currentSslCertId !== '' && $storeReady) {
+            $selectedContent = $this->store->getContent($currentSslCertId);
+            if (is_string($selectedContent)) {
+                $currentSslCertInfo = CertificateInfo::parse($selectedContent);
+            }
+        }
+
+        return [
+            'serverCerts' => $serverCerts,
+            'currentSslCertId' => $currentSslCertId,
+            'currentSslCertPath' => $currentSslCertPath,
+            'currentSslCertInfo' => $currentSslCertInfo,
+        ];
+    }
+
+    /**
+     * Read the PEM file path from lighttpd configuration.
+     */
+    private function readLighttpdPemFilePath(): string
+    {
+        if (!is_readable('/etc/lighttpd/lighttpd.conf')) {
+            return '';
+        }
+
+        $contents = file_get_contents('/etc/lighttpd/lighttpd.conf');
+        if (!is_string($contents)) {
+            return '';
+        }
+
+        if (preg_match('/^\s*ssl\.pemfile\s*=\s*"([^"]+)"/m', $contents, $matches) !== 1) {
+            return '';
+        }
+
+        return trim((string)$matches[1]);
     }
 
     private function getAcmeService(): AcmeService

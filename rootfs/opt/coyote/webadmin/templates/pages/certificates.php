@@ -35,6 +35,59 @@ $totalCount = (int)($totalCount ?? count($certificates));
         <p><strong><?= $privateCount ?></strong></p>
     </div>
 
+    <div class="card full-width" id="ssl-certificate">
+        <h3>Web Admin SSL Certificate</h3>
+
+        <?php if (!empty($currentSslCertInfo)): ?>
+        <div class="ssl-current-info">
+            <h4>Current Certificate</h4>
+            <table>
+                <tr>
+                    <td><strong>Subject</strong></td>
+                    <td><?= htmlspecialchars($currentSslCertInfo['subject'] ?? '-') ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Issuer</strong></td>
+                    <td><?= htmlspecialchars($currentSslCertInfo['issuer'] ?? '-') ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Valid From</strong></td>
+                    <td><?= htmlspecialchars($currentSslCertInfo['valid_from'] ?? '-') ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Valid Until</strong></td>
+                    <td><?= htmlspecialchars($currentSslCertInfo['valid_to'] ?? '-') ?></td>
+                </tr>
+            </table>
+        </div>
+        <?php else: ?>
+        <p><em>No SSL certificate is currently configured. The web admin is using its default self-signed certificate.</em></p>
+        <?php endif; ?>
+
+        <h4 style="margin-top: 1.5rem;">Select Server Certificate</h4>
+        <?php if (empty($serverCerts)): ?>
+        <p>No server certificates are available. <a href="/certificates/upload">Upload</a> or <a href="/certificates/acme">request</a> a certificate first.</p>
+        <?php else: ?>
+        <form method="post" action="/certificates/ssl">
+            <div class="form-group">
+                <label for="ssl_cert_id">Server Certificate</label>
+                <select id="ssl_cert_id" name="ssl_cert_id">
+                    <option value="">-- Select a certificate --</option>
+                    <?php foreach ($serverCerts as $cert): ?>
+                    <option value="<?= htmlspecialchars($cert['id'] ?? '') ?>" <?= ($cert['id'] ?? '') === ($currentSslCertId ?? '') ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($cert['name'] ?? $cert['id'] ?? 'Unknown') ?>
+                        <?php if (!empty($cert['info']['subject'])): ?>
+                            (<?= htmlspecialchars($cert['info']['subject']) ?>)
+                        <?php endif; ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" data-confirm="Apply this certificate to the web admin? The web server will be reloaded.">Apply Certificate</button>
+        </form>
+        <?php endif; ?>
+    </div>
+
     <div class="card full-width">
         <h3>All Certificates and Keys</h3>
         <?php if (empty($certificates)): ?>
