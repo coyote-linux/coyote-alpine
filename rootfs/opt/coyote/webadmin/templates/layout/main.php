@@ -27,12 +27,14 @@
             <li><a href="/loadbalancer" class="<?= ($page ?? '') === 'loadbalancer' ? 'active' : '' ?>">Load Balancer</a></li>
             <?php endif; ?>
             <li><a href="/services" class="<?= ($page ?? '') === 'services' ? 'active' : '' ?>">Services</a></li>
+            <li><a href="/dhcp" class="<?= ($page ?? '') === 'dhcp' ? 'active' : '' ?>">DHCP</a></li>
             <li><a href="/certificates" class="<?= ($page ?? '') === 'certificates' ? 'active' : '' ?>">Certificates</a></li>
             <li><a href="/system" class="<?= ($page ?? '') === 'system' ? 'active' : '' ?>">System</a></li>
             <li><a href="/firmware" class="<?= ($page ?? '') === 'firmware' ? 'active' : '' ?>">Firmware</a></li>
         </ul>
         <div class="nav-footer">
             <ul class="nav-menu nav-menu-footer">
+                <li><a href="/apply" class="<?= ($page ?? '') === 'apply' ? 'active' : '' ?><?= ($hasUncommittedChanges ?? false) ? ' apply-pending' : '' ?>">Apply Configuration</a></li>
                 <li><a href="/tools" class="<?= ($page ?? '') === 'tools' ? 'active' : '' ?>">Tools</a></li>
             </ul>
             <form method="post" action="/logout">

@@ -4,6 +4,8 @@ namespace Coyote\WebAdmin\Controller;
 
 use Coyote\WebAdmin\Csrf;
 use Coyote\WebAdmin\FeatureFlags;
+use Coyote\WebAdmin\Service\ApplyService;
+use Coyote\WebAdmin\Service\ConfigService;
 
 /**
  * Base controller with common functionality.
@@ -43,6 +45,16 @@ abstract class BaseController
 
         if (!isset($data['features']) || !is_array($data['features'])) {
             $data['features'] = (new FeatureFlags())->toArray();
+        }
+
+        if (!isset($data['applyStatus'])) {
+            $applyService = new ApplyService();
+            $data['applyStatus'] = $applyService->getStatus();
+        }
+
+        if (!isset($data['hasUncommittedChanges'])) {
+            $configService = new ConfigService();
+            $data['hasUncommittedChanges'] = $configService->hasUncommittedChanges();
         }
 
         extract($data);
