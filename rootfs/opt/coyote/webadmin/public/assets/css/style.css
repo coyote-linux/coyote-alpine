@@ -132,6 +132,7 @@ img {
     flex: 1;
     margin-left: 220px;
     padding: 2rem;
+    line-height: 1.45;
 }
 
 .content-header {
@@ -334,6 +335,7 @@ label {
     display: block;
     margin-bottom: 0.5rem;
     color: var(--text-secondary);
+    line-height: 1.4;
 }
 
 input, select, textarea {
@@ -474,6 +476,7 @@ dd {
 .text-muted {
     color: var(--text-secondary);
     font-size: 0.9rem;
+    line-height: 1.4;
 }
 
 /* Links (excluding buttons) */
@@ -624,6 +627,11 @@ a:not(.btn):visited {
 .form-group-inline {
     display: flex;
     align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.form-group-inline + .form-group {
+    margin-top: 0.5rem;
 }
 
 .form-group-inline label {
@@ -657,6 +665,7 @@ a:not(.btn):visited {
 .form-group small {
     display: block;
     margin-top: 0.25rem;
+    line-height: 1.4;
 }
 
 .form-note {

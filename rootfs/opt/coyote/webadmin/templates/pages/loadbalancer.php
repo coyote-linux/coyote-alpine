@@ -39,7 +39,7 @@ $defaults = $defaults ?? [];
         <div class="button-group">
             <a href="/loadbalancer/frontend/new" class="btn btn-primary">Add Frontend</a>
             <a href="/loadbalancer/backend/new" class="btn btn-primary">Add Backend</a>
-            <a href="/loadbalancer/settings" class="btn">Settings</a>
+            <a href="/loadbalancer/settings" class="btn btn-primary">Settings</a>
             <?php if ($statsEnabled): ?>
             <a href="/loadbalancer/stats" class="btn">View Stats</a>
             <?php endif; ?>
