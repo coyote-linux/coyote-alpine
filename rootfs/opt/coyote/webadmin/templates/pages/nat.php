@@ -39,7 +39,7 @@ $interfaces = $interfaces ?? [];
         <h3>Quick Actions</h3>
         <div class="button-group">
             <a href="/nat/forward/new" class="btn btn-primary">Add Port Forward</a>
-            <a href="/nat/masquerade/new" class="btn btn-primary">Add Masquerade Rule</a>
+            <a href="/nat/masquerade/new" class="btn btn-primary">Add Masq Rule</a>
         </div>
     </div>
 
