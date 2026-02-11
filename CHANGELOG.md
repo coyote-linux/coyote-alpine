@@ -4,6 +4,15 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.150] - 2026-02-11
+
+### Fixed
+
+#### Web Admin Text Readability and Form Spacing
+- Increased default content line-height so wrapped text is easier to read and no longer appears vertically cramped
+- Increased label, muted text, and helper text line-height for better spacing in stacked form content
+- Added extra vertical spacing between inline checkbox rows and the following form controls (for example, between "Add X-Forwarded-Proto header" and "Max Connections")
+
 ## [4.0.149] - 2026-02-10
 
 ### Added
