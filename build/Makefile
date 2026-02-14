@@ -35,6 +35,7 @@ CONFIG_OPENVPN ?= $(DEFAULT_OPENVPN)
 CONFIG_WIREGUARD ?= $(DEFAULT_WIREGUARD)
 
 DEV_BUILD ?= $(CONFIG_DEV_BUILD)
+NO_BUMP ?= 0
 
 BUILD_DIR := ../output
 ROOTFS_SRC := ../rootfs
@@ -50,7 +51,7 @@ ROOTFS_FILES := $(shell find $(ROOTFS_SRC) -type f 2>/dev/null)
 INITRAMFS_FILES := $(shell find $(INITRAMFS_DIR) -type f 2>/dev/null)
 INITRAMFS_INSTALLER_FILES := $(shell find $(INITRAMFS_INSTALLER_DIR) -type f 2>/dev/null)
 
-.PHONY: all clean firmware installer iso initramfs initramfs-installer kernel rootfs distclean help rebuild-firmware rebuild-iso sign bump-version show-version menuconfig show-config
+.PHONY: all clean firmware installer iso initramfs initramfs-installer kernel rootfs distclean help rebuild-firmware rebuild-iso sign bump-version show-version menuconfig show-config update-archive
 
 all: firmware
 
@@ -90,7 +91,8 @@ help:
 	@echo "  menuconfig          - Configure build options (kernel, features, sizes)"
 	@echo "  show-config         - Display active build configuration"
 	@echo "  rootfs              - Download Alpine and build rootfs"
-	@echo "  firmware            - Build firmware squashfs image (increments build number)"
+	@echo "  firmware            - Build firmware squashfs image (+ update archive)"
+	@echo "  update-archive      - Build webadmin-compatible update archive from latest artifacts"
 	@echo "  sign                - Sign the latest firmware image"
 	@echo "  kernel              - Build custom kernel (kernel/build-kernel.sh)"
 	@echo "  initramfs           - Build initramfs for running system"
@@ -110,6 +112,8 @@ help:
 	@echo ""
 	@echo "After editing rootfs/ files:"
 	@echo "  make firmware   # Detects changes, increments build number"
+	@echo "  make firmware NO_BUMP=1   # Rebuild current version without incrementing"
+	@echo "  ./build.sh -n firmware    # Same as above via command line flag"
 	@echo "  make firmware DEV_BUILD=1   # Build development firmware (enables debug routes)"
 	@echo "  make sign       # Sign firmware (if COYOTE_SIGNING_KEY set in .local-config)"
 	@echo "  make iso        # Rebuild ISO with new firmware"
@@ -129,9 +133,14 @@ rootfs: kernel
 # Build the main firmware squashfs image
 # This target increments the build number and creates the firmware
 firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
-	@# Increment build number
-	@NEW_BUILD=$$(($(BUILD_NUMBER) + 1)); \
-	echo $$NEW_BUILD > $(BUILD_NUMBER_FILE); \
+	@if [ "$(NO_BUMP)" = "1" ]; then \
+		NEW_BUILD=$(BUILD_NUMBER); \
+		echo "Skipping build number bump (NO_BUMP=1)"; \
+	else \
+		NEW_BUILD=$$(($(BUILD_NUMBER) + 1)); \
+		echo $$NEW_BUILD > $(BUILD_NUMBER_FILE); \
+		echo "Build number incremented to $$NEW_BUILD"; \
+	fi; \
 	NEW_VERSION="$(VERSION_MAJOR).$(VERSION_MINOR).$$NEW_BUILD"; \
 	if [ "$(DEV_BUILD)" = "1" ]; then BUILD_MODE="development"; else BUILD_MODE="release"; fi; \
 	case "$(CONFIG_KERNEL_TYPE)" in custom|alpine-lts) ;; *) echo "Error: CONFIG_KERNEL_TYPE must be 'custom' or 'alpine-lts'"; exit 1 ;; esac; \
@@ -198,8 +207,27 @@ firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	else \
 		echo "Note: Firmware not signed (no .local-config)"; \
 	fi; \
+	if [ ! -f "$(BUILD_DIR)/vmlinuz" ] || [ ! -f "$(BUILD_DIR)/initramfs.cpio.gz" ]; then \
+		echo "Kernel/initramfs missing, building initramfs for update archive..."; \
+		make initramfs; \
+	fi; \
+	./mkupdate.sh "$$NEW_VERSION" "$$FIRMWARE_FILE" "$(BUILD_DIR)/vmlinuz" "$(BUILD_DIR)/initramfs.cpio.gz" "$(BUILD_DIR)"; \
 	echo ""; \
-	echo "Firmware image created: $$FIRMWARE_FILE"
+	echo "Firmware image created: $$FIRMWARE_FILE"; \
+	echo "Update archive created: $(BUILD_DIR)/coyote-update-$$NEW_VERSION.tar.gz"
+
+update-archive:
+	@FIRMWARE_FILE=$$(ls -t $(BUILD_DIR)/firmware-*.squashfs 2>/dev/null | head -1); \
+	if [ -z "$$FIRMWARE_FILE" ]; then \
+		echo "Error: No firmware image found. Run 'make firmware' first."; \
+		exit 1; \
+	fi; \
+	VERSION=$$(basename "$$FIRMWARE_FILE" | sed 's/firmware-\(.*\)\.squashfs/\1/'); \
+	if [ ! -f "$(BUILD_DIR)/vmlinuz" ] || [ ! -f "$(BUILD_DIR)/initramfs.cpio.gz" ]; then \
+		echo "Kernel/initramfs missing, building initramfs..."; \
+		make initramfs; \
+	fi; \
+	./mkupdate.sh "$$VERSION" "$$FIRMWARE_FILE" "$(BUILD_DIR)/vmlinuz" "$(BUILD_DIR)/initramfs.cpio.gz" "$(BUILD_DIR)"
 
 # Sign firmware image (manual target - signs the latest firmware)
 sign:
@@ -268,11 +296,13 @@ distclean: clean
 # Force rebuild of firmware (removes all firmware files, preserves rootfs)
 rebuild-firmware:
 	rm -f $(BUILD_DIR)/firmware-*.squashfs $(BUILD_DIR)/firmware-*.squashfs.sha256 $(BUILD_DIR)/firmware-*.squashfs.sig
+	rm -f $(BUILD_DIR)/coyote-update-*.tar.gz $(BUILD_DIR)/coyote-update-*.tar.gz.sha256 $(BUILD_DIR)/coyote-update-*.tar.gz.sig
 	$(MAKE) firmware
 
 # Force rebuild of ISO (removes firmware, installer initramfs, and ISO)
 rebuild-iso:
 	rm -f $(BUILD_DIR)/firmware-*.squashfs $(BUILD_DIR)/firmware-*.squashfs.sha256 $(BUILD_DIR)/firmware-*.squashfs.sig
+	rm -f $(BUILD_DIR)/coyote-update-*.tar.gz $(BUILD_DIR)/coyote-update-*.tar.gz.sha256 $(BUILD_DIR)/coyote-update-*.tar.gz.sig
 	rm -f $(BUILD_DIR)/.initramfs-installer-stamp $(BUILD_DIR)/initramfs-installer.cpio.gz
 	rm -f $(BUILD_DIR)/coyote-*.iso $(BUILD_DIR)/coyote-*.iso.sha256
 	$(MAKE) iso
