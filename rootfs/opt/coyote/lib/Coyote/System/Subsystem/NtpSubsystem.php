@@ -68,7 +68,7 @@ class NtpSubsystem extends AbstractSubsystem
         }
 
         // Build ntpd command-line options with -p flags for each server
-        $ntpdOpts = '-N -S /usr/sbin/ntpd-sync';
+        $ntpdOpts = '-N';
         foreach ($servers as $server) {
             $server = trim($server);
             if (!empty($server)) {

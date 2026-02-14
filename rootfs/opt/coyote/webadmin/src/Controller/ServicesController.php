@@ -19,7 +19,7 @@ class ServicesController extends BaseController
         'strongswan' => 'VPN Server',
         'crond' => 'Cron Daemon',
         'ntpd' => 'NTP Client',
-        'syslogd' => 'System Logger',
+        'syslog' => 'System Logger',
     ];
 
     /**
@@ -153,79 +153,6 @@ class ServicesController extends BaseController
             $this->flash('success', "Service '{$service}' restarted successfully");
         } else {
             $this->flash('error', "Failed to restart service '{$service}'");
-        }
-
-        $this->redirect('/services');
-    }
-
-    /**
-     * Enable a service to start at boot.
-     */
-    public function enable(array $params = []): void
-    {
-        $service = $params['service'] ?? '';
-
-        if (!$this->isAllowedService($service)) {
-            $this->flash('error', "Service '{$service}' is not allowed to be managed");
-            $this->redirect('/services');
-            return;
-        }
-
-        // Core services are always enabled
-        if (in_array($service, $this->coreServices)) {
-            $this->flash('error', "Core services are always enabled - use firewall ACLs to control access");
-            $this->redirect('/services');
-            return;
-        }
-
-        $svc = new Services();
-
-        if ($svc->isEnabled($service)) {
-            $this->flash('warning', "Service '{$service}' is already enabled");
-        } elseif ($svc->enable($service)) {
-            $this->flash('success', "Service '{$service}' enabled at boot");
-        } else {
-            $this->flash('error', "Failed to enable service '{$service}'");
-        }
-
-        $this->redirect('/services');
-    }
-
-    /**
-     * Disable a service from starting at boot.
-     */
-    public function disable(array $params = []): void
-    {
-        $service = $params['service'] ?? '';
-
-        if (!$this->isAllowedService($service)) {
-            $this->flash('error', "Service '{$service}' is not allowed to be managed");
-            $this->redirect('/services');
-            return;
-        }
-
-        // Core services are always enabled
-        if (in_array($service, $this->coreServices)) {
-            $this->flash('error', "Core services are always enabled - use firewall ACLs to control access");
-            $this->redirect('/services');
-            return;
-        }
-
-        // Don't allow disabling critical services
-        if ($service === 'syslogd') {
-            $this->flash('error', "Cannot disable critical service '{$service}'");
-            $this->redirect('/services');
-            return;
-        }
-
-        $svc = new Services();
-
-        if (!$svc->isEnabled($service)) {
-            $this->flash('warning', "Service '{$service}' is already disabled");
-        } elseif ($svc->disable($service)) {
-            $this->flash('success', "Service '{$service}' disabled at boot");
-        } else {
-            $this->flash('error', "Failed to disable service '{$service}'");
         }
 
         $this->redirect('/services');

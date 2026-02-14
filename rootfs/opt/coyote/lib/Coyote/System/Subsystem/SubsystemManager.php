@@ -32,11 +32,11 @@ class SubsystemManager
         // Register default subsystems in apply order
         $this->register(new HostnameSubsystem());
         $this->register(new TimezoneSubsystem());
-        $this->register(new NtpSubsystem());
         $this->register(new SyslogSubsystem());
         $this->register(new DnsSubsystem());
-        $this->register(new DhcpSubsystem());
         $this->register(new NetworkSubsystem());
+        $this->register(new DhcpSubsystem());
+        $this->register(new NtpSubsystem());
         $this->register(new FirewallSubsystem());
         $this->register(new VpnSubsystem());
     }

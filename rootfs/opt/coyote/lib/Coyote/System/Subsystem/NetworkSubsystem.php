@@ -52,13 +52,14 @@ class NetworkSubsystem extends AbstractSubsystem
         $priv = $this->getPrivilegedExecutor();
         $interfaces = $this->getNestedValue($config, 'network.interfaces', []);
         $routes = $this->getNestedValue($config, 'network.routes', []);
+        $hasStaticDns = $this->hasStaticDns($config);
 
         // Configure loopback first
         $this->configureLoopback($priv, $errors);
 
         // Configure each interface
         foreach ($interfaces as $ifaceConfig) {
-            $this->configureInterface($priv, $ifaceConfig, $errors);
+            $this->configureInterface($priv, $ifaceConfig, $hasStaticDns, $errors);
         }
 
         // Configure additional routes
@@ -100,7 +101,7 @@ class NetworkSubsystem extends AbstractSubsystem
     /**
      * Configure a network interface.
      */
-    private function configureInterface(PrivilegedExecutor $priv, array $ifaceConfig, array &$errors): void
+    private function configureInterface(PrivilegedExecutor $priv, array $ifaceConfig, bool $hasStaticDns, array &$errors): void
     {
         $name = $ifaceConfig['name'] ?? null;
         $type = $ifaceConfig['type'] ?? 'disabled';
@@ -153,7 +154,7 @@ class NetworkSubsystem extends AbstractSubsystem
                 break;
 
             case 'dhcp':
-                $this->configureDhcp($priv, $name, $ifaceConfig, $errors);
+                $this->configureDhcp($priv, $name, $ifaceConfig, $hasStaticDns, $errors);
                 break;
 
             case 'pppoe':
@@ -199,7 +200,7 @@ class NetworkSubsystem extends AbstractSubsystem
     /**
      * Configure DHCP client (using dhcpcd).
      */
-    private function configureDhcp(PrivilegedExecutor $priv, string $name, array $config, array &$errors): void
+    private function configureDhcp(PrivilegedExecutor $priv, string $name, array $config, bool $hasStaticDns, array &$errors): void
     {
         $hostname = $config['dhcp_hostname'] ?? '';
 
@@ -217,6 +218,15 @@ class NetworkSubsystem extends AbstractSubsystem
         // -t 0 = wait forever (no timeout)
         // -h = hostname to send
         $args = ['-b', '-t', '0'];
+
+        if ($hasStaticDns) {
+            $args[] = '-C';
+            $args[] = 'domain_name_servers';
+            $args[] = '-C';
+            $args[] = 'domain_search';
+            $args[] = '-C';
+            $args[] = 'domain_name';
+        }
 
         if (!empty($hostname)) {
             $args[] = '-h';
@@ -399,6 +409,34 @@ class NetworkSubsystem extends AbstractSubsystem
 
         // Also kill any pppoe-related processes for this interface
         $priv->pkillPattern("pppoe.*{$iface}");
+    }
+
+    private function hasStaticDns(array $config): bool
+    {
+        $dns = $this->getNestedValue($config, 'system.nameservers');
+        if ($dns === null) {
+            $dns = $this->getNestedValue($config, 'network.dns', []);
+        }
+
+        return !empty($this->flattenStrings($dns));
+    }
+
+    private function flattenStrings($value): array
+    {
+        if (!is_array($value)) {
+            return (!empty($value) && is_string($value)) ? [$value] : [];
+        }
+
+        $result = [];
+        foreach ($value as $item) {
+            if (is_array($item)) {
+                $result = array_merge($result, $this->flattenStrings($item));
+            } elseif (!empty($item) && is_string($item)) {
+                $result[] = $item;
+            }
+        }
+
+        return $result;
     }
 
     /**

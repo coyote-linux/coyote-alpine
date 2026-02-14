@@ -276,8 +276,6 @@ class App
         $this->router->post('/services/{service}/start', [Controller\ServicesController::class, 'start']);
         $this->router->post('/services/{service}/stop', [Controller\ServicesController::class, 'stop']);
         $this->router->post('/services/{service}/restart', [Controller\ServicesController::class, 'restart']);
-        $this->router->post('/services/{service}/enable', [Controller\ServicesController::class, 'enable']);
-        $this->router->post('/services/{service}/disable', [Controller\ServicesController::class, 'disable']);
 
         // System
         $this->router->get('/system', [Controller\SystemController::class, 'index']);

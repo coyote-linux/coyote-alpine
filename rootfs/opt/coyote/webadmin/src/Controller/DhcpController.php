@@ -79,6 +79,12 @@ class DhcpController extends BaseController
             if (!empty($gateway) && !filter_var($gateway, FILTER_VALIDATE_IP)) {
                 $errors[] = 'Invalid gateway IP address';
             }
+            if (!empty($dns1) && !filter_var($dns1, FILTER_VALIDATE_IP)) {
+                $errors[] = 'Invalid primary DNS server IP address';
+            }
+            if (!empty($dns2) && !filter_var($dns2, FILTER_VALIDATE_IP)) {
+                $errors[] = 'Invalid secondary DNS server IP address';
+            }
             if ($leaseTime < 120) {
                 $errors[] = 'Lease time must be at least 120 seconds';
             }

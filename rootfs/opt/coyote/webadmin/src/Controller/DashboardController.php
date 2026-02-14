@@ -8,6 +8,7 @@ use Coyote\System\Services;
 use Coyote\Firewall\FirewallManager;
 use Coyote\LoadBalancer\LoadBalancerManager;
 use Coyote\WebAdmin\FeatureFlags;
+use Coyote\WebAdmin\Service\ConfigService;
 
 /**
  * Dashboard controller - system overview.
@@ -114,11 +115,23 @@ class DashboardController extends BaseController
      */
     private function getFirewallStatus(): array
     {
+        $enabled = true;
+
+        try {
+            $configService = new ConfigService();
+            $runningConfig = $configService->getRunningConfig()->toArray();
+            $enabled = (bool)($runningConfig['firewall']['enabled'] ?? true);
+        } catch (\Throwable $e) {
+            $enabled = true;
+        }
+
         try {
             $manager = new FirewallManager();
-            return $manager->getStatus();
+            $status = $manager->getStatus();
+            $status['enabled'] = $enabled;
+            return $status;
         } catch (\Exception $e) {
-            return ['enabled' => false, 'error' => $e->getMessage()];
+            return ['enabled' => $enabled, 'error' => $e->getMessage()];
         }
     }
 

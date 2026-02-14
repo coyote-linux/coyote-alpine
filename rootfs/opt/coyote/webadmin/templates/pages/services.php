@@ -2,7 +2,7 @@
 
 <div class="card">
     <h3>System Services</h3>
-    <p>Manage system services. Services marked as "Enabled" will start automatically at boot.</p>
+    <p>Manage runtime service state from this page. Startup persistence is controlled by the Coyote configuration system.</p>
     <p class="text-muted"><em>Core services (Web Server, SSH) are always running. Use <a href="/firewall/access">Firewall Access Controls</a> to manage access.</em></p>
     <table>
         <thead>
@@ -50,24 +50,10 @@
                         </form>
                     <?php endif; ?>
 
-                    <?php if (!$isCore): ?>
-                        <?php if ($svc['enabled'] ?? false): ?>
-                            <?php if ($name !== 'syslogd'): ?>
-                            <form method="post" action="/services/<?= htmlspecialchars($name) ?>/disable" style="display: inline;">
-                                <button type="submit" class="btn btn-small" data-confirm="Disable <?= htmlspecialchars($name) ?> at boot?">Disable</button>
-                            </form>
-                            <?php endif; ?>
-                        <?php else: ?>
-                            <form method="post" action="/services/<?= htmlspecialchars($name) ?>/enable" style="display: inline;">
-                                <button type="submit" class="btn btn-small">Enable</button>
-                            </form>
-                        <?php endif; ?>
-                    <?php endif; ?>
                 </td>
             </tr>
             <?php endforeach; ?>
         </tbody>
     </table>
 </div>
-
 

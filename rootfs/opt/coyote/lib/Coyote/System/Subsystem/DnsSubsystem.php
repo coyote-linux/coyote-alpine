@@ -69,9 +69,14 @@ class DnsSubsystem extends AbstractSubsystem
             $resolv .= "nameserver {$ns}\n";
         }
 
-        // Only write if we have content
-        if (empty($resolv)) {
-            return $this->success('No DNS configuration to apply');
+        if (empty($dnsServers)) {
+            $result = $priv->writeFile('/etc/resolv.conf', $resolv);
+            if (!$result['success']) {
+                return $this->failure('Failed to update /etc/resolv.conf: ' . $result['output']);
+            }
+
+            $this->refreshDhcpResolvers($config, $priv);
+            return $this->success('Static DNS cleared');
         }
 
         // Write /etc/resolv.conf via privileged executor
@@ -82,6 +87,21 @@ class DnsSubsystem extends AbstractSubsystem
 
         $count = count($dnsServers);
         return $this->success("DNS configured with {$count} nameserver(s)");
+    }
+
+    private function refreshDhcpResolvers(array $config, $priv): void
+    {
+        $interfaces = $this->getNestedValue($config, 'network.interfaces', []);
+
+        foreach ($interfaces as $iface) {
+            $name = $iface['name'] ?? '';
+            $type = $iface['type'] ?? 'static';
+            $enabled = $iface['enabled'] ?? true;
+
+            if ($name !== '' && $type === 'dhcp' && $enabled) {
+                $priv->dhcpcd('-n', $name);
+            }
+        }
     }
 
     /**

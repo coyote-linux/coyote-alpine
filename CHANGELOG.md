@@ -4,6 +4,41 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.171] - 2026-02-14
+
+### Changed
+
+#### Service Management UX and Runtime Control
+- Services page now focuses on runtime start/stop/restart actions and removes boot enable/disable controls
+- Removed unused `/services/{service}/enable` and `/services/{service}/disable` routes and controller handlers
+
+#### NTP Apply Behavior
+- `apply-config` now performs initial one-shot time sync during boot apply, then starts the NTP daemon for ongoing synchronization
+- NTP server normalization now supports `services.ntp.servers`, legacy `system.timeserver`, and defaults to `pool.ntp.org`
+
+### Fixed
+
+#### DNS Resolver Consistency
+- Resolver apply now prefers `system.nameservers` with fallback to legacy `network.dns`
+- Static DNS now blocks DHCP resolver overwrite; clearing static DNS triggers DHCP renew to repopulate resolver entries
+- System settings now persist empty nameserver lists correctly and load legacy nested DNS shapes for compatibility
+
+#### DHCP Boot/Apply Reliability
+- Boot-time apply now manages dnsmasq DHCP configuration and service lifecycle from `services.dhcpd`
+- Added interface existence checks and robust `dhcp-range` generation when subnet mask is omitted
+- Deferred dnsmasq service actions during `coyote-config` startup to avoid OpenRC dependency deadlocks and long boot hangs
+
+#### Configuration Apply Safety
+- Boot apply now updates `/tmp/running-config/system.json` even when non-fatal service errors occur, preserving ACL/firewall consistency
+- Added bounded `rc-service` execution in `apply-config` with clearer service error reporting
+
+#### OpenRC Service State Accuracy
+- NTP daemon control in boot apply now uses deferred `rc-service ntpd` so OpenRC status matches running state
+- Syslog control now targets OpenRC service `syslog` (not `syslogd`) across subsystem apply, helper allowlist, and webadmin service view
+
+#### Dashboard Firewall Status
+- Dashboard firewall card now derives enabled state from running configuration, matching Coyote's always-on firewall model and firewall page behavior
+
 ## [4.0.152] - 2026-02-13
 
 ### Changed

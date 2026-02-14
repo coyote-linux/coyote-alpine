@@ -109,7 +109,11 @@ function applyConfig(): bool
 
     // Debug: Show loaded config summary
     $ifaceCount = count($config['network']['interfaces'] ?? []);
-    $dnsCount = is_array($config['network']['dns'] ?? null) ? count($config['network']['dns']) : 0;
+    $rawDnsConfig = $config['system']['nameservers'] ?? ($config['network']['dns'] ?? []);
+    if (!is_array($rawDnsConfig)) {
+        $rawDnsConfig = [$rawDnsConfig];
+    }
+    $dnsCount = count($rawDnsConfig);
     echo "  Loaded: {$ifaceCount} interface(s), {$dnsCount} DNS server(s)\n";
 
     // Apply hostname
@@ -137,7 +141,8 @@ function applyConfig(): bool
     }
 
     // Configure DNS (resolv.conf)
-    $dns = $config['network']['dns'] ?? [];
+    // Prefer system.nameservers (web admin system page), fall back to network.dns (legacy/TUI)
+    $dns = $config['system']['nameservers'] ?? ($config['network']['dns'] ?? []);
     $search = $config['network']['search'] ?? [];
 
     // Ensure dns is a flat array of strings
@@ -176,6 +181,9 @@ function applyConfig(): bool
     foreach ($dnsServers as $ns) {
         $resolv .= "nameserver {$ns}\n";
     }
+
+    $hasStaticDns = !empty($dnsServers);
+
     if (!empty($resolv)) {
         file_put_contents('/etc/resolv.conf', $resolv);
         echo "  DNS configured\n";
@@ -264,6 +272,10 @@ function applyConfig(): bool
             // -h = hostname to send
             // -t 0 = wait forever (no timeout)
             $cmd = "dhcpcd -b -t 0";
+            if ($hasStaticDns) {
+                // Keep static resolver settings from configuration when explicitly set
+                $cmd .= " -C domain_name_servers -C domain_search -C domain_name";
+            }
             if (!empty($hostname)) {
                 $cmd .= " -h " . escapeshellarg($hostname);
             }
@@ -314,9 +326,19 @@ function applyConfig(): bool
         }
     }
 
+    applyDhcpService($config, $errors);
+    applyNtpService($config, $errors);
+
     // Enable IP forwarding (always enable for a firewall/router)
     exec('sysctl -w net.ipv4.ip_forward=1 2>&1');
     exec('sysctl -w net.ipv6.conf.all.forwarding=1 2>&1');
+
+    // If this is a boot-time apply (not from web admin), always refresh running-config
+    // so dependent services (firewall/dropbear/webadmin ACLs) use the latest persisted config
+    // even when non-fatal service apply steps reported errors.
+    if (!$configFileEnv) {
+        writeRunningConfig($config);
+    }
 
     // Report results
     if (!empty($errors)) {
@@ -325,11 +347,6 @@ function applyConfig(): bool
             echo "  - {$error}\n";
         }
         return false;
-    }
-
-    // If this is a boot-time apply (not from web admin), update running-config
-    if (!$configFileEnv) {
-        writeRunningConfig($config);
     }
 
     echo "\nConfiguration applied successfully.\n";
@@ -358,6 +375,371 @@ function writeRunningConfig(array $config): void
     @chgrp($runningConfigFile, 'lighttpd');
 
     echo "  Running config updated: {$runningConfigFile}\n";
+}
+
+function runRcService(string $service, string $action, array &$output, &$ret): void
+{
+    $ret = 1;
+    $baseCmd = 'rc-service ' . escapeshellarg($service) . ' ' . escapeshellarg($action);
+
+    $timeoutBinary = null;
+    foreach (['/usr/bin/timeout', '/bin/timeout'] as $candidate) {
+        if (is_executable($candidate)) {
+            $timeoutBinary = $candidate;
+            break;
+        }
+    }
+
+    if ($timeoutBinary !== null) {
+        $cmd = $timeoutBinary . ' 20 ' . $baseCmd . ' 2>&1';
+    } else {
+        $cmd = $baseCmd . ' 2>&1';
+    }
+
+    exec($cmd, $output, $ret);
+}
+
+function deferServiceAction(string $actionScript, array &$errors, string $errorLabel): bool
+{
+    $cmd = "sh -c '(sleep 2; {$actionScript}) >/dev/null 2>&1 &'";
+    exec($cmd, $output, $ret);
+    if ($ret !== 0) {
+        $errors[] = 'Failed to schedule ' . $errorLabel;
+        return false;
+    }
+
+    return true;
+}
+
+function applyDhcpService(array $config, array &$errors): void
+{
+    $dhcpConfig = $config['services']['dhcpd'] ?? [];
+    $enabled = (bool)($dhcpConfig['enabled'] ?? false);
+    $dnsForwarderEnabled = (bool)($config['services']['dns']['enabled'] ?? false);
+    $dhcpConfigFile = '/etc/dnsmasq.d/dhcp.conf';
+
+    if (!is_dir('/etc/dnsmasq.d')) {
+        @mkdir('/etc/dnsmasq.d', 0755, true);
+    }
+
+    $deferServiceControl = (getenv('RC_SVCNAME') === 'coyote-config');
+
+    if (!$enabled) {
+        file_put_contents($dhcpConfigFile, '');
+
+        if ($dnsForwarderEnabled) {
+            if ($deferServiceControl) {
+                if (deferServiceAction('rc-service dnsmasq reload || rc-service dnsmasq start', $errors, 'dnsmasq service update')) {
+                    echo "  DHCP server: disabled (dnsmasq reload deferred)\n";
+                }
+                return;
+            }
+
+            $output = [];
+            runRcService('dnsmasq', 'reload', $output, $ret);
+            if ($ret !== 0) {
+                $output = [];
+                runRcService('dnsmasq', 'start', $output, $ret);
+            }
+
+            if ($ret !== 0) {
+                $errors[] = 'Failed to reload or start dnsmasq while DHCP is disabled: ' . implode(' ', $output);
+            }
+        } else {
+            if ($deferServiceControl) {
+                if (deferServiceAction('rc-service dnsmasq stop', $errors, 'dnsmasq service update')) {
+                    echo "  DHCP server: disabled (dnsmasq stop deferred)\n";
+                }
+                return;
+            }
+
+            $output = [];
+            runRcService('dnsmasq', 'stop', $output, $ret);
+            if ($ret !== 0) {
+                $combined = implode(' ', $output);
+                if (stripos($combined, 'stopped') === false && stripos($combined, 'not running') === false) {
+                    $errors[] = 'Failed to stop dnsmasq while DHCP is disabled: ' . $combined;
+                }
+            }
+        }
+
+        echo "  DHCP server: disabled\n";
+        return;
+    }
+
+    $interface = trim((string)($dhcpConfig['interface'] ?? ''));
+    $rangeStart = trim((string)($dhcpConfig['range_start'] ?? ''));
+    $rangeEnd = trim((string)($dhcpConfig['range_end'] ?? ''));
+    $subnetMask = trim((string)($dhcpConfig['subnet_mask'] ?? ''));
+    $gateway = trim((string)($dhcpConfig['gateway'] ?? ''));
+    $domain = trim((string)($dhcpConfig['domain'] ?? ''));
+    $dnsServers = $dhcpConfig['dns_servers'] ?? [];
+    $leaseTime = (int)($dhcpConfig['lease_time'] ?? 86400);
+    $reservations = $dhcpConfig['reservations'] ?? [];
+
+    if ($interface === '' || $rangeStart === '' || $rangeEnd === '') {
+        $errors[] = 'DHCP configuration incomplete (interface/range_start/range_end required)';
+        return;
+    }
+
+    if (!file_exists('/sys/class/net/' . $interface)) {
+        $errors[] = "DHCP interface not found: {$interface}";
+        return;
+    }
+
+    if (!is_array($dnsServers)) {
+        $dnsServers = array_values(array_filter([
+            is_string($dnsServers) ? trim($dnsServers) : '',
+        ]));
+    }
+
+    $confLines = [];
+    $confLines[] = "interface={$interface}";
+    if ($subnetMask !== '') {
+        $confLines[] = "dhcp-range={$rangeStart},{$rangeEnd},{$subnetMask},{$leaseTime}s";
+    } else {
+        $confLines[] = "dhcp-range={$rangeStart},{$rangeEnd},{$leaseTime}s";
+    }
+
+    if ($gateway !== '') {
+        $confLines[] = "dhcp-option=option:router,{$gateway}";
+    }
+
+    if (!empty($dnsServers)) {
+        $confLines[] = 'dhcp-option=option:dns-server,' . implode(',', $dnsServers);
+    }
+
+    if ($domain !== '') {
+        $confLines[] = "domain={$domain}";
+    }
+
+    foreach ($reservations as $reservation) {
+        $mac = trim((string)($reservation['mac'] ?? ''));
+        $ip = trim((string)($reservation['ip'] ?? ''));
+        $hostname = trim((string)($reservation['hostname'] ?? ''));
+
+        if ($mac === '' || $ip === '') {
+            continue;
+        }
+
+        if ($hostname !== '') {
+            $confLines[] = "dhcp-host={$mac},{$ip},{$hostname}";
+        } else {
+            $confLines[] = "dhcp-host={$mac},{$ip}";
+        }
+    }
+
+    file_put_contents($dhcpConfigFile, implode("\n", $confLines) . "\n");
+
+    if ($deferServiceControl) {
+        if (deferServiceAction('rc-service dnsmasq restart || rc-service dnsmasq start', $errors, 'dnsmasq service update')) {
+            echo "  DHCP server: enabled on {$interface} (start deferred)\n";
+        }
+        return;
+    }
+
+    $output = [];
+    runRcService('dnsmasq', 'restart', $output, $ret);
+    if ($ret !== 0) {
+        $output = [];
+        runRcService('dnsmasq', 'start', $output, $ret);
+    }
+
+    if ($ret !== 0) {
+        $errors[] = 'Failed to restart or start dnsmasq for DHCP: ' . implode(' ', $output);
+        return;
+    }
+
+    echo "  DHCP server: enabled on {$interface}\n";
+}
+
+function applyNtpService(array $config, array &$errors): void
+{
+    $ntpConfig = $config['services']['ntp'] ?? [];
+    $enabled = (bool)($ntpConfig['enabled'] ?? true);
+    $deferServiceControl = (getenv('RC_SVCNAME') === 'coyote-config');
+
+    $servers = normalizeNtpServers($config, $ntpConfig['servers'] ?? ['pool.ntp.org']);
+    $serverList = implode(', ', $servers);
+
+    if (!$enabled) {
+        if ($deferServiceControl) {
+            if (deferServiceAction('rc-service ntpd stop', $errors, 'ntpd service update')) {
+                echo "  NTP daemon: disabled (stop deferred)\n";
+            }
+            return;
+        }
+
+        $output = [];
+        runRcService('ntpd', 'stop', $output, $ret);
+        if ($ret !== 0) {
+            $combined = implode(' ', $output);
+            if (stripos($combined, 'stopped') === false && stripos($combined, 'not running') === false) {
+                $errors[] = 'Failed to stop ntpd while NTP is disabled: ' . $combined;
+            }
+        }
+
+        echo "  NTP daemon: disabled\n";
+        return;
+    }
+
+    $requiresResolver = false;
+    foreach ($servers as $server) {
+        if (filter_var($server, FILTER_VALIDATE_IP) === false) {
+            $requiresResolver = true;
+            break;
+        }
+    }
+
+    waitForNetworkAndResolver($requiresResolver);
+
+    $shouldRunOneShot = $deferServiceControl;
+    if (!$shouldRunOneShot) {
+        exec('pidof lighttpd >/dev/null 2>&1', $lighttpdOutput, $lighttpdRet);
+        $shouldRunOneShot = ($lighttpdRet !== 0);
+    }
+
+    if ($shouldRunOneShot) {
+        $syncOutput = [];
+        runNtpOneShot($servers, $syncOutput, $syncRet);
+        if ($syncRet === 0) {
+            echo "  NTP initial sync: completed ({$serverList})\n";
+        } else {
+            $syncSummary = implode(' ', array_slice($syncOutput, -2));
+            if ($syncSummary !== '') {
+                echo "  NTP initial sync: failed ({$serverList}) - {$syncSummary}\n";
+            } else {
+                echo "  NTP initial sync: failed ({$serverList})\n";
+            }
+        }
+    }
+
+    $ntpdOpts = '-N';
+    foreach ($servers as $server) {
+        $ntpdOpts .= ' -p ' . escapeshellarg($server);
+    }
+
+    $confContent = "# NTP daemon configuration\n";
+    $confContent .= "# Generated by Coyote Linux config apply\n\n";
+    $confContent .= "NTPD_OPTS=\"{$ntpdOpts}\"\n";
+
+    if (file_put_contents('/etc/conf.d/ntpd', $confContent) === false) {
+        $errors[] = 'Failed to write /etc/conf.d/ntpd';
+        return;
+    }
+
+    if ($deferServiceControl) {
+        if (deferServiceAction('rc-service ntpd restart || rc-service ntpd start', $errors, 'ntpd service update')) {
+            echo "  NTP daemon: enabled ({$serverList}) (start deferred)\n";
+        }
+        return;
+    }
+
+    $output = [];
+    runRcService('ntpd', 'restart', $output, $ret);
+    if ($ret !== 0) {
+        $output = [];
+        runRcService('ntpd', 'start', $output, $ret);
+    }
+
+    if ($ret !== 0) {
+        $errors[] = 'Failed to restart or start ntpd: ' . implode(' ', $output);
+        return;
+    }
+
+    echo "  NTP daemon: enabled ({$serverList})\n";
+}
+
+function runNtpOneShot(array $servers, array &$output, &$ret): void
+{
+    $ret = 1;
+    $cmd = '/usr/sbin/ntpd -n -q';
+    foreach ($servers as $server) {
+        $cmd .= ' -p ' . escapeshellarg($server);
+    }
+
+    $timeoutBinary = null;
+    foreach (['/usr/bin/timeout', '/bin/timeout'] as $candidate) {
+        if (is_executable($candidate)) {
+            $timeoutBinary = $candidate;
+            break;
+        }
+    }
+
+    if ($timeoutBinary !== null) {
+        $cmd = $timeoutBinary . ' 25 ' . $cmd;
+    }
+
+    exec($cmd . ' 2>&1', $output, $ret);
+}
+
+function normalizeNtpServers(array $config, $serverConfig): array
+{
+    if (!is_array($serverConfig)) {
+        $serverConfig = preg_split('/[\s,]+/', (string)$serverConfig) ?: [];
+    }
+
+    $normalizedServers = [];
+    foreach ($serverConfig as $server) {
+        if (is_array($server)) {
+            foreach ($server as $nestedServer) {
+                if (is_string($nestedServer)) {
+                    $nestedServer = trim($nestedServer);
+                    if ($nestedServer !== '') {
+                        $normalizedServers[] = $nestedServer;
+                    }
+                }
+            }
+            continue;
+        }
+
+        if (is_string($server)) {
+            $server = trim($server);
+            if ($server !== '') {
+                $normalizedServers[] = $server;
+            }
+        }
+    }
+
+    if (empty($normalizedServers)) {
+        $legacyServer = trim((string)($config['system']['timeserver'] ?? ''));
+        if ($legacyServer !== '') {
+            $normalizedServers[] = $legacyServer;
+        }
+    }
+
+    if (empty($normalizedServers)) {
+        $normalizedServers[] = 'pool.ntp.org';
+    }
+
+    return $normalizedServers;
+}
+
+function waitForNetworkAndResolver(bool $requireResolver): void
+{
+    for ($attempt = 0; $attempt < 12; $attempt++) {
+        $routeOutput = [];
+        exec('ip route show default 2>/dev/null', $routeOutput, $routeRet);
+        $hasDefaultRoute = ($routeRet === 0 && !empty($routeOutput));
+
+        $hasResolver = true;
+        if ($requireResolver) {
+            $hasResolver = false;
+            $resolvLines = @file('/etc/resolv.conf', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+            foreach ($resolvLines as $line) {
+                if (strpos(trim($line), 'nameserver ') === 0) {
+                    $hasResolver = true;
+                    break;
+                }
+            }
+        }
+
+        if ($hasDefaultRoute && $hasResolver) {
+            return;
+        }
+
+        sleep(1);
+    }
 }
 
 /**

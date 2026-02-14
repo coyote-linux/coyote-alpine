@@ -51,7 +51,7 @@ ALLOWED_MODULES="
 # Allowlist of services that can be controlled via rc-service
 ALLOWED_SERVICES="
 dnsmasq
-syslogd
+syslog
 ntpd
 "
 

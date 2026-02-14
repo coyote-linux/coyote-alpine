@@ -66,9 +66,17 @@ class DhcpSubsystem extends AbstractSubsystem
             return $this->failure('DHCP configuration incomplete', ['Interface, range_start, and range_end are required']);
         }
 
+        if (!file_exists("/sys/class/net/{$interface}")) {
+            return $this->failure('DHCP interface not found', ["Interface {$interface} does not exist"]);
+        }
+
         $confLines = [];
         $confLines[] = "interface={$interface}";
-        $confLines[] = "dhcp-range={$rangeStart},{$rangeEnd},{$subnetMask},{$leaseTime}s";
+        if (!empty($subnetMask)) {
+            $confLines[] = "dhcp-range={$rangeStart},{$rangeEnd},{$subnetMask},{$leaseTime}s";
+        } else {
+            $confLines[] = "dhcp-range={$rangeStart},{$rangeEnd},{$leaseTime}s";
+        }
 
         if (!empty($gateway)) {
             $confLines[] = "dhcp-option=option:router,{$gateway}";

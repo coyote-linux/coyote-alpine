@@ -51,9 +51,9 @@ class SyslogSubsystem extends AbstractSubsystem
             $errors[] = 'Failed to write syslog config: ' . $result['output'];
         }
 
-        $result = $priv->rcService('syslogd', 'restart');
+        $result = $priv->rcService('syslog', 'restart');
         if (!$result['success']) {
-            $errors[] = 'Failed to restart syslogd: ' . $result['output'];
+            $errors[] = 'Failed to restart syslog service: ' . $result['output'];
         }
 
         if (!empty($errors)) {

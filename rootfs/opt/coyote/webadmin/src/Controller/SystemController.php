@@ -83,9 +83,7 @@ class SystemController extends BaseController
         $config->set('system.hostname', $hostname);
         $config->set('system.domain', $domain);
         $config->set('system.timezone', $timezone);
-        if (!empty($dnsServers)) {
-            $config->set('system.nameservers', $dnsServers);
-        }
+        $config->set('system.nameservers', $dnsServers);
 
         if ($this->configService->saveWorkingConfig($config)) {
             $this->flash('success', 'Settings saved. Click "Apply Configuration" to activate changes.');
@@ -571,12 +569,19 @@ class SystemController extends BaseController
         $forcePasswordChange = $auth->needsPasswordChange();
 
         $config = $this->configService->getWorkingConfig()->toArray();
+        $nameservers = $config['system']['nameservers'] ?? ($config['network']['dns'] ?? ['1.1.1.1']);
+        if (is_array($nameservers) && isset($nameservers['nameservers']) && is_array($nameservers['nameservers'])) {
+            $nameservers = $nameservers['nameservers'];
+        }
+        if (!is_array($nameservers)) {
+            $nameservers = [$nameservers];
+        }
 
         return [
             'hostname' => $config['system']['hostname'] ?? 'coyote',
             'domain' => $config['system']['domain'] ?? '',
             'timezone' => $config['system']['timezone'] ?? 'UTC',
-            'nameservers' => $config['system']['nameservers'] ?? ['1.1.1.1'],
+            'nameservers' => $nameservers,
             'timezones' => \DateTimeZone::listIdentifiers(),
             'backups' => $this->listBackups(),
             'applyStatus' => $this->applyService->getStatus(),
