@@ -108,7 +108,10 @@ class DhcpSubsystem extends AbstractSubsystem
 
         $result = $priv->rcService('dnsmasq', 'reload');
         if (!$result['success']) {
-            $errors[] = 'Failed to reload dnsmasq: ' . $result['output'];
+            $startResult = $priv->rcService('dnsmasq', 'start');
+            if (!$startResult['success']) {
+                $errors[] = 'Failed to reload or start dnsmasq: ' . $startResult['output'];
+            }
         }
 
         if (!empty($errors)) {

@@ -10,3 +10,6 @@
 
 # MRTG - collect stats and generate graphs every 5 minutes
 */5	*	*	*	*	/usr/bin/env LANG=C /usr/bin/mrtg /etc/mrtg/mrtg.cfg --logging /var/log/mrtg.log 2>&1; /opt/coyote/bin/mrtg-graphs >/dev/null 2>&1
+
+# DHCP lease persistence - copy leases to config partition when changed
+* * * * *	/opt/coyote/bin/dhcp-lease-sync >/dev/null 2>&1
