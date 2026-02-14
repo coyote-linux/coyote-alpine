@@ -164,13 +164,17 @@ class AuthController extends BaseController
                 .logo {
                     text-align: center;
                     margin-bottom: 1rem;
-                    font-size: 3rem;
+                }
+                .logo img {
+                    width: 72px;
+                    height: 72px;
+                    margin: 0 auto;
                 }
             </style>
         </head>
         <body>
             <div class="login-box">
-                <div class="logo">🐺</div>
+                <div class="logo"><img src="/assets/img/logo.png" alt="Coyote Linux"></div>
                 <h1>Coyote Linux</h1>
                 <?php if ($error): ?>
                     <div class="error"><?= htmlspecialchars($error) ?></div>
