@@ -4,6 +4,21 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.152] - 2026-02-13
+
+### Changed
+
+#### Apply Configuration Pending Indicator
+- Apply Configuration menu entry now uses a danger-style red background when uncommitted configuration changes are present
+
+### Fixed
+
+#### DHCP Service Startup and Lease Persistence
+- Added `dnsmasq` system user/group creation in rootfs build so dnsmasq can start under its configured account
+- Added fallback from `rc-service dnsmasq reload` to `rc-service dnsmasq start` when DHCP is enabled and dnsmasq was not already running
+- Added early boot lease-state setup to create `/var/lib/misc`, restore persisted DHCP leases from `/mnt/config/dhcp/dnsmasq.leases`, and enforce `dnsmasq:dnsmasq` ownership with `0644` permissions
+- Added minute cron-based DHCP lease sync to persist `/var/lib/misc/dnsmasq.leases` to `/mnt/config/dhcp/dnsmasq.leases` only when file contents change
+
 ## [4.0.150] - 2026-02-11
 
 ### Fixed

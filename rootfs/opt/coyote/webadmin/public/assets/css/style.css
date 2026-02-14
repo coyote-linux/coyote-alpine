@@ -1170,15 +1170,12 @@ hr {
 
 /* Apply Configuration Pending Highlight */
 .apply-pending {
-    background-color: #ff6b35 !important;
-    animation: pulse 1.5s ease-in-out infinite;
+    background: var(--error) !important;
+    color: #fff !important;
 }
 
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.7;
-    }
+.apply-pending:hover,
+.apply-pending.active {
+    background: #d32f2f !important;
+    color: #fff !important;
 }

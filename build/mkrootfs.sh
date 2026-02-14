@@ -461,6 +461,16 @@ EOF
         echo "lighttpd:!::0:::::" >> "${ROOTFS_DIR}/etc/shadow"
     fi
 
+    if ! grep -q "^dnsmasq:" "${ROOTFS_DIR}/etc/group" 2>/dev/null; then
+        echo "dnsmasq:x:101:" >> "${ROOTFS_DIR}/etc/group"
+    fi
+    if ! grep -q "^dnsmasq:" "${ROOTFS_DIR}/etc/passwd" 2>/dev/null; then
+        echo "dnsmasq:x:101:101:dnsmasq:/var/lib/misc:/sbin/nologin" >> "${ROOTFS_DIR}/etc/passwd"
+    fi
+    if ! grep -q "^dnsmasq:" "${ROOTFS_DIR}/etc/shadow" 2>/dev/null; then
+        echo "dnsmasq:!::0:::::" >> "${ROOTFS_DIR}/etc/shadow"
+    fi
+
     # Add admin group and user (non-privileged user for future use)
     if ! grep -q "^admin:" "${ROOTFS_DIR}/etc/group" 2>/dev/null; then
         echo "admin:x:1000:" >> "${ROOTFS_DIR}/etc/group"

@@ -17,6 +17,8 @@ depend() {
 start() {
     ebegin "Applying Coyote Linux configuration"
 
+    setup_dhcp_lease_state
+
     # Apply system configuration (includes network setup, mounts config partition)
     /opt/coyote/bin/apply-config
 
@@ -28,6 +30,24 @@ start() {
     setup_webadmin_permissions
 
     eend $?
+}
+
+setup_dhcp_lease_state() {
+    local runtime_dir="/var/lib/misc"
+    local runtime_lease="${runtime_dir}/dnsmasq.leases"
+    local persistent_lease="/mnt/config/dhcp/dnsmasq.leases"
+
+    mkdir -p "$runtime_dir"
+    chmod 755 "$runtime_dir" 2>/dev/null || true
+
+    if [ -f "$persistent_lease" ]; then
+        cp "$persistent_lease" "$runtime_lease" 2>/dev/null || true
+    elif [ ! -f "$runtime_lease" ]; then
+        : > "$runtime_lease" 2>/dev/null || true
+    fi
+
+    chown dnsmasq:dnsmasq "$runtime_lease" 2>/dev/null || true
+    chmod 644 "$runtime_lease" 2>/dev/null || true
 }
 
 # Create persistent directories on config partition
@@ -43,6 +63,7 @@ setup_persistent_dirs() {
     # Check if directories need to be created
     [ ! -d /mnt/config/root ] && need_write=true
     [ ! -d /mnt/config/ssl ] && need_write=true
+    [ ! -d /mnt/config/dhcp ] && need_write=true
 
     if [ "$need_write" = "true" ]; then
         einfo "Creating persistent directories..."
@@ -67,6 +88,11 @@ setup_persistent_dirs() {
         if [ ! -d /mnt/config/ssl ]; then
             mkdir -p /mnt/config/ssl
             chmod 700 /mnt/config/ssl
+        fi
+
+        if [ ! -d /mnt/config/dhcp ]; then
+            mkdir -p /mnt/config/dhcp
+            chmod 755 /mnt/config/dhcp
         fi
 
         mount -o remount,ro /mnt/config 2>/dev/null || true

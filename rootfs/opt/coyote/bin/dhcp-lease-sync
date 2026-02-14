@@ -1,0 +1,31 @@
+#!/bin/sh
+
+SRC_LEASE="/var/lib/misc/dnsmasq.leases"
+DST_DIR="/mnt/config/dhcp"
+DST_LEASE="${DST_DIR}/dnsmasq.leases"
+
+[ -f "$SRC_LEASE" ] || exit 0
+mountpoint -q /mnt/config 2>/dev/null || exit 0
+
+if [ -f "$DST_LEASE" ] && cmp -s "$SRC_LEASE" "$DST_LEASE" 2>/dev/null; then
+    exit 0
+fi
+
+mount -o remount,rw /mnt/config 2>/dev/null || exit 0
+
+mkdir -p "$DST_DIR" || {
+    mount -o remount,ro /mnt/config 2>/dev/null || true
+    exit 0
+}
+
+cp "$SRC_LEASE" "$DST_LEASE" 2>/dev/null || {
+    mount -o remount,ro /mnt/config 2>/dev/null || true
+    exit 0
+}
+
+chown dnsmasq:dnsmasq "$DST_LEASE" 2>/dev/null || true
+chmod 644 "$DST_LEASE" 2>/dev/null || true
+
+mount -o remount,ro /mnt/config 2>/dev/null || true
+
+exit 0
