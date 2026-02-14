@@ -7,7 +7,7 @@ use Coyote\System\PrivilegedExecutor;
 class FirmwareService
 {
     private const VERSION_FILE = '/etc/coyote/version';
-    private const STAGING_DIR = '/tmp/firmware-staging';
+    private const STAGING_DIR = '/mnt/config/firmware-staging';
     private const UPDATE_CHECK_URL = 'https://update.coyotelinux.com/latest.json';
     private const MIN_SIZE = 10485760;
     private const MAX_SIZE = 524288000;
@@ -109,12 +109,24 @@ class FirmwareService
             return ['success' => false, 'error' => 'Checksum verification failed'];
         }
 
-        if (file_put_contents($stagingPath, $data) === false) {
+        $saved = $this->withConfigWritable(static function () use ($stagingPath, $data): bool {
+            if (file_put_contents($stagingPath, $data) === false) {
+                return false;
+            }
+
+            chmod($stagingPath, 0644);
+            return true;
+        });
+
+        if (!$saved) {
             return ['success' => false, 'error' => 'Failed to write firmware to staging directory'];
         }
 
         if (!$this->validateArchive($stagingPath)) {
-            @unlink($stagingPath);
+            $this->withConfigWritable(static function () use ($stagingPath): bool {
+                return !file_exists($stagingPath) || @unlink($stagingPath);
+            });
+
             return ['success' => false, 'error' => 'Firmware archive validation failed'];
         }
 
@@ -153,12 +165,24 @@ class FirmwareService
 
         $stagingPath = self::STAGING_DIR . '/' . $filename;
 
-        if (!move_uploaded_file($tmpPath, $stagingPath)) {
+        $moved = $this->withConfigWritable(static function () use ($tmpPath, $stagingPath): bool {
+            if (!move_uploaded_file($tmpPath, $stagingPath)) {
+                return false;
+            }
+
+            chmod($stagingPath, 0644);
+            return true;
+        });
+
+        if (!$moved) {
             return ['success' => false, 'error' => 'Failed to move uploaded file to staging'];
         }
 
         if (!$this->validateArchive($stagingPath)) {
-            @unlink($stagingPath);
+            $this->withConfigWritable(static function () use ($stagingPath): bool {
+                return !file_exists($stagingPath) || @unlink($stagingPath);
+            });
+
             return ['success' => false, 'error' => 'Archive validation failed - missing required components'];
         }
 
@@ -198,14 +222,20 @@ class FirmwareService
         }
 
         $files = glob(self::STAGING_DIR . '/*');
-
-        foreach ($files as $file) {
-            if (is_file($file)) {
-                @unlink($file);
-            }
+        if ($files === false || empty($files)) {
+            return true;
         }
 
-        return true;
+        return $this->withConfigWritable(static function () use ($files): bool {
+            $success = true;
+            foreach ($files as $file) {
+                if (is_file($file) && !@unlink($file)) {
+                    $success = false;
+                }
+            }
+
+            return $success;
+        });
     }
 
     public function applyUpdate(): array
@@ -221,14 +251,21 @@ class FirmwareService
         }
 
         $flagFile = self::STAGING_DIR . '/.apply';
-        if (file_put_contents($flagFile, date('c')) === false) {
+        $flagWritten = $this->withConfigWritable(static function () use ($flagFile): bool {
+            return file_put_contents($flagFile, date('c')) !== false;
+        });
+
+        if (!$flagWritten) {
             return ['success' => false, 'error' => 'Failed to write apply flag'];
         }
 
         $result = $this->priv->reboot();
 
         if (!$result['success']) {
-            @unlink($flagFile);
+            $this->withConfigWritable(static function () use ($flagFile): bool {
+                return !file_exists($flagFile) || @unlink($flagFile);
+            });
+
             return ['success' => false, 'error' => 'Failed to trigger reboot: ' . $result['output']];
         }
 
@@ -237,11 +274,52 @@ class FirmwareService
 
     private function ensureStagingDir(): bool
     {
-        if (is_dir(self::STAGING_DIR)) {
+        if (is_dir(self::STAGING_DIR) && is_writable(self::STAGING_DIR)) {
             return true;
         }
 
-        return @mkdir(self::STAGING_DIR, 0755, true);
+        if (!$this->remountConfig(true)) {
+            return false;
+        }
+
+        $initialized = false;
+        $remountedReadOnly = false;
+
+        try {
+            $result = $this->priv->initFirmwareStaging();
+            $initialized = $result['success'] && is_dir(self::STAGING_DIR) && is_writable(self::STAGING_DIR);
+        } finally {
+            $remountedReadOnly = $this->remountConfig(false);
+        }
+
+        return $initialized && $remountedReadOnly;
+    }
+
+    private function withConfigWritable(callable $operation): bool
+    {
+        if (!$this->remountConfig(true)) {
+            return false;
+        }
+
+        $operationResult = false;
+        $remountedReadOnly = false;
+
+        try {
+            $operationResult = (bool)$operation();
+        } finally {
+            $remountedReadOnly = $this->remountConfig(false);
+        }
+
+        return $operationResult && $remountedReadOnly;
+    }
+
+    private function remountConfig(bool $writable): bool
+    {
+        $result = $writable
+            ? $this->priv->mountConfigRw()
+            : $this->priv->mountConfigRo();
+
+        return $result['success'];
     }
 
     private function verifyChecksum(string $data, string $checksum): bool

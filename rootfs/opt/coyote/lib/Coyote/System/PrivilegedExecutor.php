@@ -275,6 +275,16 @@ class PrivilegedExecutor
         ];
     }
 
+    public function initFirmwareStaging(): array
+    {
+        $result = $this->execute('init-firmware-staging');
+
+        return [
+            'success' => $result['success'],
+            'output' => $result['output'],
+        ];
+    }
+
     /**
      * Remount /mnt/config read-write.
      *

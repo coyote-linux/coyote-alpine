@@ -64,6 +64,7 @@ setup_persistent_dirs() {
     [ ! -d /mnt/config/root ] && need_write=true
     [ ! -d /mnt/config/ssl ] && need_write=true
     [ ! -d /mnt/config/dhcp ] && need_write=true
+    [ ! -d /mnt/config/firmware-staging ] && need_write=true
 
     if [ "$need_write" = "true" ]; then
         einfo "Creating persistent directories..."
@@ -93,6 +94,11 @@ setup_persistent_dirs() {
         if [ ! -d /mnt/config/dhcp ]; then
             mkdir -p /mnt/config/dhcp
             chmod 755 /mnt/config/dhcp
+        fi
+
+        if [ ! -d /mnt/config/firmware-staging ]; then
+            mkdir -p /mnt/config/firmware-staging
+            chmod 755 /mnt/config/firmware-staging
         fi
 
         mount -o remount,ro /mnt/config 2>/dev/null || true
@@ -141,6 +147,12 @@ setup_webadmin_permissions() {
         fi
         chown lighttpd:lighttpd /mnt/config/backups
         chmod 755 /mnt/config/backups
+
+        if [ ! -d /mnt/config/firmware-staging ]; then
+            mkdir -p /mnt/config/firmware-staging
+        fi
+        chown lighttpd:lighttpd /mnt/config/firmware-staging
+        chmod 755 /mnt/config/firmware-staging
 
         mount -o remount,ro /mnt/config 2>/dev/null || true
     fi

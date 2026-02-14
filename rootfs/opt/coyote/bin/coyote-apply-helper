@@ -303,6 +303,21 @@ cmd_init_cert_store() {
     echo "OK"
 }
 
+cmd_init_firmware_staging() {
+    local base="/mnt/config/firmware-staging"
+
+    log_action "init-firmware-staging: initializing $base"
+
+    if [ ! -d "$base" ]; then
+        mkdir -p "$base"
+    fi
+
+    chown lighttpd:lighttpd "$base"
+    chmod 755 "$base"
+
+    echo "OK"
+}
+
 # Command: mount-rw (remount /mnt/config read-write)
 cmd_mount_rw() {
     log_action "mount-rw: remounting /mnt/config read-write"
@@ -370,6 +385,9 @@ main() {
             ;;
         init-cert-store)
             cmd_init_cert_store
+            ;;
+        init-firmware-staging)
+            cmd_init_firmware_staging
             ;;
         *)
             die "Unknown command: $cmd"
