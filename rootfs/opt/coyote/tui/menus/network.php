@@ -49,6 +49,7 @@ function configureInterfaces(): void
 {
     $network = new Network();
     $interfaces = $network->getInterfaces();
+    $configured = getConfiguredInterfaceMap();
 
     clearScreen();
     showHeader();
@@ -58,8 +59,7 @@ function configureInterfaces(): void
     $items = [];
     foreach ($interfaces as $name => $info) {
         $state = $info['state'] ?? 'unknown';
-        $addr = $info['address'] ?? 'not configured';
-        $items[$name] = ['label' => "{$name} ({$state}) - {$addr}"];
+        $items[$name] = ['label' => buildInterfaceSummary($name, $info, $configured[$name] ?? null, $state)];
     }
 
     while (true) {
@@ -70,7 +70,7 @@ function configureInterfaces(): void
         }
 
         if (isset($interfaces[$choice])) {
-            configureInterface($choice, $interfaces[$choice]);
+            configureInterface($choice, $interfaces[$choice], $configured[$choice] ?? null);
         }
     }
 }
@@ -78,15 +78,33 @@ function configureInterfaces(): void
 /**
  * Configure a single interface.
  */
-function configureInterface(string $name, array $current): void
+function configureInterface(string $name, array $current, ?array $configured = null): void
 {
     clearScreen();
     showHeader();
     echo "Configure Interface: {$name}\n\n";
 
+    $currentType = $configured['type'] ?? (($configured['enabled'] ?? true) ? 'static' : 'disabled');
+    $currentAddresses = [];
+    if (isset($configured['addresses']) && is_array($configured['addresses'])) {
+        $currentAddresses = $configured['addresses'];
+    }
+
+    $liveAddresses = [];
+    if (!empty($current['ipv4'] ?? [])) {
+        $liveAddresses = $current['ipv4'];
+    } elseif (!empty($current['ipv6'] ?? [])) {
+        $liveAddresses = $current['ipv6'];
+    }
+
+    $addressDisplay = !empty($currentAddresses)
+        ? implode(', ', $currentAddresses)
+        : (!empty($liveAddresses) ? implode(', ', $liveAddresses) : 'not configured');
+
     echo "Current configuration:\n";
+    echo "  Type: " . strtoupper((string)$currentType) . "\n";
     echo "  State: " . ($current['state'] ?? 'unknown') . "\n";
-    echo "  Address: " . ($current['address'] ?? 'not configured') . "\n";
+    echo "  Address: {$addressDisplay}\n";
     echo "  MAC: " . ($current['mac'] ?? 'unknown') . "\n\n";
 
     $items = [
@@ -337,4 +355,68 @@ function configureHostname(): void
     }
 
     waitForEnter();
+}
+
+function getConfiguredInterfaceMap(): array
+{
+    $configManager = new ConfigManager();
+    $runningConfig = $configManager->loadRunning();
+    if ($runningConfig === null) {
+        $configManager->load();
+        $runningConfig = $configManager->getRunningConfig();
+    }
+
+    if ($runningConfig === null) {
+        return [];
+    }
+
+    $map = [];
+    $interfaces = $runningConfig->get('network.interfaces', []);
+    foreach ($interfaces as $iface) {
+        $name = $iface['name'] ?? null;
+        if (is_string($name) && $name !== '') {
+            $map[$name] = $iface;
+        }
+    }
+
+    return $map;
+}
+
+function buildInterfaceSummary(string $name, array $liveInfo, ?array $configured, string $state): string
+{
+    if ($configured !== null) {
+        $type = strtolower((string)($configured['type'] ?? 'static'));
+        $enabled = (bool)($configured['enabled'] ?? true);
+
+        if (!$enabled || $type === 'disabled') {
+            return "{$name} ({$state}) - disabled";
+        }
+
+        if ($type === 'dhcp') {
+            return "{$name} ({$state}) - dhcp";
+        }
+
+        if ($type === 'pppoe') {
+            return "{$name} ({$state}) - pppoe";
+        }
+
+        if ($type === 'static') {
+            $addresses = $configured['addresses'] ?? [];
+            if (is_array($addresses) && !empty($addresses)) {
+                return "{$name} ({$state}) - " . implode(', ', $addresses);
+            }
+            return "{$name} ({$state}) - static (no address)";
+        }
+    }
+
+    $liveAddresses = $liveInfo['ipv4'] ?? [];
+    if (!is_array($liveAddresses) || empty($liveAddresses)) {
+        $liveAddresses = $liveInfo['ipv6'] ?? [];
+    }
+
+    if (is_array($liveAddresses) && !empty($liveAddresses)) {
+        return "{$name} ({$state}) - " . implode(', ', $liveAddresses);
+    }
+
+    return "{$name} ({$state}) - not configured";
 }

@@ -13,11 +13,8 @@ function firewallMenu(): void
 {
     $items = [
         'status' => ['label' => 'Firewall Status'],
-        'toggle' => ['label' => 'Enable/Disable Firewall'],
-        'policy' => ['label' => 'Default Policy'],
         'webadmin' => ['label' => 'Web Admin Hosts'],
         'ssh' => ['label' => 'SSH Access Hosts'],
-        'blocked' => ['label' => 'Blocked Hosts'],
         'rules' => ['label' => 'View Rules'],
     ];
 
@@ -32,20 +29,11 @@ function firewallMenu(): void
             case 'status':
                 showFirewallStatus();
                 break;
-            case 'toggle':
-                toggleFirewall();
-                break;
-            case 'policy':
-                setDefaultPolicy();
-                break;
             case 'webadmin':
                 editWebAdminHosts();
                 break;
             case 'ssh':
                 editSshHosts();
-                break;
-            case 'blocked':
-                manageBlockedHosts();
                 break;
             case 'rules':
                 viewFirewallRules();
@@ -65,11 +53,24 @@ function showFirewallStatus(): void
     echo "===============\n\n";
 
     try {
+        $configManager = new ConfigManager();
+        $configManager->loadRunning();
+        $runningConfig = $configManager->getRunningConfig();
+        if ($runningConfig === null) {
+            $configManager->load();
+            $runningConfig = $configManager->getRunningConfig();
+        }
+
         $manager = new FirewallManager();
         $status = $manager->getStatus();
 
         echo "Backend: " . ($status['backend'] ?? 'nftables') . "\n";
-        echo "Enabled: " . ($status['enabled'] ? 'Yes' : 'No') . "\n";
+        echo "Enabled: Yes (always enabled)\n";
+        echo "Default policy: drop (fixed)\n";
+        if ($runningConfig !== null) {
+            $applied = $runningConfig->get('firewall.applied', []);
+            echo "Applied ACL bindings: " . count($applied) . "\n";
+        }
         echo "Version: " . ($status['version'] ?? 'unknown') . "\n\n";
 
         // Connection tracking
@@ -87,88 +88,6 @@ function showFirewallStatus(): void
         }
     } catch (\Exception $e) {
         showError($e->getMessage());
-    }
-
-    waitForEnter();
-}
-
-/**
- * Toggle firewall on/off.
- */
-function toggleFirewall(): void
-{
-    clearScreen();
-    showHeader();
-    echo "Toggle Firewall\n";
-    echo "===============\n\n";
-
-    $configManager = new ConfigManager();
-    $configManager->load();
-    $config = $configManager->getRunningConfig();
-
-    $enabled = $config->get('firewall.enabled', true);
-    $status = $enabled ? 'enabled' : 'disabled';
-    $action = $enabled ? 'disable' : 'enable';
-
-    echo "Firewall is currently: {$status}\n\n";
-
-    if (confirm("Do you want to {$action} the firewall?")) {
-        $config->set('firewall.enabled', !$enabled);
-        $configManager->saveRunning();
-
-        if (confirm('Apply changes now?')) {
-            exec('/opt/coyote/bin/apply-config 2>&1', $output, $result);
-            if ($result === 0) {
-                showSuccess("Firewall " . ($enabled ? 'disabled' : 'enabled'));
-            } else {
-                showError("Failed to apply changes");
-            }
-        } else {
-            showInfo("Changes saved. Run 'Apply Configuration' to activate.");
-        }
-    }
-
-    waitForEnter();
-}
-
-/**
- * Set default firewall policy.
- */
-function setDefaultPolicy(): void
-{
-    clearScreen();
-    showHeader();
-    echo "Default Firewall Policy\n";
-    echo "=======================\n\n";
-
-    $configManager = new ConfigManager();
-    $configManager->load();
-    $config = $configManager->getRunningConfig();
-
-    $current = $config->get('firewall.default_policy', 'drop');
-    echo "Current policy: {$current}\n\n";
-
-    $items = [
-        'drop' => ['label' => 'DROP - Silently drop unauthorized traffic'],
-        'reject' => ['label' => 'REJECT - Reject with ICMP message'],
-        'accept' => ['label' => 'ACCEPT - Allow all traffic (not recommended)'],
-    ];
-
-    $choice = showMenu($items, 'Select Default Policy');
-
-    if ($choice !== null && $choice !== '') {
-        $config->set('firewall.default_policy', $choice);
-        $configManager->saveRunning();
-        showSuccess("Default policy set to: {$choice}");
-
-        if (confirm('Apply changes now?')) {
-            exec('/opt/coyote/bin/apply-config 2>&1', $output, $result);
-            if ($result === 0) {
-                showSuccess("Changes applied");
-            } else {
-                showError("Failed to apply changes");
-            }
-        }
     }
 
     waitForEnter();
@@ -206,6 +125,7 @@ function editWebAdminHosts(): void
         }
 
         $items = [
+            'view' => ['label' => 'View Allowed Hosts'],
             'add' => ['label' => 'Add Host/Network'],
             'remove' => ['label' => 'Remove Host/Network'],
             'clear' => ['label' => 'Clear All (block all access)'],
@@ -218,6 +138,9 @@ function editWebAdminHosts(): void
         }
 
         switch ($choice) {
+            case 'view':
+                viewAllowedHosts('Web Admin Allowed Hosts', $allowedHosts);
+                break;
             case 'add':
                 addWebAdminHost($configManager, $config, $allowedHosts);
                 break;
@@ -405,6 +328,7 @@ function editSshHosts(): void
         }
 
         $items = [
+            'view' => ['label' => 'View Allowed Hosts'],
             'add' => ['label' => 'Add Host/Network'],
             'remove' => ['label' => 'Remove Host/Network'],
             'clear' => ['label' => 'Clear All (block all access)'],
@@ -417,6 +341,9 @@ function editSshHosts(): void
         }
 
         switch ($choice) {
+            case 'view':
+                viewAllowedHosts('SSH Allowed Hosts', $allowedHosts);
+                break;
             case 'add':
                 addSshHost($configManager, $config, $allowedHosts);
                 break;
@@ -567,138 +494,20 @@ function clearSshHosts(ConfigManager $configManager, $config): void
     waitForEnter();
 }
 
-/**
- * Manage blocked hosts.
- */
-function manageBlockedHosts(): void
-{
-    while (true) {
-        clearScreen();
-        showHeader();
-        echo "Blocked Hosts\n";
-        echo "=============\n\n";
-
-        // Get current blocked hosts from nftables
-        $blockedHosts = [];
-        exec('nft list set inet filter blocked_hosts 2>/dev/null', $output);
-        $inElements = false;
-        foreach ($output as $line) {
-            if (strpos($line, 'elements') !== false) {
-                $inElements = true;
-            }
-            if ($inElements && preg_match_all('/[\d.]+(?:\/\d+)?/', $line, $matches)) {
-                $blockedHosts = array_merge($blockedHosts, $matches[0]);
-            }
-        }
-
-        if (empty($blockedHosts)) {
-            echo "No hosts currently blocked.\n\n";
-        } else {
-            echo "Currently blocked:\n";
-            foreach ($blockedHosts as $i => $host) {
-                $num = $i + 1;
-                echo "  {$num}. {$host}\n";
-            }
-            echo "\n";
-        }
-
-        $items = [
-            'block' => ['label' => 'Block Host/Network'],
-            'unblock' => ['label' => 'Unblock Host/Network'],
-        ];
-
-        $choice = showMenu($items, 'Manage Blocked Hosts');
-
-        if ($choice === null) {
-            return;
-        }
-
-        switch ($choice) {
-            case 'block':
-                blockHost();
-                break;
-            case 'unblock':
-                unblockHost($blockedHosts);
-                break;
-        }
-    }
-}
-
-/**
- * Block a host.
- */
-function blockHost(): void
+function viewAllowedHosts(string $title, array $allowedHosts): void
 {
     clearScreen();
     showHeader();
-    echo "Block Host\n";
-    echo "==========\n\n";
+    echo $title . "\n";
+    echo str_repeat('=', strlen($title)) . "\n\n";
 
-    $host = prompt("IP address or network to block");
-
-    if (empty($host)) {
-        return;
-    }
-
-    if (!isValidCidr($host)) {
-        showError("Invalid format. Use IP address or CIDR notation.");
-        waitForEnter();
-        return;
-    }
-
-    // Add to nftables set immediately
-    exec("nft add element inet filter blocked_hosts { {$host} } 2>&1", $output, $result);
-
-    if ($result === 0) {
-        showSuccess("Blocked: {$host}");
+    if (empty($allowedHosts)) {
+        echo "No addresses are currently allowed.\n";
     } else {
-        showError("Failed to block: " . implode(' ', $output));
-    }
-
-    waitForEnter();
-}
-
-/**
- * Unblock a host.
- */
-function unblockHost(array $blockedHosts): void
-{
-    if (empty($blockedHosts)) {
-        clearScreen();
-        showHeader();
-        showInfo("No hosts to unblock.");
-        waitForEnter();
-        return;
-    }
-
-    clearScreen();
-    showHeader();
-    echo "Unblock Host\n";
-    echo "============\n\n";
-
-    echo "Currently blocked:\n";
-    foreach ($blockedHosts as $i => $host) {
-        $num = $i + 1;
-        echo "  {$num}. {$host}\n";
-    }
-    echo "\n";
-
-    $input = prompt("Enter number to unblock (or 0 to cancel)");
-    $index = (int)$input - 1;
-
-    if ($index < 0 || $index >= count($blockedHosts)) {
-        return;
-    }
-
-    $host = $blockedHosts[$index];
-
-    // Remove from nftables set immediately
-    exec("nft delete element inet filter blocked_hosts { {$host} } 2>&1", $output, $result);
-
-    if ($result === 0) {
-        showSuccess("Unblocked: {$host}");
-    } else {
-        showError("Failed to unblock: " . implode(' ', $output));
+        foreach ($allowedHosts as $i => $host) {
+            $num = $i + 1;
+            echo "  {$num}. {$host}\n";
+        }
     }
 
     waitForEnter();

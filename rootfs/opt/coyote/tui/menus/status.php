@@ -120,7 +120,14 @@ function showNetworkStatus(): void
 
     foreach ($interfaces as $name => $info) {
         $state = $info['state'] ?? 'unknown';
-        $addr = $info['address'] ?? '-';
+        $ipv4 = $info['ipv4'] ?? [];
+        $ipv6 = $info['ipv6'] ?? [];
+        $addr = '-';
+        if (!empty($ipv4)) {
+            $addr = implode(', ', $ipv4);
+        } elseif (!empty($ipv6)) {
+            $addr = implode(', ', $ipv6);
+        }
         $mac = $info['mac'] ?? '-';
         printf("%-12s %-8s %-18s %-20s\n", $name, $state, $addr, $mac);
     }
@@ -130,10 +137,15 @@ function showNetworkStatus(): void
     // Routes
     echo "Default Route:\n";
     $routes = $network->getRoutes();
+    $hasDefault = false;
     foreach ($routes as $route) {
         if (($route['destination'] ?? '') === 'default') {
+            $hasDefault = true;
             echo "  Gateway: " . ($route['gateway'] ?? '-') . " via " . ($route['interface'] ?? '-') . "\n";
         }
+    }
+    if (!$hasDefault) {
+        echo "  none\n";
     }
 
     echo "\n";
@@ -141,8 +153,12 @@ function showNetworkStatus(): void
     // DNS
     echo "DNS Servers:\n";
     $dns = $network->getDnsServers();
-    foreach ($dns as $server) {
-        echo "  {$server}\n";
+    if (empty($dns)) {
+        echo "  none\n";
+    } else {
+        foreach ($dns as $server) {
+            echo "  {$server}\n";
+        }
     }
 
     waitForEnter();

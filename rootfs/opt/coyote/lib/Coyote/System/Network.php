@@ -175,6 +175,29 @@ class Network
         return $routes;
     }
 
+    public function getDnsServers(): array
+    {
+        $servers = [];
+        $lines = @file('/etc/resolv.conf', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lines === false) {
+            return $servers;
+        }
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (strpos($line, 'nameserver ') !== 0) {
+                continue;
+            }
+
+            $parts = preg_split('/\s+/', $line);
+            if (isset($parts[1]) && $parts[1] !== '') {
+                $servers[] = $parts[1];
+            }
+        }
+
+        return $servers;
+    }
+
     /**
      * Get current IP addresses for all interfaces.
      *

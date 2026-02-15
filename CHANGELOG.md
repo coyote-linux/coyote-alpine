@@ -4,6 +4,21 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.172] - 2026-02-15
+
+### Fixed
+
+#### TUI Network and Firewall Accuracy
+- Fixed a crash in System Status -> Network Status by adding DNS server discovery support to the network library and updating status rendering to match the `ipv4`/`ipv6` interface model
+- Updated firewall status in the TUI to match Coyote's always-enabled model with fixed `drop` policy text and current ACL binding visibility
+- Improved interface configuration display so configured interfaces show their current configured type/address instead of reporting as unconfigured
+
+### Changed
+
+#### TUI Firewall Access Controls
+- Removed interactive block/unblock host controls from the firewall menu flow to keep host access management within ACL configuration
+- Added explicit "View Allowed Hosts" actions for both Web Admin and SSH host access menus
+
 ## [4.0.171] - 2026-02-14
 
 ### Changed
