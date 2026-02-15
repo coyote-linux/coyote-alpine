@@ -7,6 +7,7 @@ require_once TUI_ROOT . '/menus/network.php';
 require_once TUI_ROOT . '/menus/firewall.php';
 require_once TUI_ROOT . '/menus/services.php';
 require_once TUI_ROOT . '/menus/system.php';
+require_once TUI_ROOT . '/menus/firmware.php';
 require_once TUI_ROOT . '/menus/status.php';
 
 /**

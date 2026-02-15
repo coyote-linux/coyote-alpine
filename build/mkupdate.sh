@@ -44,13 +44,28 @@ cp "$KERNEL_FILE" "${STAGE_DIR}/vmlinuz"
 cp "$INITRAMFS_FILE" "${STAGE_DIR}/initramfs.img"
 cp "$FIRMWARE_FILE" "${STAGE_DIR}/firmware.squashfs"
 
-tar -czf "$ARCHIVE_FILE" -C "$STAGE_DIR" vmlinuz initramfs.img firmware.squashfs
-
-sha256sum "$ARCHIVE_FILE" > "${ARCHIVE_FILE}.sha256"
+sha256sum "${STAGE_DIR}/vmlinuz" > "${STAGE_DIR}/vmlinuz.sha256"
+sha256sum "${STAGE_DIR}/initramfs.img" > "${STAGE_DIR}/initramfs.img.sha256"
+sha256sum "${STAGE_DIR}/firmware.squashfs" > "${STAGE_DIR}/firmware.squashfs.sha256"
 
 if [ -f "${SCRIPT_DIR}/.local-config" ]; then
     . "${SCRIPT_DIR}/.local-config"
 fi
+
+if [ -n "${COYOTE_SIGNING_KEY:-}" ] && [ -f "${COYOTE_SIGNING_KEY}" ]; then
+    openssl pkeyutl -sign -inkey "$COYOTE_SIGNING_KEY" -rawin -in "${STAGE_DIR}/vmlinuz" -out "${STAGE_DIR}/vmlinuz.sig"
+    openssl pkeyutl -sign -inkey "$COYOTE_SIGNING_KEY" -rawin -in "${STAGE_DIR}/initramfs.img" -out "${STAGE_DIR}/initramfs.img.sig"
+    openssl pkeyutl -sign -inkey "$COYOTE_SIGNING_KEY" -rawin -in "${STAGE_DIR}/firmware.squashfs" -out "${STAGE_DIR}/firmware.squashfs.sig"
+fi
+
+set -- vmlinuz initramfs.img firmware.squashfs vmlinuz.sha256 initramfs.img.sha256 firmware.squashfs.sha256
+if [ -f "${STAGE_DIR}/vmlinuz.sig" ]; then
+    set -- "$@" vmlinuz.sig initramfs.img.sig firmware.squashfs.sig
+fi
+
+tar -czf "$ARCHIVE_FILE" -C "$STAGE_DIR" "$@"
+
+sha256sum "$ARCHIVE_FILE" > "${ARCHIVE_FILE}.sha256"
 
 if [ -n "${COYOTE_SIGNING_KEY:-}" ] && [ -f "${COYOTE_SIGNING_KEY}" ]; then
     "${SCRIPT_DIR}/sign-firmware.sh" "$ARCHIVE_FILE" "$COYOTE_SIGNING_KEY" >/dev/null

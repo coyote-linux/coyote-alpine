@@ -315,6 +315,7 @@ class App
         // Firmware
         $this->router->get('/firmware', [Controller\FirmwareController::class, 'index']);
         $this->router->post('/firmware/check', [Controller\FirmwareController::class, 'checkUpdate']);
+        $this->router->get('/firmware/download/progress', [Controller\FirmwareController::class, 'downloadProgress']);
         $this->router->post('/firmware/download', [Controller\FirmwareController::class, 'downloadUpdate']);
         $this->router->post('/firmware/upload', [Controller\FirmwareController::class, 'upload']);
         $this->router->post('/firmware/apply', [Controller\FirmwareController::class, 'applyUpdate']);

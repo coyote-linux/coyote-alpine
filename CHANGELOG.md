@@ -4,6 +4,34 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.177] - 2026-02-15
+
+### Added
+
+#### Firmware Update UX
+- Added a full TUI firmware update menu (check, download, stage, apply, discard) backed by shared firmware management logic
+- Added live firmware download progress indicators in both Web Admin and TUI for long-running update downloads
+
+### Changed
+
+#### Shared Firmware Update Pipeline
+- Centralized firmware download/stage/apply behavior into shared `Coyote\System\FirmwareManager` used by Web Admin and TUI
+- Switched firmware archive downloads to streamed chunked writes to avoid FastCGI/PHP memory exhaustion on low-RAM systems
+- Added Web Admin progress polling endpoint for firmware downloads (`/firmware/download/progress`)
+
+#### Build and Installer Artifact Integrity Files
+- `mkupdate.sh` now includes per-component hash files (`vmlinuz.sha256`, `initramfs.img.sha256`, `firmware.squashfs.sha256`) and includes per-component signatures when signing key is configured
+- Installer/ISO builders now copy kernel and system-initramfs hash sidecars, and signature sidecars when present
+- Installer install/upgrade flows now copy and rotate kernel/initramfs hash and signature sidecars on target systems
+
+### Fixed
+
+#### Firmware Authenticity and Boot Validation
+- Firmware downloads now require server checksum/signature sidecars, verify archive checksum/signature before staging, and persist sidecars alongside staged archives
+- Boot-time firmware validation now uses robust SHA-256 command fallback (`sha256sum`, `busybox sha256sum`, `openssl`) to avoid missing-binary failures
+- Boot update flow now validates staged firmware archive hash/signature metadata and validates staged kernel/initramfs integrity before activation
+- Boot-time checks now verify current boot kernel/initramfs and firmware hash/signature metadata (when present), with secure fallback behavior for rollback/backup firmware
+
 ## [4.0.172] - 2026-02-15
 
 ### Fixed

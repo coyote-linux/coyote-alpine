@@ -753,9 +753,13 @@ install_system() {
 
         echo "20"; echo "Copying kernel..."
         cp "${BOOT_MEDIA}/boot/vmlinuz" "$target_boot/boot/" >/dev/null 2>&1 || exit 1
+        [ -f "${BOOT_MEDIA}/boot/vmlinuz.sha256" ] && cp "${BOOT_MEDIA}/boot/vmlinuz.sha256" "$target_boot/boot/vmlinuz.sha256" >/dev/null 2>&1
+        [ -f "${BOOT_MEDIA}/boot/vmlinuz.sig" ] && cp "${BOOT_MEDIA}/boot/vmlinuz.sig" "$target_boot/boot/vmlinuz.sig" >/dev/null 2>&1
 
         echo "30"; echo "Copying initramfs..."
         cp "${BOOT_MEDIA}/boot/initramfs-system.gz" "$target_boot/boot/initramfs.gz" >/dev/null 2>&1 || exit 1
+        [ -f "${BOOT_MEDIA}/boot/initramfs-system.gz.sha256" ] && cp "${BOOT_MEDIA}/boot/initramfs-system.gz.sha256" "$target_boot/boot/initramfs.gz.sha256" >/dev/null 2>&1
+        [ -f "${BOOT_MEDIA}/boot/initramfs-system.gz.sig" ] && cp "${BOOT_MEDIA}/boot/initramfs-system.gz.sig" "$target_boot/boot/initramfs.gz.sig" >/dev/null 2>&1
 
         echo "40"; echo "Copying firmware image..."
         cp "$FIRMWARE_SRC" "$target_boot/firmware/current.squashfs" >/dev/null 2>&1 || exit 1
@@ -930,18 +934,26 @@ upgrade_system() {
         echo "20"; echo "Backing up existing kernel..."
         if [ -f "$target_boot/boot/vmlinuz" ]; then
             mv "$target_boot/boot/vmlinuz" "$target_boot/boot/vmlinuz.prev" >/dev/null 2>&1 || true
+            [ -f "$target_boot/boot/vmlinuz.sha256" ] && mv "$target_boot/boot/vmlinuz.sha256" "$target_boot/boot/vmlinuz.prev.sha256" >/dev/null 2>&1 || true
+            [ -f "$target_boot/boot/vmlinuz.sig" ] && mv "$target_boot/boot/vmlinuz.sig" "$target_boot/boot/vmlinuz.prev.sig" >/dev/null 2>&1 || true
         fi
 
         echo "30"; echo "Backing up existing initramfs..."
         if [ -f "$target_boot/boot/initramfs.gz" ]; then
             mv "$target_boot/boot/initramfs.gz" "$target_boot/boot/initramfs.gz.prev" >/dev/null 2>&1 || true
+            [ -f "$target_boot/boot/initramfs.gz.sha256" ] && mv "$target_boot/boot/initramfs.gz.sha256" "$target_boot/boot/initramfs.gz.prev.sha256" >/dev/null 2>&1 || true
+            [ -f "$target_boot/boot/initramfs.gz.sig" ] && mv "$target_boot/boot/initramfs.gz.sig" "$target_boot/boot/initramfs.gz.prev.sig" >/dev/null 2>&1 || true
         fi
 
         echo "40"; echo "Installing new kernel..."
         cp "${BOOT_MEDIA}/boot/vmlinuz" "$target_boot/boot/" >/dev/null 2>&1 || exit 1
+        [ -f "${BOOT_MEDIA}/boot/vmlinuz.sha256" ] && cp "${BOOT_MEDIA}/boot/vmlinuz.sha256" "$target_boot/boot/vmlinuz.sha256" >/dev/null 2>&1
+        [ -f "${BOOT_MEDIA}/boot/vmlinuz.sig" ] && cp "${BOOT_MEDIA}/boot/vmlinuz.sig" "$target_boot/boot/vmlinuz.sig" >/dev/null 2>&1
 
         echo "50"; echo "Installing new initramfs..."
         cp "${BOOT_MEDIA}/boot/initramfs-system.gz" "$target_boot/boot/initramfs.gz" >/dev/null 2>&1 || exit 1
+        [ -f "${BOOT_MEDIA}/boot/initramfs-system.gz.sha256" ] && cp "${BOOT_MEDIA}/boot/initramfs-system.gz.sha256" "$target_boot/boot/initramfs.gz.sha256" >/dev/null 2>&1
+        [ -f "${BOOT_MEDIA}/boot/initramfs-system.gz.sig" ] && cp "${BOOT_MEDIA}/boot/initramfs-system.gz.sig" "$target_boot/boot/initramfs.gz.sig" >/dev/null 2>&1
 
         echo "60"; echo "Installing new firmware..."
         cp "$FIRMWARE_SRC" "$target_boot/firmware/current.squashfs" >/dev/null 2>&1 || exit 1

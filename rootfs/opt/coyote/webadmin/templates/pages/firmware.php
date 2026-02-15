@@ -29,9 +29,15 @@ $page = 'firmware';
             <?php if (!empty($updateInfo['size'])): ?>
             <p><strong>Size:</strong> <?= number_format($updateInfo['size'] / 1048576, 2) ?> MB</p>
             <?php endif; ?>
-            <form method="post" action="/firmware/download" style="margin-top: 0.5rem;">
-                <button type="submit" class="btn btn-primary">Download Update</button>
+            <form method="post" action="/firmware/download" id="firmware-download-form" style="margin-top: 0.5rem;">
+                <button type="submit" class="btn btn-primary" id="firmware-download-button">Download Update</button>
             </form>
+            <div id="firmware-download-progress" style="display:none; margin-top: 0.75rem;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="firmware-download-progress-fill" style="width: 0%;"></div>
+                </div>
+                <p id="firmware-download-progress-text">Preparing firmware download...</p>
+            </div>
         </div>
         <?php endif; ?>
     </div>
@@ -87,3 +93,168 @@ $page = 'firmware';
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('firmware-download-form');
+    if (!form) {
+        return;
+    }
+
+    var button = document.getElementById('firmware-download-button');
+    var progressContainer = document.getElementById('firmware-download-progress');
+    var progressFill = document.getElementById('firmware-download-progress-fill');
+    var progressText = document.getElementById('firmware-download-progress-text');
+    var pollTimer = null;
+
+    function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) {
+            return '0 B';
+        }
+
+        if (bytes >= 1073741824) {
+            return (bytes / 1073741824).toFixed(2) + ' GB';
+        }
+        if (bytes >= 1048576) {
+            return (bytes / 1048576).toFixed(2) + ' MB';
+        }
+        if (bytes >= 1024) {
+            return (bytes / 1024).toFixed(2) + ' KB';
+        }
+
+        return bytes + ' B';
+    }
+
+    function updateProgressUi(payload) {
+        if (!payload || !progressFill || !progressText || !progressContainer) {
+            return;
+        }
+
+        progressContainer.style.display = 'block';
+
+        var percent = typeof payload.percent === 'number' ? payload.percent : 0;
+        if (percent < 0) {
+            percent = 0;
+        }
+        if (percent > 100) {
+            percent = 100;
+        }
+
+        progressFill.style.width = percent.toFixed(1) + '%';
+
+        var message = payload.message || 'Downloading firmware...';
+        if (payload.phase === 'downloading') {
+            var downloaded = Number(payload.downloaded_bytes || 0);
+            var total = Number(payload.total_bytes || 0);
+            if (total > 0) {
+                message += ' (' + formatBytes(downloaded) + ' / ' + formatBytes(total) + ')';
+            } else if (downloaded > 0) {
+                message += ' (' + formatBytes(downloaded) + ')';
+            }
+        }
+
+        progressText.textContent = message;
+    }
+
+    function pollProgress() {
+        fetch('/firmware/download/progress', {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+            .then(function (response) {
+                if (!response.ok) {
+                    throw new Error('Failed to load progress');
+                }
+
+                return response.json();
+            })
+            .then(function (payload) {
+                updateProgressUi(payload);
+            })
+            .catch(function () {
+                // Ignore transient polling failures; final result comes from download request.
+            });
+    }
+
+    form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        if (button) {
+            button.disabled = true;
+        }
+
+        if (progressContainer) {
+            progressContainer.style.display = 'block';
+        }
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+        if (progressText) {
+            progressText.textContent = 'Preparing firmware download...';
+        }
+
+        pollProgress();
+        pollTimer = window.setInterval(pollProgress, 1000);
+
+        var formData = new FormData(form);
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-Token': String(formData.get('_csrf_token') || '')
+            },
+            body: formData
+        })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (payload) {
+                if (pollTimer !== null) {
+                    window.clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+
+                pollProgress();
+
+                if (payload && payload.success) {
+                    if (progressFill) {
+                        progressFill.style.width = '100%';
+                    }
+                    if (progressText) {
+                        progressText.textContent = payload.message || 'Firmware downloaded and staged successfully.';
+                    }
+
+                    window.setTimeout(function () {
+                        window.location.reload();
+                    }, 800);
+                    return;
+                }
+
+                if (button) {
+                    button.disabled = false;
+                }
+
+                if (progressText) {
+                    progressText.textContent = (payload && payload.error) ? payload.error : 'Firmware download failed.';
+                }
+            })
+            .catch(function () {
+                if (pollTimer !== null) {
+                    window.clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+
+                if (button) {
+                    button.disabled = false;
+                }
+
+                if (progressText) {
+                    progressText.textContent = 'Firmware download failed.';
+                }
+            });
+    });
+});
+</script>

@@ -13,6 +13,7 @@ function systemMenu(): void
 {
     $items = [
         'time' => ['label' => 'Time & Timezone'],
+        'firmware' => ['label' => 'Firmware Updates'],
         'password' => ['label' => 'Change Admin Password'],
         'backup' => ['label' => 'Backup Configuration'],
         'restore' => ['label' => 'Restore Configuration'],
@@ -29,6 +30,9 @@ function systemMenu(): void
         switch ($choice) {
             case 'time':
                 configureTime();
+                break;
+            case 'firmware':
+                firmwareMenu();
                 break;
             case 'password':
                 changePassword();

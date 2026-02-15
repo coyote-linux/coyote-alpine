@@ -122,6 +122,19 @@ if [ -z "$KERNEL_SRC" ]; then
     echo "         Place vmlinuz in ${BUILD_DIR}/ before building installer"
 else
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$KERNEL_SRC" ::/boot/vmlinuz
+
+    if [ -f "${KERNEL_SRC}.sha256" ]; then
+        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${KERNEL_SRC}.sha256" ::/boot/vmlinuz.sha256
+    else
+        KERNEL_HASH_TMP="${BUILD_DIR}/vmlinuz.sha256.tmp"
+        sha256sum "$KERNEL_SRC" > "$KERNEL_HASH_TMP"
+        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$KERNEL_HASH_TMP" ::/boot/vmlinuz.sha256
+        rm -f "$KERNEL_HASH_TMP"
+    fi
+
+    if [ -f "${KERNEL_SRC}.sig" ]; then
+        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${KERNEL_SRC}.sig" ::/boot/vmlinuz.sig
+    fi
 fi
 
 # Use installer-specific initramfs for booting the installer
@@ -142,6 +155,19 @@ INITRAMFS_SYSTEM="${BUILD_DIR}/initramfs.cpio.gz"
 if [ -f "$INITRAMFS_SYSTEM" ]; then
     echo "Copying system initramfs..."
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_SYSTEM" ::/boot/initramfs-system.gz
+
+    if [ -f "${INITRAMFS_SYSTEM}.sha256" ]; then
+        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${INITRAMFS_SYSTEM}.sha256" ::/boot/initramfs-system.gz.sha256
+    else
+        INITRAMFS_HASH_TMP="${BUILD_DIR}/initramfs-system.gz.sha256.tmp"
+        sha256sum "$INITRAMFS_SYSTEM" > "$INITRAMFS_HASH_TMP"
+        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_HASH_TMP" ::/boot/initramfs-system.gz.sha256
+        rm -f "$INITRAMFS_HASH_TMP"
+    fi
+
+    if [ -f "${INITRAMFS_SYSTEM}.sig" ]; then
+        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${INITRAMFS_SYSTEM}.sig" ::/boot/initramfs-system.gz.sig
+    fi
 else
     echo "Warning: No system initramfs found at ${INITRAMFS_SYSTEM}"
     echo "         Run 'make initramfs' to build it"

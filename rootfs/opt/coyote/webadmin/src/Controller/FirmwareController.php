@@ -54,27 +54,68 @@ class FirmwareController extends BaseController
 
     public function downloadUpdate(array $params = []): void
     {
+        $isAjax = $this->isAjax();
         $updateInfo = $_SESSION['firmware_update_info'] ?? null;
 
         if (!$updateInfo || empty($updateInfo['url'])) {
-            $this->flash('error', 'No update information available. Please check for updates first.');
-            $this->redirect('/firmware');
+            if ($isAjax) {
+                $this->json([
+                    'success' => false,
+                    'error' => 'No update information available. Please check for updates first.',
+                ], 400);
+            } else {
+                $this->flash('error', 'No update information available. Please check for updates first.');
+                $this->redirect('/firmware');
+            }
             return;
+        }
+
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
         }
 
         $result = $this->firmwareService->downloadUpdate(
             $updateInfo['url'],
-            $updateInfo['checksum'] ?? null
+            $updateInfo['checksum'] ?? null,
+            isset($updateInfo['size']) ? (int)$updateInfo['size'] : null,
+            isset($updateInfo['checksum_url']) ? (string)$updateInfo['checksum_url'] : null,
+            isset($updateInfo['signature_url']) ? (string)$updateInfo['signature_url'] : null
         );
 
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+
         if ($result['success']) {
-            $this->flash('success', 'Firmware downloaded and staged successfully. You can now apply the update.');
             unset($_SESSION['firmware_update_info']);
+
+            if ($isAjax) {
+                $this->json([
+                    'success' => true,
+                    'message' => 'Firmware downloaded and staged successfully. You can now apply the update.',
+                ]);
+                return;
+            }
+
+            $this->flash('success', 'Firmware downloaded and staged successfully. You can now apply the update.');
         } else {
+            if ($isAjax) {
+                $this->json([
+                    'success' => false,
+                    'error' => 'Download failed: ' . ($result['error'] ?? 'unknown error'),
+                ], 500);
+                return;
+            }
+
             $this->flash('error', 'Download failed: ' . $result['error']);
         }
 
         $this->redirect('/firmware');
+    }
+
+    public function downloadProgress(array $params = []): void
+    {
+        $this->json($this->firmwareService->getDownloadProgress());
     }
 
     public function upload(array $params = []): void

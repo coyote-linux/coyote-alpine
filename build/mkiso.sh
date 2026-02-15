@@ -90,6 +90,16 @@ fi
 echo "Copying kernel and installer initramfs..."
 if [ -f "${BUILD_DIR}/vmlinuz" ]; then
     cp "${BUILD_DIR}/vmlinuz" "${ISO_BUILD}/boot/vmlinuz"
+
+    if [ -f "${BUILD_DIR}/vmlinuz.sha256" ]; then
+        cp "${BUILD_DIR}/vmlinuz.sha256" "${ISO_BUILD}/boot/vmlinuz.sha256"
+    else
+        sha256sum "${BUILD_DIR}/vmlinuz" > "${ISO_BUILD}/boot/vmlinuz.sha256"
+    fi
+
+    if [ -f "${BUILD_DIR}/vmlinuz.sig" ]; then
+        cp "${BUILD_DIR}/vmlinuz.sig" "${ISO_BUILD}/boot/vmlinuz.sig"
+    fi
 else
     echo "Error: Kernel not found at ${BUILD_DIR}/vmlinuz"
     echo "Run 'make initramfs' first"
@@ -113,6 +123,16 @@ fi
 echo "Copying system initramfs..."
 if [ -f "${BUILD_DIR}/initramfs.cpio.gz" ]; then
     cp "${BUILD_DIR}/initramfs.cpio.gz" "${ISO_BUILD}/boot/initramfs-system.gz"
+
+    if [ -f "${BUILD_DIR}/initramfs.cpio.gz.sha256" ]; then
+        cp "${BUILD_DIR}/initramfs.cpio.gz.sha256" "${ISO_BUILD}/boot/initramfs-system.gz.sha256"
+    else
+        sha256sum "${BUILD_DIR}/initramfs.cpio.gz" > "${ISO_BUILD}/boot/initramfs-system.gz.sha256"
+    fi
+
+    if [ -f "${BUILD_DIR}/initramfs.cpio.gz.sig" ]; then
+        cp "${BUILD_DIR}/initramfs.cpio.gz.sig" "${ISO_BUILD}/boot/initramfs-system.gz.sig"
+    fi
 else
     echo "Error: System initramfs not found at ${BUILD_DIR}/initramfs.cpio.gz"
     echo "Run 'make initramfs' first"
