@@ -4,7 +4,7 @@
     <div class="card full-width">
         <h3>DHCP Server Configuration</h3>
         <form method="post" action="/dhcp">
-            <div class="form-group">
+            <div class="form-group-inline">
                 <label>
                     <input type="checkbox" name="enabled" value="1" <?= ($dhcpConfig['enabled'] ?? false) ? 'checked' : '' ?>>
                     Enable DHCP Server

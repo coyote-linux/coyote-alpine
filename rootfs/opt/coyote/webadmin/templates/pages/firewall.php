@@ -37,7 +37,7 @@ $status = $status ?? ['enabled' => true, 'defaultPolicy' => 'drop'];
             <a href="/firewall/acl/new" class="btn btn-primary">Create ACL</a>
             <a href="/firewall/apply" class="btn btn-primary">Apply ACLs to Interfaces</a>
             <a href="/firewall/access" class="btn btn-primary">Access Controls</a>
-            <a href="/firewall/address-lists" class="btn">Address Lists</a>
+            <a href="/firewall/address-lists" class="btn btn-primary">Address Lists</a>
         </div>
     </div>
 
@@ -95,7 +95,7 @@ $status = $status ?? ['enabled' => true, 'defaultPolicy' => 'drop'];
                         <?php endif; ?>
                     </td>
                     <td>
-                        <a href="/firewall/acl/<?= urlencode($aclName) ?>" class="btn btn-small">Edit</a>
+                        <a href="/firewall/acl/<?= urlencode($aclName) ?>" class="btn btn-primary btn-small">Edit</a>
                     </td>
                 </tr>
                 <?php endforeach; ?>

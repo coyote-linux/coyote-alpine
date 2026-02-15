@@ -143,7 +143,7 @@ $page = 'firewall';
                         <?php endif; ?>
 
                         <!-- Edit/Delete -->
-                        <a href="/firewall/acl/<?= urlencode($aclName) ?>/rule/<?= $index ?>" class="btn btn-mini">Edit</a>
+                        <a href="/firewall/acl/<?= urlencode($aclName) ?>/rule/<?= $index ?>" class="btn btn-primary btn-mini">Edit</a>
                         <form method="post" action="/firewall/acl/<?= urlencode($aclName) ?>/rule/<?= $index ?>/delete" style="display:inline;">
                             <button type="submit" class="btn btn-mini btn-danger" data-confirm="Delete this rule?">Del</button>
                         </form>
