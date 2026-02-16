@@ -107,7 +107,7 @@ $page = 'firewall';
                     $protocol = $rule['protocol'] ?? 'any';
                     $source = $rule['source'] ?? 'any';
                     $dest = $rule['destination'] ?? 'any';
-                    $ports = $rule['ports'] ?? '';
+                    $ports = $rule['ports'] ?? ($rule['destination_port'] ?? ($rule['port'] ?? ($rule['dport'] ?? '')));
                     $comment = $rule['comment'] ?? '';
                 ?>
                 <tr>
@@ -159,5 +159,4 @@ $page = 'firewall';
     </div>
     <?php endif; ?>
 </div>
-
 

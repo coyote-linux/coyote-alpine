@@ -126,7 +126,12 @@ class FirewallSubsystem extends AbstractSubsystem
             $result = $this->firewallManager->applyConfig($config);
 
             if (!$result) {
-                $errors[] = 'Failed to apply nftables ruleset';
+                $detail = trim($this->firewallManager->getLastError());
+                if ($detail !== '') {
+                    $errors[] = 'Failed to apply nftables ruleset: ' . $detail;
+                } else {
+                    $errors[] = 'Failed to apply nftables ruleset';
+                }
             }
         } catch (\Exception $e) {
             $errors[] = 'Firewall error: ' . $e->getMessage();

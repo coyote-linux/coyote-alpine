@@ -32,6 +32,10 @@ class ConfigValidator
             $errors = array_merge($errors, $this->validateServices($config['services']));
         }
 
+        if (isset($config['firewall'])) {
+            $errors = array_merge($errors, $this->validateFirewall($config['firewall']));
+        }
+
         return $errors;
     }
 
@@ -139,5 +143,95 @@ class ConfigValidator
         }
 
         return $errors;
+    }
+
+    private function validateFirewall(array $firewall): array
+    {
+        $errors = [];
+
+        if (isset($firewall['default_policy']) && $firewall['default_policy'] !== 'drop') {
+            $errors[] = 'Firewall default policy must be drop';
+        }
+
+        $acls = $firewall['acls'] ?? [];
+        if (!is_array($acls)) {
+            return $errors;
+        }
+
+        foreach ($acls as $aclIndex => $acl) {
+            $aclName = is_array($acl) ? ($acl['name'] ?? (string)$aclIndex) : (string)$aclIndex;
+            $rules = is_array($acl) ? ($acl['rules'] ?? []) : [];
+
+            if (!is_array($rules)) {
+                $errors[] = "Firewall ACL '{$aclName}' has invalid rules format";
+                continue;
+            }
+
+            foreach ($rules as $ruleIndex => $rule) {
+                if (!is_array($rule)) {
+                    $errors[] = "Firewall ACL '{$aclName}' rule {$ruleIndex} is invalid";
+                    continue;
+                }
+
+                $action = strtolower((string)($rule['action'] ?? 'accept'));
+                if (!in_array($action, ['permit', 'deny', 'accept', 'allow', 'drop', 'reject'], true)) {
+                    $errors[] = "Firewall ACL '{$aclName}' rule {$ruleIndex} has invalid action";
+                }
+
+                $protocol = strtolower((string)($rule['protocol'] ?? 'any'));
+                if (!in_array($protocol, ['any', 'all', 'tcp', 'udp', 'icmp', 'icmpv6', 'gre', 'esp', 'ah', 'sctp'], true)) {
+                    $errors[] = "Firewall ACL '{$aclName}' rule {$ruleIndex} has invalid protocol";
+                }
+
+                $ports = $rule['ports'] ?? ($rule['destination_port'] ?? ($rule['port'] ?? ($rule['dport'] ?? null)));
+                if ($ports !== null && $ports !== '') {
+                    if (!in_array($protocol, ['tcp', 'udp'], true)) {
+                        $errors[] = "Firewall ACL '{$aclName}' rule {$ruleIndex} uses ports with non-TCP/UDP protocol";
+                    } elseif (!$this->isValidPortSpec((string)$ports)) {
+                        $errors[] = "Firewall ACL '{$aclName}' rule {$ruleIndex} has invalid port specification";
+                    }
+                }
+            }
+        }
+
+        return $errors;
+    }
+
+    private function isValidPortSpec(string $ports): bool
+    {
+        $ports = preg_replace('/\s+/', '', trim($ports));
+        if ($ports === '') {
+            return false;
+        }
+
+        foreach (explode(',', $ports) as $part) {
+            if ($part === '') {
+                return false;
+            }
+
+            if (strpos($part, '-') !== false) {
+                [$start, $end] = explode('-', $part, 2);
+                if (!$this->isValidPort($start) || !$this->isValidPort($end) || (int)$start >= (int)$end) {
+                    return false;
+                }
+                continue;
+            }
+
+            if (!$this->isValidPort($part)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isValidPort(string $port): bool
+    {
+        if (!preg_match('/^[0-9]+$/', $port)) {
+            return false;
+        }
+
+        $portInt = (int)$port;
+        return $portInt >= 1 && $portInt <= 65535;
     }
 }

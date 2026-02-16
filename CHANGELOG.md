@@ -4,6 +4,29 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.183] - 2026-02-16
+
+### Fixed
+
+#### TUI Firmware Staging Permissions
+- Fixed firmware update staging failures in TUI flows by ensuring privileged helper commands run directly when already executing as root
+- Preserved existing `/mnt/config` remount routines (`mount-rw` / `mount-ro`) while avoiding root+doas invocation failures during staging initialization
+
+## [4.0.178] - 2026-02-15
+
+### Fixed
+
+#### Firewall ACL Apply Reliability
+- Fixed ACL rule translation to support Web Admin `ports` rules by mapping them to nft `dport` expressions, including comma-separated lists and ranges
+- Added defensive ACL rule normalization for unsupported protocols, invalid address specs, and malformed port specs to prevent invalid nftables ruleset generation
+- Improved firewall apply error reporting to include nft validation/load stderr details in subsystem failure output for faster root-cause diagnosis
+
+### Changed
+
+#### Firewall Rule Compatibility
+- Web Admin ACL rule save/edit/list flows now preserve destination port values across `ports`, `destination_port`, `port`, and `dport` representations
+- Config validation now checks firewall ACL rule protocol/action/port consistency and rejects invalid port specifications before apply
+
 ## [4.0.177] - 2026-02-15
 
 ### Added

@@ -418,6 +418,7 @@ class FirewallController extends BaseController
 
         if (!empty($ports)) {
             $rule['ports'] = $ports;
+            $rule['destination_port'] = $ports;
         }
 
         if (!empty($comment)) {

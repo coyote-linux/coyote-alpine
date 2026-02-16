@@ -195,9 +195,10 @@ class AclBindingService
         foreach ($families as $family) {
             $parts = [];
 
-        // Protocol
-        $protocol = strtolower($rule['protocol'] ?? 'any');
-        if ($protocol !== 'any' && $protocol !== 'all') {
+            // Protocol
+            $protocol = strtolower($rule['protocol'] ?? 'any');
+            $transportProtocol = null;
+            if ($protocol !== 'any' && $protocol !== 'all') {
                 if ($protocol === 'icmp') {
                     $parts[] = $family === 'ip6' ? 'ip6 nexthdr icmpv6' : 'ip protocol icmp';
                 } elseif ($protocol === 'icmpv6') {
@@ -206,101 +207,125 @@ class AclBindingService
                     } else {
                         continue;
                     }
+                } elseif (in_array($protocol, ['tcp', 'udp', 'sctp'], true)) {
+                    $transportProtocol = $protocol;
+                } elseif (in_array($protocol, ['gre', 'esp', 'ah'], true)) {
+                    $parts[] = "meta l4proto {$protocol}";
                 } else {
-                    $parts[] = $protocol;
+                    $this->logger->warning("Skipping unsupported ACL protocol '{$protocol}'");
+                    continue;
                 }
-        }
-
-        // Source address
-        $sourceList = $rule['source_list'] ?? null;
-        $source = $rule['source'] ?? $rule['src'] ?? null;
-        if ($source && $source !== 'any' && $source !== '0.0.0.0/0') {
-            // Check if it's an interface reference
-            if ($this->isInterfaceReference($source)) {
-                $resolved = $this->resolver->resolve($source);
-                if (!empty($resolved)) {
-                    $parts[] = "iifname \"" . $resolved[0] . "\"";
-                }
-            } else {
-                $parts[] = $family === 'ip6' ? "ip6 saddr {$source}" : "ip saddr {$source}";
             }
-        } elseif (!empty($sourceList)) {
-            $setName = $this->buildAddressListSetName($sourceList, $family);
-            if ($setName) {
-                $parts[] = $family === 'ip6' ? "ip6 saddr @{$setName}" : "ip saddr @{$setName}";
-            }
-        }
 
-        // Destination address
-        $destList = $rule['destination_list'] ?? null;
-        $dest = $rule['destination'] ?? $rule['dst'] ?? null;
-        if ($dest && $dest !== 'any' && $dest !== '0.0.0.0/0') {
-            if ($this->isInterfaceReference($dest)) {
-                $resolved = $this->resolver->resolve($dest);
-                if (!empty($resolved)) {
-                    $parts[] = "oifname \"" . $resolved[0] . "\"";
-                }
-            } else {
-                $parts[] = $family === 'ip6' ? "ip6 daddr {$dest}" : "ip daddr {$dest}";
-            }
-        } elseif (!empty($destList)) {
-            $setName = $this->buildAddressListSetName($destList, $family);
-            if ($setName) {
-                $parts[] = $family === 'ip6' ? "ip6 daddr @{$setName}" : "ip daddr @{$setName}";
-            }
-        }
-
-        // Source port
-        $srcPort = $rule['source_port'] ?? $rule['sport'] ?? null;
-        if ($srcPort) {
-            $parts[] = "sport {$srcPort}";
-        }
-
-        // Destination port
-        $dstPort = $rule['destination_port'] ?? $rule['port'] ?? $rule['dport'] ?? null;
-        if ($dstPort) {
-            $parts[] = "dport {$dstPort}";
-        }
-
-        // Counter (optional)
-        if ($rule['counter'] ?? false) {
-            $parts[] = 'counter';
-        }
-
-        // Log (optional)
-        if ($rule['log'] ?? false) {
-            $logPrefix = $rule['log_prefix'] ?? 'ACL';
-            $parts[] = "log prefix \"{$logPrefix}: \"";
-        }
-
-        // Action
-        $action = strtolower($rule['action'] ?? 'accept');
-        switch ($action) {
-            case 'accept':
-            case 'allow':
-                $parts[] = 'accept';
-                break;
-            case 'drop':
-            case 'deny':
-                $parts[] = 'drop';
-                break;
-            case 'reject':
-                $rejectWith = $rule['reject_with'] ?? null;
-                if ($rejectWith) {
-                    $parts[] = "reject with {$rejectWith}";
+            // Source address
+            $sourceList = $rule['source_list'] ?? null;
+            $source = $rule['source'] ?? $rule['src'] ?? null;
+            if ($source && $source !== 'any' && $source !== '0.0.0.0/0') {
+                // Check if it's an interface reference
+                if ($this->isInterfaceReference($source)) {
+                    $resolved = $this->resolver->resolve($source);
+                    if (!empty($resolved)) {
+                        $parts[] = "iifname \"" . $resolved[0] . "\"";
+                    }
+                } elseif ($this->isValidAddressSpec($source, $family)) {
+                    $parts[] = $family === 'ip6' ? "ip6 saddr {$source}" : "ip saddr {$source}";
                 } else {
-                    $parts[] = 'reject';
+                    $this->logger->warning("Skipping invalid ACL source '{$source}' for family {$family}");
                 }
-                break;
-            case 'return':
-                $parts[] = 'return';
-                break;
-            case 'continue':
-                // No action - continue to next rule
-                break;
-            default:
-                $parts[] = 'accept';
-        }
+            } elseif (!empty($sourceList)) {
+                $setName = $this->buildAddressListSetName($sourceList, $family);
+                if ($setName) {
+                    $parts[] = $family === 'ip6' ? "ip6 saddr @{$setName}" : "ip saddr @{$setName}";
+                }
+            }
+
+            // Destination address
+            $destList = $rule['destination_list'] ?? null;
+            $dest = $rule['destination'] ?? $rule['dst'] ?? null;
+            if ($dest && $dest !== 'any' && $dest !== '0.0.0.0/0') {
+                if ($this->isInterfaceReference($dest)) {
+                    $resolved = $this->resolver->resolve($dest);
+                    if (!empty($resolved)) {
+                        $parts[] = "oifname \"" . $resolved[0] . "\"";
+                    }
+                } elseif ($this->isValidAddressSpec($dest, $family)) {
+                    $parts[] = $family === 'ip6' ? "ip6 daddr {$dest}" : "ip daddr {$dest}";
+                } else {
+                    $this->logger->warning("Skipping invalid ACL destination '{$dest}' for family {$family}");
+                }
+            } elseif (!empty($destList)) {
+                $setName = $this->buildAddressListSetName($destList, $family);
+                if ($setName) {
+                    $parts[] = $family === 'ip6' ? "ip6 daddr @{$setName}" : "ip daddr @{$setName}";
+                }
+            }
+
+            if ($transportProtocol !== null) {
+                $hasPortMatch = false;
+
+                // Source port
+                $srcPort = $rule['source_port'] ?? $rule['sport'] ?? null;
+                $srcPortExpr = $this->buildPortExpression($srcPort);
+                if ($srcPortExpr !== null) {
+                    $parts[] = "{$transportProtocol} sport {$srcPortExpr}";
+                    $hasPortMatch = true;
+                }
+
+                // Destination port
+                $dstPort = $rule['destination_port'] ?? $rule['port'] ?? $rule['dport'] ?? $rule['ports'] ?? null;
+                $dstPortExpr = $this->buildPortExpression($dstPort);
+                if ($dstPortExpr !== null) {
+                    $parts[] = "{$transportProtocol} dport {$dstPortExpr}";
+                    $hasPortMatch = true;
+                }
+
+                if (!$hasPortMatch) {
+                    $parts[] = "meta l4proto {$transportProtocol}";
+                }
+            } elseif (!empty($rule['source_port']) || !empty($rule['sport']) || !empty($rule['destination_port']) || !empty($rule['port']) || !empty($rule['dport']) || !empty($rule['ports'])) {
+                $this->logger->warning("Ignoring ACL port specification for non-port protocol '{$protocol}'");
+            }
+
+            // Counter (optional)
+            if ($rule['counter'] ?? false) {
+                $parts[] = 'counter';
+            }
+
+            // Log (optional)
+            if ($rule['log'] ?? false) {
+                $logPrefix = $this->sanitizeLogPrefix($rule['log_prefix'] ?? 'ACL');
+                $parts[] = "log prefix \"{$logPrefix}: \"";
+            }
+
+            // Action
+            $action = strtolower($rule['action'] ?? 'accept');
+            switch ($action) {
+                case 'accept':
+                case 'allow':
+                case 'permit':
+                    $parts[] = 'accept';
+                    break;
+                case 'drop':
+                case 'deny':
+                    $parts[] = 'drop';
+                    break;
+                case 'reject':
+                    $rejectWith = $rule['reject_with'] ?? null;
+                    if ($rejectWith) {
+                        $parts[] = "reject with {$rejectWith}";
+                    } else {
+                        $parts[] = 'reject';
+                    }
+                    break;
+                case 'return':
+                    $parts[] = 'return';
+                    break;
+                case 'continue':
+                    // No action - continue to next rule
+                    break;
+                default:
+                    $parts[] = 'accept';
+            }
 
             $rules[] = implode(' ', $parts);
         }
@@ -405,6 +430,106 @@ class AclBindingService
         $normalized = trim($normalized, '_');
 
         return sprintf('addrlist_%s_%s', $normalized, $family === 'ip6' ? 'v6' : 'v4');
+    }
+
+    private function isValidAddressSpec(string $value, string $family): bool
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return false;
+        }
+
+        if ($family === 'ip') {
+            if (filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                return true;
+            }
+            return $this->isValidCidr($value, FILTER_FLAG_IPV4, 32);
+        }
+
+        if (filter_var($value, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            return true;
+        }
+        return $this->isValidCidr($value, FILTER_FLAG_IPV6, 128);
+    }
+
+    private function isValidCidr(string $value, int $flag, int $maxPrefix): bool
+    {
+        if (!str_contains($value, '/')) {
+            return false;
+        }
+
+        [$ip, $prefix] = explode('/', $value, 2);
+        if (!filter_var($ip, FILTER_VALIDATE_IP, $flag)) {
+            return false;
+        }
+
+        if (!is_numeric($prefix)) {
+            return false;
+        }
+
+        $prefixInt = (int) $prefix;
+        return $prefixInt >= 0 && $prefixInt <= $maxPrefix;
+    }
+
+    private function buildPortExpression(mixed $portSpec): ?string
+    {
+        if ($portSpec === null) {
+            return null;
+        }
+
+        $spec = preg_replace('/\s+/', '', (string) $portSpec);
+        if ($spec === '') {
+            return null;
+        }
+
+        $normalized = [];
+        foreach (explode(',', $spec) as $part) {
+            if ($part === '') {
+                return null;
+            }
+
+            if (str_contains($part, '-')) {
+                [$start, $end] = explode('-', $part, 2);
+                if (!$this->isValidPort($start) || !$this->isValidPort($end) || (int) $start >= (int) $end) {
+                    return null;
+                }
+                $normalized[] = sprintf('%d-%d', (int) $start, (int) $end);
+                continue;
+            }
+
+            if (!$this->isValidPort($part)) {
+                return null;
+            }
+
+            $normalized[] = (string) ((int) $part);
+        }
+
+        if (count($normalized) === 1) {
+            return $normalized[0];
+        }
+
+        return sprintf('{ %s }', implode(', ', $normalized));
+    }
+
+    private function isValidPort(string $port): bool
+    {
+        if (!preg_match('/^[0-9]+$/', $port)) {
+            return false;
+        }
+
+        $portInt = (int) $port;
+        return $portInt >= 1 && $portInt <= 65535;
+    }
+
+    private function sanitizeLogPrefix(string $prefix): string
+    {
+        $sanitized = str_replace(['\\', '"'], '', $prefix);
+        $sanitized = trim($sanitized);
+        if ($sanitized === '') {
+            return 'ACL';
+        }
+
+        return substr($sanitized, 0, 48);
     }
 
     /**

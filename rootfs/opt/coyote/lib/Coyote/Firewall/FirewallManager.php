@@ -63,6 +63,8 @@ class FirewallManager
     /** @var string Path to previous ruleset (for rollback) */
     private string $previousRuleset;
 
+    private string $lastError = '';
+
     /**
      * Create a new FirewallManager instance.
      */
@@ -97,6 +99,7 @@ class FirewallManager
      */
     public function applyConfig(array $config): bool
     {
+        $this->lastError = '';
         $firewallConfig = $config['firewall'] ?? [];
         $this->enabled = $firewallConfig['enabled'] ?? true;
 
@@ -113,13 +116,18 @@ class FirewallManager
         // Write to temporary file
         $tempFile = $this->stateDir . '/pending.nft';
         if (file_put_contents($tempFile, $ruleset) === false) {
+            $this->lastError = 'Failed to write ruleset to temp file';
             $this->logger->error('Failed to write ruleset to temp file');
             return false;
         }
 
         // Validate the ruleset
         if (!$this->nftables->validateRuleset($tempFile)) {
-            $this->logger->error('Ruleset validation failed');
+            $validationError = $this->nftables->getLastError();
+            $this->lastError = $validationError !== ''
+                ? "Ruleset validation failed: {$validationError}"
+                : 'Ruleset validation failed';
+            $this->logger->error($this->lastError);
             unlink($tempFile);
             return false;
         }
@@ -131,13 +139,20 @@ class FirewallManager
 
         // Apply atomically
         if (!$this->nftables->loadRuleset($tempFile)) {
-            $this->logger->error('Failed to apply ruleset');
+            $loadError = $this->nftables->getLastError();
+            $this->lastError = $loadError !== ''
+                ? "Failed to apply ruleset: {$loadError}"
+                : 'Failed to apply ruleset';
+            $this->logger->error($this->lastError);
             unlink($tempFile);
             return false;
         }
 
         // Save as current
-        rename($tempFile, $this->currentRuleset);
+        if (!rename($tempFile, $this->currentRuleset)) {
+            $this->lastError = 'Failed to move pending ruleset into current state file';
+            $this->logger->warning($this->lastError);
+        }
 
         $this->logger->info('Firewall configuration applied successfully');
         return true;
@@ -370,65 +385,72 @@ class FirewallManager
 
         foreach ($families as $family) {
             $parts = [];
+            $transportProtocol = null;
 
-        // Protocol
-        if (isset($rule['protocol']) && $rule['protocol'] !== 'any') {
-            $proto = strtolower($rule['protocol']);
-            if ($proto === 'icmp') {
-                $parts[] = $family === 'ip6' ? 'ip6 nexthdr icmpv6' : 'ip protocol icmp';
-            } elseif ($proto === 'icmpv6') {
-                if ($family === 'ip6') {
-                    $parts[] = 'ip6 nexthdr icmpv6';
+            // Protocol
+            if (isset($rule['protocol']) && $rule['protocol'] !== 'any') {
+                $proto = strtolower($rule['protocol']);
+                if ($proto === 'icmp') {
+                    $parts[] = $family === 'ip6' ? 'ip6 nexthdr icmpv6' : 'ip protocol icmp';
+                } elseif ($proto === 'icmpv6') {
+                    if ($family === 'ip6') {
+                        $parts[] = 'ip6 nexthdr icmpv6';
+                    } else {
+                        continue;
+                    }
+                } elseif (in_array($proto, ['tcp', 'udp', 'sctp'], true)) {
+                    $transportProtocol = $proto;
                 } else {
-                    continue;
+                    $parts[] = "meta l4proto {$proto}";
                 }
-            } else {
-                $parts[] = $proto;
             }
-        }
 
-        // Source address
-        if (isset($rule['source']) && $rule['source'] !== 'any') {
-            $parts[] = $family === 'ip6' ? "ip6 saddr {$rule['source']}" : "ip saddr {$rule['source']}";
-        } elseif (!empty($rule['source_list'])) {
-            $setName = $this->buildAddressListSetName($rule['source_list'], $family);
-            if ($setName) {
-                $parts[] = $family === 'ip6' ? "ip6 saddr @{$setName}" : "ip saddr @{$setName}";
+            // Source address
+            if (isset($rule['source']) && $rule['source'] !== 'any') {
+                $parts[] = $family === 'ip6' ? "ip6 saddr {$rule['source']}" : "ip saddr {$rule['source']}";
+            } elseif (!empty($rule['source_list'])) {
+                $setName = $this->buildAddressListSetName($rule['source_list'], $family);
+                if ($setName) {
+                    $parts[] = $family === 'ip6' ? "ip6 saddr @{$setName}" : "ip saddr @{$setName}";
+                }
             }
-        }
 
-        // Destination address
-        if (isset($rule['destination']) && $rule['destination'] !== 'any') {
-            $parts[] = $family === 'ip6' ? "ip6 daddr {$rule['destination']}" : "ip daddr {$rule['destination']}";
-        } elseif (!empty($rule['destination_list'])) {
-            $setName = $this->buildAddressListSetName($rule['destination_list'], $family);
-            if ($setName) {
-                $parts[] = $family === 'ip6' ? "ip6 daddr @{$setName}" : "ip daddr @{$setName}";
+            // Destination address
+            if (isset($rule['destination']) && $rule['destination'] !== 'any') {
+                $parts[] = $family === 'ip6' ? "ip6 daddr {$rule['destination']}" : "ip daddr {$rule['destination']}";
+            } elseif (!empty($rule['destination_list'])) {
+                $setName = $this->buildAddressListSetName($rule['destination_list'], $family);
+                if ($setName) {
+                    $parts[] = $family === 'ip6' ? "ip6 daddr @{$setName}" : "ip daddr @{$setName}";
+                }
             }
-        }
 
-        // Source port
-        if (isset($rule['source_port'])) {
-            $parts[] = "sport {$rule['source_port']}";
-        }
+            // Source port
+            if ($transportProtocol !== null && isset($rule['source_port'])) {
+                $parts[] = "{$transportProtocol} sport {$rule['source_port']}";
+            }
 
-        // Destination port
-        if (isset($rule['port']) || isset($rule['destination_port'])) {
-            $port = $rule['port'] ?? $rule['destination_port'];
-            $parts[] = "dport {$port}";
-        }
+            // Destination port
+            if ($transportProtocol !== null && (isset($rule['port']) || isset($rule['destination_port']) || isset($rule['dport']))) {
+                $port = $rule['port'] ?? $rule['destination_port'] ?? $rule['dport'];
+                $parts[] = "{$transportProtocol} dport {$port}";
+            }
 
-        // Interface (for input/output chains)
-        if (isset($rule['interface'])) {
-            $parts[] = "iifname \"{$rule['interface']}\"";
-        }
+            if ($transportProtocol !== null && !isset($rule['source_port']) && !isset($rule['port']) && !isset($rule['destination_port']) && !isset($rule['dport'])) {
+                $parts[] = "meta l4proto {$transportProtocol}";
+            }
 
-        // Action
-        $action = strtolower($rule['action'] ?? 'accept');
-        if ($action === 'deny' || $action === 'reject') {
-            $action = 'drop';
-        }
-        $parts[] = $action;
+            // Interface (for input/output chains)
+            if (isset($rule['interface'])) {
+                $parts[] = "iifname \"{$rule['interface']}\"";
+            }
+
+            // Action
+            $action = strtolower($rule['action'] ?? 'accept');
+            if ($action === 'deny' || $action === 'reject') {
+                $action = 'drop';
+            }
+            $parts[] = $action;
 
             $rules[] = implode(' ', $parts);
         }
@@ -626,6 +648,11 @@ class FirewallManager
     public function isEnabled(): bool
     {
         return $this->enabled;
+    }
+
+    public function getLastError(): string
+    {
+        return $this->lastError;
     }
 
     /**

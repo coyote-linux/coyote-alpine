@@ -13,7 +13,7 @@ $source = $rule['source'] ?? 'any';
 $sourceList = $rule['source_list'] ?? '';
 $dest = $rule['destination'] ?? 'any';
 $destList = $rule['destination_list'] ?? '';
-$ports = $rule['ports'] ?? '';
+$ports = $rule['ports'] ?? ($rule['destination_port'] ?? ($rule['port'] ?? ($rule['dport'] ?? '')));
 $comment = $rule['comment'] ?? '';
 
 // Determine source/dest types
@@ -274,4 +274,3 @@ document.addEventListener('DOMContentLoaded', function() {
     updatePreview();
 });
 </script>
-

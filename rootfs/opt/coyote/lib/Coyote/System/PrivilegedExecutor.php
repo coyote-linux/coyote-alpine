@@ -31,7 +31,10 @@ class PrivilegedExecutor
     public function execute(string $command, array $args = []): array
     {
         // Build the command line
-        $cmdLine = 'doas ' . escapeshellarg(self::HELPER) . ' ' . escapeshellarg($command);
+        $cmdLine = escapeshellarg(self::HELPER) . ' ' . escapeshellarg($command);
+        if (posix_getuid() !== 0) {
+            $cmdLine = 'doas ' . $cmdLine;
+        }
 
         foreach ($args as $arg) {
             $cmdLine .= ' ' . escapeshellarg($arg);

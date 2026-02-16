@@ -24,6 +24,8 @@ class NftablesService
     /** @var bool Whether to use doas for privilege escalation */
     private bool $useDoas = false;
 
+    private string $lastError = '';
+
     /**
      * Create a new NftablesService instance.
      */
@@ -58,8 +60,11 @@ class NftablesService
      */
     public function loadRuleset(string $path): bool
     {
+        $this->lastError = '';
+
         if (!file_exists($path)) {
             $this->logger->error("Ruleset file not found: {$path}");
+            $this->lastError = "Ruleset file not found: {$path}";
             return false;
         }
 
@@ -67,7 +72,8 @@ class NftablesService
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
-            $this->logger->error("Failed to load ruleset: " . implode("\n", $output));
+            $this->lastError = trim(implode("\n", $output));
+            $this->logger->error("Failed to load ruleset: " . $this->lastError);
             return false;
         }
 
@@ -83,7 +89,10 @@ class NftablesService
      */
     public function validateRuleset(string $path): bool
     {
+        $this->lastError = '';
+
         if (!file_exists($path)) {
+            $this->lastError = "Ruleset file not found: {$path}";
             return false;
         }
 
@@ -92,11 +101,17 @@ class NftablesService
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
-            $this->logger->warning("Ruleset validation failed: " . implode("\n", $output));
+            $this->lastError = trim(implode("\n", $output));
+            $this->logger->warning("Ruleset validation failed: " . $this->lastError);
             return false;
         }
 
         return true;
+    }
+
+    public function getLastError(): string
+    {
+        return $this->lastError;
     }
 
     /**
