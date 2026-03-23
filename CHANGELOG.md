@@ -4,6 +4,17 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.186] - 2026-03-23
+
+### Changed
+
+#### Custom Kernel Upgrade to 6.19.9
+- Upgraded the custom kernel build default from 6.19.0 to 6.19.9
+- Refreshed `kernel/configs/coyote-x86_64.defconfig` for the current 6.19.x custom kernel baseline
+
+#### Changelog Roadmap Cleanup
+- Removed completed web admin authentication, firewall rule management, and network interface configuration items from the Unreleased planned list
+
 ## [4.0.183] - 2026-02-16
 
 ### Fixed
@@ -836,9 +847,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Planned
 
-- Web admin authentication enforcement
-- Firewall rule management UI
 - VPN tunnel configuration UI
 - Load balancer configuration UI
-- Network interface configuration UI
 - UEFI boot support
