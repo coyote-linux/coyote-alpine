@@ -32,6 +32,7 @@ PACKAGES_FILE="${SCRIPT_DIR}/apk-packages.txt"
 CUSTOM_KERNEL_ROOT="${SCRIPT_DIR}/../kernel"
 
 CONFIG_KERNEL_TYPE="${CONFIG_KERNEL_TYPE:-custom}"
+KERNEL_VERSION="${KERNEL_VERSION:-7.0.3}"
 CONFIG_DOTNET="${CONFIG_DOTNET:-1}"
 CONFIG_LOADBALANCER="${CONFIG_LOADBALANCER:-1}"
 CONFIG_IPSEC="${CONFIG_IPSEC:-1}"
@@ -344,9 +345,11 @@ install_custom_kernel_modules() {
 
     if [ -n "${KERNEL_VERSION:-}" ]; then
         archive="${CUSTOM_KERNEL_ROOT}/output/modules-${KERNEL_VERSION}.tar.gz"
-    fi
-
-    if [ -z "$archive" ] || [ ! -f "$archive" ]; then
+        if [ ! -f "$archive" ]; then
+            echo "Error: No custom kernel modules archive found for ${KERNEL_VERSION}. Run 'make kernel' first."
+            exit 1
+        fi
+    else
         archive=$(ls -t "${CUSTOM_KERNEL_ROOT}/output"/modules-*.tar.gz 2>/dev/null | head -1)
     fi
 

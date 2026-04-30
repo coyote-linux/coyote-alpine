@@ -20,6 +20,9 @@ INITRAMFS_SRC="${SCRIPT_DIR}/../initramfs-installer"
 INITRAMFS_BUILD="${BUILD_DIR}/initramfs-installer-build"
 ROOTFS_BUILD="${BUILD_DIR}/rootfs"
 KERNEL_TYPE="${KERNEL_TYPE:-custom}"
+KERNEL_VERSION="${KERNEL_VERSION:-7.0.3}"
+CUSTOM_KERNEL_ROOT="${SCRIPT_DIR}/../kernel"
+CUSTOM_MODULES_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/modules-${KERNEL_VERSION}.tar.gz"
 
 case "$KERNEL_TYPE" in
     custom|alpine-lts) ;;
@@ -42,8 +45,9 @@ check_prerequisites() {
     fi
 
     if [ "$KERNEL_TYPE" = "custom" ]; then
-        if ! ls "${SCRIPT_DIR}/../kernel/output"/modules-*.tar.gz >/dev/null 2>&1; then
-            echo "Warning: No custom kernel modules archive found. Installer may have limited hardware support."
+        if [ ! -f "$CUSTOM_MODULES_ARCHIVE" ]; then
+            echo "Error: No custom kernel modules archive found for ${KERNEL_VERSION}. Run 'make kernel' first."
+            exit 1
         fi
     else
         if [ ! -d "${ROOTFS_BUILD}/lib/modules" ]; then
@@ -104,9 +108,9 @@ build_initramfs() {
         mkdir -p "${modules_root}/lib"
         cp -a "${ROOTFS_BUILD}/lib/modules" "${modules_root}/lib/"
     else
-        modules_archive=$(ls -t "${SCRIPT_DIR}/../kernel/output"/modules-*.tar.gz 2>/dev/null | head -1)
+        modules_archive="$CUSTOM_MODULES_ARCHIVE"
 
-        if [ -n "$modules_archive" ] && [ -f "$modules_archive" ]; then
+        if [ -f "$modules_archive" ]; then
             echo "Extracting custom kernel modules archive..."
             mkdir -p "$modules_root"
             tar -xzf "$modules_archive" -C "$modules_root"
@@ -241,6 +245,21 @@ build_initramfs() {
 
     local size=$(du -h "${BUILD_DIR}/initramfs-installer.cpio.gz" | cut -f1)
     echo "Installer initramfs created: ${BUILD_DIR}/initramfs-installer.cpio.gz ($size)"
+
+    sha256sum "${BUILD_DIR}/initramfs-installer.cpio.gz" > "${BUILD_DIR}/initramfs-installer.cpio.gz.sha256"
+
+    if [ -f "${SCRIPT_DIR}/.local-config" ]; then
+        # shellcheck source=/dev/null
+        source "${SCRIPT_DIR}/.local-config"
+    fi
+
+    if [ -n "${COYOTE_SIGNING_KEY:-}" ] && [ -f "${COYOTE_SIGNING_KEY}" ]; then
+        echo "Signing installer initramfs..."
+        openssl pkeyutl -sign -inkey "$COYOTE_SIGNING_KEY" -rawin -in "${BUILD_DIR}/initramfs-installer.cpio.gz" -out "${BUILD_DIR}/initramfs-installer.cpio.gz.sig"
+    else
+        rm -f "${BUILD_DIR}/initramfs-installer.cpio.gz.sig"
+        echo "Note: Installer initramfs not signed (COYOTE_SIGNING_KEY not configured)"
+    fi
 }
 
 #

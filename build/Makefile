@@ -10,6 +10,7 @@ VERSION := $(VERSION_MAJOR).$(VERSION_MINOR).$(BUILD_NUMBER)
 
 CONFIG_FILE := .config
 DEFAULT_KERNEL_TYPE := custom
+DEFAULT_KERNEL_VERSION := 7.0.3
 DEFAULT_DEV_BUILD := 0
 DEFAULT_FIRMWARE_SIZE_MB := 512
 DEFAULT_BOOT_PARTITION_SIZE_MIB := 4096
@@ -25,6 +26,7 @@ MIN_BOOT_PARTITION_SIZE_MIB := 512
 -include $(CONFIG_FILE)
 
 CONFIG_KERNEL_TYPE ?= $(DEFAULT_KERNEL_TYPE)
+KERNEL_VERSION ?= $(DEFAULT_KERNEL_VERSION)
 CONFIG_DEV_BUILD ?= $(DEFAULT_DEV_BUILD)
 CONFIG_FIRMWARE_SIZE_MB ?= $(DEFAULT_FIRMWARE_SIZE_MB)
 CONFIG_BOOT_PARTITION_SIZE_MIB ?= $(DEFAULT_BOOT_PARTITION_SIZE_MIB)
@@ -43,6 +45,7 @@ ROOTFS_BUILD := ../output/rootfs
 INITRAMFS_DIR := ../initramfs
 INITRAMFS_INSTALLER_DIR := ../initramfs-installer
 CACHE_DIR := ../.cache
+KERNEL_VERSION_FILE := $(BUILD_DIR)/.kernel-version
 
 SQUASHFS_OPTS := -comp xz -Xdict-size 100%
 
@@ -64,6 +67,7 @@ show-version:
 show-config:
 	@echo "Build configuration"
 	@echo "  Kernel type:          $(CONFIG_KERNEL_TYPE)"
+	@echo "  Kernel version:       $(KERNEL_VERSION)"
 	@echo "  Development mode:     $(CONFIG_DEV_BUILD)"
 	@echo "  Firmware size limit:  $(CONFIG_FIRMWARE_SIZE_MB) MB"
 	@echo "  Boot partition size:  $(CONFIG_BOOT_PARTITION_SIZE_MIB) MiB"
@@ -122,6 +126,7 @@ help:
 rootfs: kernel
 	@echo "Building rootfs..."
 	CONFIG_KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" \
+	KERNEL_VERSION="$(KERNEL_VERSION)" \
 	CONFIG_DOTNET="$(CONFIG_DOTNET)" \
 	CONFIG_LOADBALANCER="$(CONFIG_LOADBALANCER)" \
 	CONFIG_IPSEC="$(CONFIG_IPSEC)" \
@@ -207,9 +212,9 @@ firmware: $(ROOTFS_BUILD)/.stamp $(ROOTFS_FILES)
 	else \
 		echo "Note: Firmware not signed (no .local-config)"; \
 	fi; \
-	if [ ! -f "$(BUILD_DIR)/vmlinuz" ] || [ ! -f "$(BUILD_DIR)/initramfs.cpio.gz" ]; then \
-		echo "Kernel/initramfs missing, building initramfs for update archive..."; \
-		make initramfs; \
+	if [ ! -f "$(BUILD_DIR)/vmlinuz" ] || [ ! -f "$(BUILD_DIR)/initramfs.cpio.gz" ] || [ "$$(cat "$(KERNEL_VERSION_FILE)" 2>/dev/null)" != "$(CONFIG_KERNEL_TYPE):$(KERNEL_VERSION)" ]; then \
+		echo "Kernel/initramfs missing or built for a different kernel, building initramfs for update archive..."; \
+		CONFIG_KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" KERNEL_VERSION="$(KERNEL_VERSION)" $(MAKE) initramfs || exit 1; \
 	fi; \
 	./mkupdate.sh "$$NEW_VERSION" "$$FIRMWARE_FILE" "$(BUILD_DIR)/vmlinuz" "$(BUILD_DIR)/initramfs.cpio.gz" "$(BUILD_DIR)"; \
 	echo ""; \
@@ -223,9 +228,9 @@ update-archive:
 		exit 1; \
 	fi; \
 	VERSION=$$(basename "$$FIRMWARE_FILE" | sed 's/firmware-\(.*\)\.squashfs/\1/'); \
-	if [ ! -f "$(BUILD_DIR)/vmlinuz" ] || [ ! -f "$(BUILD_DIR)/initramfs.cpio.gz" ]; then \
-		echo "Kernel/initramfs missing, building initramfs..."; \
-		make initramfs; \
+	if [ ! -f "$(BUILD_DIR)/vmlinuz" ] || [ ! -f "$(BUILD_DIR)/initramfs.cpio.gz" ] || [ "$$(cat "$(KERNEL_VERSION_FILE)" 2>/dev/null)" != "$(CONFIG_KERNEL_TYPE):$(KERNEL_VERSION)" ]; then \
+		echo "Kernel/initramfs missing or built for a different kernel, building initramfs..."; \
+		CONFIG_KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" KERNEL_VERSION="$(KERNEL_VERSION)" $(MAKE) initramfs || exit 1; \
 	fi; \
 	./mkupdate.sh "$$VERSION" "$$FIRMWARE_FILE" "$(BUILD_DIR)/vmlinuz" "$(BUILD_DIR)/initramfs.cpio.gz" "$(BUILD_DIR)"
 
@@ -250,7 +255,7 @@ kernel:
 initramfs: kernel
 	@echo "Building kernel and initramfs..."
 	@mkdir -p $(BUILD_DIR)
-	KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" ./mkinitramfs.sh
+	KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" KERNEL_VERSION="$(KERNEL_VERSION)" ./mkinitramfs.sh
 	@touch $(BUILD_DIR)/.initramfs-stamp
 	@echo "Kernel: $(BUILD_DIR)/vmlinuz"
 	@echo "Initramfs: $(BUILD_DIR)/initramfs.cpio.gz"
@@ -263,7 +268,7 @@ $(BUILD_DIR)/initramfs.cpio.gz: $(BUILD_DIR)/.initramfs-stamp
 initramfs-installer: initramfs
 	@echo "Building installer initramfs..."
 	@mkdir -p $(BUILD_DIR)
-	KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" ./mkinitramfs-installer.sh
+	KERNEL_TYPE="$(CONFIG_KERNEL_TYPE)" KERNEL_VERSION="$(KERNEL_VERSION)" ./mkinitramfs-installer.sh
 	@touch $(BUILD_DIR)/.initramfs-installer-stamp
 	@echo "Installer initramfs: $(BUILD_DIR)/initramfs-installer.cpio.gz"
 

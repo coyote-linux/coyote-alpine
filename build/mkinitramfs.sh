@@ -24,11 +24,11 @@ ALPINE_VERSION="3.23"
 ALPINE_MIRROR="https://dl-cdn.alpinelinux.org/alpine"
 ARCH="x86_64"
 
-KERNEL_VERSION="6.19.0"
+KERNEL_VERSION="${KERNEL_VERSION:-7.0.3}"
 CUSTOM_KERNEL_ROOT="${SCRIPT_DIR}/../kernel"
 REQUIRE_CUSTOM_KERNEL="${REQUIRE_CUSTOM_KERNEL:-auto}"
-CUSTOM_KERNEL_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/kernel-${KERNEL_VERSION:-6.19.0}.tar.gz"
-CUSTOM_MODULES_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/modules-${KERNEL_VERSION:-6.19.0}.tar.gz"
+CUSTOM_KERNEL_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/kernel-${KERNEL_VERSION}.tar.gz"
+CUSTOM_MODULES_ARCHIVE="${CUSTOM_KERNEL_ROOT}/output/modules-${KERNEL_VERSION}.tar.gz"
 CUSTOM_KERNEL_IMAGE=""
 CUSTOM_KERNEL_MODULES_DIR=""
 KERNEL_TYPE="${KERNEL_TYPE:-custom}"
@@ -69,6 +69,15 @@ setup_kernel() {
     detect_custom_kernel() {
         local kernel_tree=""
 
+        if [ "$KERNEL_TYPE" = "custom" ] || [ "$REQUIRE_CUSTOM_KERNEL" = "1" ]; then
+            if [ ! -f "$CUSTOM_KERNEL_ARCHIVE" ] || [ ! -f "$CUSTOM_MODULES_ARCHIVE" ]; then
+                echo "Error: Custom kernel archives not found for ${KERNEL_VERSION}. Run 'make kernel' first."
+                echo "Expected: $CUSTOM_KERNEL_ARCHIVE"
+                echo "Expected: $CUSTOM_MODULES_ARCHIVE"
+                exit 1
+            fi
+        fi
+
         if [ -f "$CUSTOM_KERNEL_ARCHIVE" ] && [ -f "$CUSTOM_MODULES_ARCHIVE" ]; then
             echo "Using custom kernel archives"
 
@@ -94,14 +103,11 @@ setup_kernel() {
         if [ -n "$CUSTOM_KERNEL_IMAGE" ] && [ -f "$CUSTOM_KERNEL_IMAGE" ]; then
             kernel_tree="$(cd "$(dirname "$CUSTOM_KERNEL_IMAGE")/../.." && pwd)"
         else
-            for dir in "${CUSTOM_KERNEL_ROOT}"/linux-*; do
-                [ -d "$dir" ] || continue
-                if [ -f "${dir}/arch/x86/boot/bzImage" ]; then
-                    CUSTOM_KERNEL_IMAGE="${dir}/arch/x86/boot/bzImage"
-                    kernel_tree="$dir"
-                    break
-                fi
-            done
+            local configured_tree="${CUSTOM_KERNEL_ROOT}/linux-${KERNEL_VERSION}"
+            if [ -f "${configured_tree}/arch/x86/boot/bzImage" ]; then
+                CUSTOM_KERNEL_IMAGE="${configured_tree}/arch/x86/boot/bzImage"
+                kernel_tree="$configured_tree"
+            fi
         fi
 
         if [ -z "$CUSTOM_KERNEL_MODULES_DIR" ]; then
@@ -115,7 +121,9 @@ setup_kernel() {
         fi
     }
 
-    detect_custom_kernel
+    if [ "$KERNEL_TYPE" != "alpine-lts" ]; then
+        detect_custom_kernel
+    fi
 
     if [ -f "$kernel_dest" ] && [ -z "$CUSTOM_KERNEL_IMAGE" ] && [ "$REQUIRE_CUSTOM_KERNEL" != "1" ] && [ "$KERNEL_TYPE" != "alpine-lts" ]; then
         echo "Kernel already exists: $kernel_dest"
@@ -475,6 +483,32 @@ build_initramfs() {
     echo "Initramfs created: ${BUILD_DIR}/initramfs.cpio.gz ($size)"
 }
 
+create_boot_sidecars() {
+    sha256sum "${BUILD_DIR}/vmlinuz" > "${BUILD_DIR}/vmlinuz.sha256"
+    sha256sum "${BUILD_DIR}/initramfs.cpio.gz" > "${BUILD_DIR}/initramfs.cpio.gz.sha256"
+
+    if [ -f "${SCRIPT_DIR}/.local-config" ]; then
+        # shellcheck source=/dev/null
+        source "${SCRIPT_DIR}/.local-config"
+    fi
+
+    if [ -n "${COYOTE_SIGNING_KEY:-}" ] && [ -f "${COYOTE_SIGNING_KEY}" ]; then
+        echo "Signing boot artifacts..."
+        openssl pkeyutl -sign -inkey "$COYOTE_SIGNING_KEY" -rawin -in "${BUILD_DIR}/vmlinuz" -out "${BUILD_DIR}/vmlinuz.sig"
+        openssl pkeyutl -sign -inkey "$COYOTE_SIGNING_KEY" -rawin -in "${BUILD_DIR}/initramfs.cpio.gz" -out "${BUILD_DIR}/initramfs.cpio.gz.sig"
+    else
+        rm -f "${BUILD_DIR}/vmlinuz.sig" "${BUILD_DIR}/initramfs.cpio.gz.sig"
+        echo "Note: Boot artifacts not signed (COYOTE_SIGNING_KEY not configured)"
+    fi
+}
+
+write_kernel_version_marker() {
+    local marker_tmp="${BUILD_DIR}/.kernel-version.tmp"
+
+    printf '%s:%s\n' "$KERNEL_TYPE" "$KERNEL_VERSION" > "$marker_tmp"
+    mv "$marker_tmp" "${BUILD_DIR}/.kernel-version"
+}
+
 #
 # Main
 #
@@ -489,6 +523,8 @@ main() {
     setup_openssl
     setup_kernel
     build_initramfs
+    create_boot_sidecars
+    write_kernel_version_marker
 
     echo ""
     echo "=========================================="
