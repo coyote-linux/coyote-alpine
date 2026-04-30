@@ -19,6 +19,7 @@
 require_once '/opt/coyote/lib/autoload.php';
 
 use Coyote\Config\ConfigLoader;
+use Coyote\System\RootPasswordManager;
 
 /**
  * Apply system configuration
@@ -139,6 +140,8 @@ function applyConfig(): bool
         @symlink($tzFile, '/etc/localtime');
         echo "  Timezone: {$tz}\n";
     }
+
+    applyRootPassword($config, $errors);
 
     // Configure DNS (resolv.conf)
     // Prefer system.nameservers (web admin system page), fall back to network.dns (legacy/TUI)
@@ -375,6 +378,25 @@ function writeRunningConfig(array $config): void
     @chgrp($runningConfigFile, 'lighttpd');
 
     echo "  Running config updated: {$runningConfigFile}\n";
+}
+
+function applyRootPassword(array $config, array &$errors): void
+{
+    $hash = $config['system']['root_password_hash'] ?? '';
+    if (!is_string($hash) || $hash === '') {
+        return;
+    }
+
+    if (!RootPasswordManager::isValidHash($hash)) {
+        $errors[] = 'Invalid root password hash in configuration';
+        return;
+    }
+
+    if (RootPasswordManager::applyHashToShadow($hash)) {
+        echo "  Root password: configured\n";
+    } else {
+        $errors[] = 'Failed to update root password';
+    }
 }
 
 function runRcService(string $service, string $action, array &$output, &$ret): void

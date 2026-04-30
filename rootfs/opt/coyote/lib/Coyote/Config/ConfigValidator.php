@@ -64,7 +64,18 @@ class ConfigValidator
             }
         }
 
+        if (isset($system['root_password_hash']) && $system['root_password_hash'] !== '') {
+            if (!is_string($system['root_password_hash']) || !$this->isValidRootPasswordHash($system['root_password_hash'])) {
+                $errors[] = 'Invalid root password hash';
+            }
+        }
+
         return $errors;
+    }
+
+    private function isValidRootPasswordHash(string $hash): bool
+    {
+        return preg_match('/^\$6\$(rounds=[1-9][0-9]*\$)?[A-Za-z0-9.\/]{1,16}\$[A-Za-z0-9.\/]{43,128}$/', $hash) === 1;
     }
 
     /**
