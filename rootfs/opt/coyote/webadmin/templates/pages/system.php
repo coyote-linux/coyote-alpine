@@ -45,7 +45,7 @@ $forcePasswordChange = $forcePasswordChange ?? false;
 <?php endif; ?>
 
 <?php if ($forcePasswordChange): ?>
-<div class="alert alert-warning">You must set a new admin password before continuing. The default password cannot be used.</div>
+<div class="alert alert-warning">You must set new admin and root passwords before continuing. The default password cannot be used.</div>
 <?php endif; ?>
 
 <div class="dashboard-grid">
@@ -157,7 +157,7 @@ $forcePasswordChange = $forcePasswordChange ?? false;
     <?php endif; ?>
 
     <div class="card" id="password">
-        <h3><?= $forcePasswordChange ? 'Set Admin Password' : 'Change Admin Password' ?></h3>
+        <h3><?= $forcePasswordChange ? 'Set Admin and Root Password' : 'Change Admin and Root Password' ?></h3>
         <form method="post" action="/system/password">
             <?php if (!$forcePasswordChange): ?>
             <div class="form-group">
@@ -169,13 +169,13 @@ $forcePasswordChange = $forcePasswordChange ?? false;
             <div class="form-group">
                 <label for="new_password">New Password</label>
                 <input type="password" id="new_password" name="new_password" required minlength="8" autofocus>
-                <small>Minimum 8 characters</small>
+                <small>Minimum 8 characters. This password is used for WebAdmin admin login and the local root account.</small>
             </div>
             <div class="form-group">
                 <label for="confirm_password">Confirm New Password</label>
                 <input type="password" id="confirm_password" name="confirm_password" required minlength="8">
             </div>
-            <button type="submit" class="btn btn-primary"><?= $forcePasswordChange ? 'Set Password' : 'Change Password' ?></button>
+            <button type="submit" class="btn btn-primary"><?= $forcePasswordChange ? 'Set Passwords' : 'Change Passwords' ?></button>
         </form>
     </div>
 

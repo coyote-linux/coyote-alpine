@@ -4,7 +4,10 @@
  */
 
 use Coyote\Config\ConfigManager;
+use Coyote\System\RootPasswordManager;
 use Coyote\WebAdmin\Auth;
+
+require_once dirname(__DIR__, 2) . '/webadmin/src/Auth.php';
 
 /**
  * Display the system menu.
@@ -14,7 +17,7 @@ function systemMenu(): void
     $items = [
         'time' => ['label' => 'Time & Timezone'],
         'firmware' => ['label' => 'Firmware Updates'],
-        'password' => ['label' => 'Change Admin Password'],
+        'password' => ['label' => 'Change Admin and Root Password'],
         'backup' => ['label' => 'Backup Configuration'],
         'restore' => ['label' => 'Restore Configuration'],
         'factory' => ['label' => 'Factory Reset'],
@@ -92,13 +95,14 @@ function configureTime(): void
 }
 
 /**
- * Change admin password.
+ * Change admin and root passwords.
  */
 function changePassword(): void
 {
     clearScreen();
     showHeader();
-    echo "Change Admin Password\n\n";
+    echo "Change Admin and Root Password\n\n";
+    echo "This updates WebAdmin login and the local root account.\n\n";
 
     echo "Enter new password: ";
     system('stty -echo');
@@ -124,7 +128,14 @@ function changePassword(): void
         return;
     }
 
-    $hash = Auth::hashPassword($password1);
+    try {
+        $hash = Auth::hashPassword($password1);
+        $rootHash = RootPasswordManager::hashPassword($password1);
+    } catch (\Throwable $e) {
+        showError("Failed to prepare password change: " . $e->getMessage());
+        waitForEnter();
+        return;
+    }
 
     $configManager = new ConfigManager();
     $configManager->load();
@@ -141,6 +152,7 @@ function changePassword(): void
             break;
         }
     }
+    unset($user);
 
     if (!$found) {
         $users[] = [
@@ -150,11 +162,18 @@ function changePassword(): void
     }
 
     $config->set('users', $users);
+    $config->set(RootPasswordManager::CONFIG_PATH, $rootHash);
 
-    if ($configManager->save()) {
-        showSuccess("Password changed successfully");
-    } else {
+    if (!$configManager->saveRunning() || !$configManager->save()) {
         showError("Failed to save password");
+        waitForEnter();
+        return;
+    }
+
+    if (!RootPasswordManager::applyHashToShadow($rootHash)) {
+        showError("Password saved, but failed to update the root account immediately");
+    } else {
+        showSuccess("Admin and root passwords changed successfully");
     }
 
     waitForEnter();

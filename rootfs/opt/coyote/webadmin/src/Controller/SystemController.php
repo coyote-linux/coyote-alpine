@@ -4,6 +4,7 @@ namespace Coyote\WebAdmin\Controller;
 
 use Coyote\Config\ConfigManager;
 use Coyote\System\PrivilegedExecutor;
+use Coyote\System\RootPasswordManager;
 use Coyote\WebAdmin\Auth;
 use Coyote\WebAdmin\Service\ConfigService;
 use Coyote\WebAdmin\Service\ApplyService;
@@ -171,7 +172,7 @@ class SystemController extends BaseController
      */
     public function showPasswordForm(array $params = []): void
     {
-        $this->flash('info', 'Please set a new admin password');
+        $this->flash('info', 'Please set new admin and root passwords');
         $this->redirect('/system#password');
     }
 
@@ -234,8 +235,15 @@ class SystemController extends BaseController
             }
         }
 
-        // Hash and store the new password
-        $hash = Auth::hashPassword($newPassword);
+        // Hash and store the new passwords
+        try {
+            $hash = Auth::hashPassword($newPassword);
+            $rootHash = RootPasswordManager::hashPassword($newPassword);
+        } catch (\Throwable $e) {
+            $this->flash('error', 'Failed to prepare password change: ' . $e->getMessage());
+            $this->redirect('/system#password');
+            return;
+        }
 
         $found = false;
         foreach ($users as &$user) {
@@ -255,15 +263,18 @@ class SystemController extends BaseController
         }
 
         $config->set('users', $users);
+        $config->set(RootPasswordManager::CONFIG_PATH, $rootHash);
 
-        $configService->saveWorkingConfig($config);
-        $configService->promoteWorkingToRunning();
-        $persisted = $configService->saveRunningToPersistent();
+        $persisted = $configService->saveWorkingConfig($config)
+            && $configService->promoteWorkingToRunning()
+            && $configService->saveRunningToPersistent();
 
-        if ($persisted) {
-            $this->flash('success', 'Admin password changed successfully');
-        } else {
+        if (!$persisted) {
             $this->flash('error', 'Failed to save password');
+        } elseif (!RootPasswordManager::applyHashToShadow($rootHash)) {
+            $this->flash('error', 'Password saved, but failed to update the root account immediately');
+        } else {
+            $this->flash('success', 'Admin and root passwords changed successfully');
         }
 
         $this->redirect('/system');
