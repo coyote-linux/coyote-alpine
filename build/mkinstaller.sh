@@ -107,30 +107,22 @@ if [ -f "${SYSLINUX_DIR}/ldlinux.sys" ]; then
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${SYSLINUX_DIR}/ldlinux.sys" ::/boot/syslinux/
 fi
 
-# Copy kernel and initramfs (check for different possible locations/names)
+# Copy kernel and initramfs
 echo "Copying kernel and initramfs..."
-KERNEL_SRC=""
-for kernel in "${BUILD_DIR}/vmlinuz" /boot/vmlinuz-lts /boot/vmlinuz; do
-    if [ -f "$kernel" ]; then
-        KERNEL_SRC="$kernel"
-        break
-    fi
-done
+KERNEL_SRC="${BUILD_DIR}/vmlinuz"
 
-if [ -z "$KERNEL_SRC" ]; then
-    echo "Warning: No kernel found, skipping kernel copy"
-    echo "         Place vmlinuz in ${BUILD_DIR}/ before building installer"
+if [ ! -f "$KERNEL_SRC" ]; then
+    echo "Error: Kernel not found at ${KERNEL_SRC}"
+    echo "Run 'make initramfs' first"
+    exit 1
 else
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$KERNEL_SRC" ::/boot/vmlinuz
 
-    if [ -f "${KERNEL_SRC}.sha256" ]; then
-        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${KERNEL_SRC}.sha256" ::/boot/vmlinuz.sha256
-    else
-        KERNEL_HASH_TMP="${BUILD_DIR}/vmlinuz.sha256.tmp"
-        sha256sum "$KERNEL_SRC" > "$KERNEL_HASH_TMP"
-        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$KERNEL_HASH_TMP" ::/boot/vmlinuz.sha256
-        rm -f "$KERNEL_HASH_TMP"
-    fi
+    KERNEL_HASH_TMP="${BUILD_DIR}/vmlinuz.sha256.tmp"
+    KERNEL_HASH=$(sha256sum "$KERNEL_SRC" | cut -d ' ' -f1)
+    printf '%s  vmlinuz\n' "$KERNEL_HASH" > "$KERNEL_HASH_TMP"
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$KERNEL_HASH_TMP" ::/boot/vmlinuz.sha256
+    rm -f "$KERNEL_HASH_TMP"
 
     if [ -f "${KERNEL_SRC}.sig" ]; then
         mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${KERNEL_SRC}.sig" ::/boot/vmlinuz.sig
@@ -141,9 +133,20 @@ fi
 INITRAMFS_SRC="${BUILD_DIR}/initramfs-installer.cpio.gz"
 if [ -f "$INITRAMFS_SRC" ]; then
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_SRC" ::/boot/initramfs.gz
+
+    INITRAMFS_HASH_TMP="${BUILD_DIR}/initramfs.gz.sha256.tmp"
+    INITRAMFS_HASH=$(sha256sum "$INITRAMFS_SRC" | cut -d ' ' -f1)
+    printf '%s  initramfs.gz\n' "$INITRAMFS_HASH" > "$INITRAMFS_HASH_TMP"
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_HASH_TMP" ::/boot/initramfs.gz.sha256
+    rm -f "$INITRAMFS_HASH_TMP"
+
+    if [ -f "${INITRAMFS_SRC}.sig" ]; then
+        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${INITRAMFS_SRC}.sig" ::/boot/initramfs.gz.sig
+    fi
 else
-    echo "Warning: No installer initramfs found at ${INITRAMFS_SRC}"
-    echo "         Run 'make initramfs-installer' to build it"
+    echo "Error: Installer initramfs not found at ${INITRAMFS_SRC}"
+    echo "Run 'make initramfs-installer' first"
+    exit 1
 fi
 
 if [ -f "${BUILD_DIR}/coyote-3-square.png" ]; then
@@ -156,21 +159,19 @@ if [ -f "$INITRAMFS_SYSTEM" ]; then
     echo "Copying system initramfs..."
     mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_SYSTEM" ::/boot/initramfs-system.gz
 
-    if [ -f "${INITRAMFS_SYSTEM}.sha256" ]; then
-        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${INITRAMFS_SYSTEM}.sha256" ::/boot/initramfs-system.gz.sha256
-    else
-        INITRAMFS_HASH_TMP="${BUILD_DIR}/initramfs-system.gz.sha256.tmp"
-        sha256sum "$INITRAMFS_SYSTEM" > "$INITRAMFS_HASH_TMP"
-        mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_HASH_TMP" ::/boot/initramfs-system.gz.sha256
-        rm -f "$INITRAMFS_HASH_TMP"
-    fi
+    INITRAMFS_HASH_TMP="${BUILD_DIR}/initramfs-system.gz.sha256.tmp"
+    INITRAMFS_HASH=$(sha256sum "$INITRAMFS_SYSTEM" | cut -d ' ' -f1)
+    printf '%s  initramfs-system.gz\n' "$INITRAMFS_HASH" > "$INITRAMFS_HASH_TMP"
+    mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "$INITRAMFS_HASH_TMP" ::/boot/initramfs-system.gz.sha256
+    rm -f "$INITRAMFS_HASH_TMP"
 
     if [ -f "${INITRAMFS_SYSTEM}.sig" ]; then
         mcopy -i "${INSTALLER_IMG}@@${PARTITION_START}" "${INITRAMFS_SYSTEM}.sig" ::/boot/initramfs-system.gz.sig
     fi
 else
-    echo "Warning: No system initramfs found at ${INITRAMFS_SYSTEM}"
-    echo "         Run 'make initramfs' to build it"
+    echo "Error: System initramfs not found at ${INITRAMFS_SYSTEM}"
+    echo "Run 'make initramfs' first"
+    exit 1
 fi
 
 # Copy firmware

@@ -90,12 +90,7 @@ fi
 echo "Copying kernel and installer initramfs..."
 if [ -f "${BUILD_DIR}/vmlinuz" ]; then
     cp "${BUILD_DIR}/vmlinuz" "${ISO_BUILD}/boot/vmlinuz"
-
-    if [ -f "${BUILD_DIR}/vmlinuz.sha256" ]; then
-        cp "${BUILD_DIR}/vmlinuz.sha256" "${ISO_BUILD}/boot/vmlinuz.sha256"
-    else
-        sha256sum "${BUILD_DIR}/vmlinuz" > "${ISO_BUILD}/boot/vmlinuz.sha256"
-    fi
+    (cd "${ISO_BUILD}/boot" && sha256sum vmlinuz > vmlinuz.sha256)
 
     if [ -f "${BUILD_DIR}/vmlinuz.sig" ]; then
         cp "${BUILD_DIR}/vmlinuz.sig" "${ISO_BUILD}/boot/vmlinuz.sig"
@@ -109,6 +104,11 @@ fi
 # Use installer-specific initramfs for booting the installer
 if [ -f "${BUILD_DIR}/initramfs-installer.cpio.gz" ]; then
     cp "${BUILD_DIR}/initramfs-installer.cpio.gz" "${ISO_BUILD}/boot/initramfs.gz"
+    (cd "${ISO_BUILD}/boot" && sha256sum initramfs.gz > initramfs.gz.sha256)
+
+    if [ -f "${BUILD_DIR}/initramfs-installer.cpio.gz.sig" ]; then
+        cp "${BUILD_DIR}/initramfs-installer.cpio.gz.sig" "${ISO_BUILD}/boot/initramfs.gz.sig"
+    fi
 else
     echo "Error: Installer initramfs not found at ${BUILD_DIR}/initramfs-installer.cpio.gz"
     echo "Run 'make initramfs-installer' first"
@@ -123,12 +123,7 @@ fi
 echo "Copying system initramfs..."
 if [ -f "${BUILD_DIR}/initramfs.cpio.gz" ]; then
     cp "${BUILD_DIR}/initramfs.cpio.gz" "${ISO_BUILD}/boot/initramfs-system.gz"
-
-    if [ -f "${BUILD_DIR}/initramfs.cpio.gz.sha256" ]; then
-        cp "${BUILD_DIR}/initramfs.cpio.gz.sha256" "${ISO_BUILD}/boot/initramfs-system.gz.sha256"
-    else
-        sha256sum "${BUILD_DIR}/initramfs.cpio.gz" > "${ISO_BUILD}/boot/initramfs-system.gz.sha256"
-    fi
+    (cd "${ISO_BUILD}/boot" && sha256sum initramfs-system.gz > initramfs-system.gz.sha256)
 
     if [ -f "${BUILD_DIR}/initramfs.cpio.gz.sig" ]; then
         cp "${BUILD_DIR}/initramfs.cpio.gz.sig" "${ISO_BUILD}/boot/initramfs-system.gz.sig"
