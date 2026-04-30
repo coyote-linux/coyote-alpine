@@ -1,6 +1,6 @@
 # Coyote Linux 4
 
-Coyote Linux is an immutable, firmware-based edge firewall and networking appliance distribution built on Alpine Linux. It features a read-only squashfs root filesystem, safe configuration rollback, and Ed25519 firmware signature verification.
+Coyote Linux is an immutable, firmware-based edge firewall and networking appliance distribution built on Alpine Linux 3.23.4. It features a read-only squashfs root filesystem, safe configuration rollback, and Ed25519 firmware signature verification.
 
 This repository contains the complete system: base OS, initramfs, installer, web admin, firewall, load balancer, and all PHP libraries.
 
@@ -10,13 +10,13 @@ This repository contains the complete system: base OS, initramfs, installer, web
 - **Safe Updates**: Atomic firmware updates with automatic rollback
 - **Signature Verification**: Ed25519 cryptographic firmware signing
 - **Web Administration**: PHP-based management interface served by lighttpd
-- **Edge Firewall**: iptables/ip6tables with ACLs, NAT, port forwarding, and address lists
+- **Edge Firewall**: nftables-based firewall with ACLs, NAT, port forwarding, and address lists
 - **VPN**: StrongSwan IPSec, OpenVPN, and WireGuard
 - **Load Balancer**: HAProxy with frontend/backend management
 - **DHCP Server**: dnsmasq-based with static reservations
 - **Services**: NTP, remote syslog, MRTG monitoring, SNMP, SSH (Dropbear)
 - **Certificate Management**: Upload, ACME/Let's Encrypt, and web admin SSL assignment
-- **Minimal Footprint**: ~214MB firmware image
+- **Minimal Footprint**: ~56MB compressed firmware image in current release builds
 - **No Root Required**: Build system operates entirely without root privileges
 
 ## Directory Structure
@@ -61,7 +61,7 @@ coyote-alpine/
 │   ├── installer-init          # Minimal init (bypasses OpenRC)
 │   └── tui/                    # Text UI components
 │
-├── kernel/                     # Custom kernel build (optional)
+├── kernel/                     # Custom Linux kernel build inputs
 │   ├── build-kernel.sh         # Kernel build script
 │   └── configs/                # Kernel defconfigs
 │
@@ -130,6 +130,7 @@ make help              # Show all available targets
 make menuconfig        # Interactive build configuration
 
 # Typical build sequence
+make kernel            # Build configured custom kernel artifacts
 make rootfs            # Download Alpine and build rootfs (first time)
 make firmware          # Build firmware squashfs image
 make initramfs         # Build system initramfs
@@ -149,29 +150,38 @@ The build process does not require root privileges. Images are created using `mt
 
 Run `make menuconfig` to configure optional features before building:
 
-- Kernel type (custom or Alpine LTS)
+- Kernel type (custom Linux 7.0.3 or Alpine LTS)
 - Development mode
 - Optional components: IPSec VPN, OpenVPN, WireGuard, Load Balancer
 
 Feature selections are saved to `build/.config` and embedded into the firmware as `/etc/coyote/features.json`. The web admin automatically hides UI for disabled features.
 
-### Custom Kernel (Optional)
+### Custom Kernel
 
-If a custom kernel is built under `kernel/`, the initramfs build will use it automatically:
+The default build uses the project custom Linux 7.0.3 kernel. Build it with:
 
-- Kernel image: `kernel/linux-*/arch/x86/boot/bzImage`
-- Modules (optional): `kernel/output/modules/lib/modules/`
+```bash
+cd build
+make kernel
+```
 
-If no custom kernel is found, the build falls back to Alpine `linux-lts`.
+Custom kernel packaging is intentionally exact-versioned to prevent stale boot media:
+
+- Kernel archive: `kernel/output/kernel-7.0.3.tar.gz`
+- Modules archive: `kernel/output/modules-7.0.3.tar.gz`
+- Runtime marker: `output/.kernel-version` records the kernel type and version used for generated boot artifacts
+
+The rootfs, system initramfs, installer initramfs, ISO, and USB installer all consume the configured kernel artifacts. Installer media generation fails closed if the configured kernel, installer initramfs, or system initramfs is missing. Alpine `linux-lts` remains available through `make menuconfig` for alternate builds.
 
 ### Build Outputs
 
 | File | Size | Description |
 |------|------|-------------|
-| `firmware-4.0.0.squashfs` | ~214MB | Compressed root filesystem |
-| `firmware-4.0.0.squashfs.sig` | 64B | Ed25519 signature |
-| `coyote-4.0.0-installer.iso` | ~239MB | Bootable ISO for VMs/CD |
-| `coyote-4.0.0-installer.img` | ~300MB | USB flash drive image |
+| `firmware-4.0.<build>.squashfs` | ~56MB | Compressed root filesystem |
+| `firmware-4.0.<build>.squashfs.sig` | 64B | Ed25519 signature |
+| `coyote-update-4.0.<build>.tar.gz` | varies | Signed update archive containing firmware and boot artifacts |
+| `coyote-installer-4.0.<build>.iso` | ~81MB | Bootable ISO for VMs/CD |
+| `coyote-installer-4.0.<build>.img` | 600MB | USB flash drive image |
 
 ## Web Administration
 

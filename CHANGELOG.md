@@ -4,6 +4,31 @@ All notable changes to Coyote Linux 4 are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.191] - 2026-04-30
+
+### Changed
+
+#### Alpine Linux Update to 3.23.4
+- Updated the base rootfs package baseline to Alpine Linux 3.23.4
+- Refreshed README build output sizing and platform notes for the current Alpine 3.23.4-based artifacts
+
+#### Custom Kernel Upgrade to Linux 7.0.3
+- Upgraded the custom kernel build default from the 6.19.x series to Linux 7.0.3
+- Added Linux 7.x kernel.org download-series support to `kernel/build-kernel.sh`
+- Regenerated `kernel/configs/coyote-x86_64.defconfig` for Linux 7.0.3 with edge appliance scope: nftables/firewall, VPN, network, storage, and boot essentials preserved while desktop, test, and debug-heavy options are trimmed
+
+#### Build Artifact Versioning and Integrity
+- Added configured kernel-version tracking with `output/.kernel-version` so firmware and update packaging rebuild boot artifacts when the kernel type or version changes
+- Custom rootfs, system initramfs, and installer initramfs builds now require exact-version custom kernel/module archives (`kernel-7.0.3.tar.gz` and `modules-7.0.3.tar.gz`) instead of broad stale artifact discovery
+- ISO and USB installer media now generate media-local SHA256 sidecars for `vmlinuz`, `initramfs.gz`, and `initramfs-system.gz`, and copy matching signature sidecars when signing is configured
+
+### Fixed
+
+#### Installer Kernel Selection
+- Fixed rebuilt installer ISO/USB media packaging stale 6.x kernels by removing broad `kernel/linux-*` discovery and host `/boot/vmlinuz*` fallbacks
+- Rebuilt installer media now packages the configured `output/vmlinuz` from Linux 7.0.3 and fails closed when the kernel, installer initramfs, or system initramfs is missing
+- Firmware and update archive targets now abort if nested initramfs regeneration fails, preventing stale boot payloads from being bundled silently
+
 ## [4.0.186] - 2026-03-23
 
 ### Changed
