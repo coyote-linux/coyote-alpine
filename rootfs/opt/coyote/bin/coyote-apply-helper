@@ -22,6 +22,7 @@
 #   poweroff                    Shutdown the system
 #   mount-rw                    Remount /mnt/config read-write
 #   mount-ro                    Remount /mnt/config read-only
+#   set-root-password-hash <file>  Apply a SHA-512 crypt hash to root in /etc/shadow
 #
 
 set -e
@@ -137,6 +138,51 @@ cmd_write_symlink() {
 
     log_action "write-symlink: $dest -> $target"
     echo "OK"
+}
+
+# Command: set-root-password-hash <hash-file>
+# Apply a validated SHA-512 crypt hash to the root account in /etc/shadow.
+cmd_set_root_password_hash() {
+    local hash_file="$1"
+    local tmp_file=""
+
+    [ -z "$hash_file" ] && die "set-root-password-hash: hash file required"
+
+    case "$hash_file" in
+        /tmp/coyote-apply/root-password-*.hash) ;;
+        *) die "set-root-password-hash: hash file path not allowed" ;;
+    esac
+
+    [ -f "$hash_file" ] || die "set-root-password-hash: hash file does not exist"
+
+    # shellcheck disable=SC2016 # Regex intentionally matches literal '$' separators in crypt hashes.
+    if ! head -n 1 "$hash_file" | grep -Eq '^\$6\$(rounds=[1-9][0-9]*\$)?[A-Za-z0-9./]{1,16}\$[A-Za-z0-9./]{43,128}$'; then
+        rm -f "$hash_file"
+        die "set-root-password-hash: invalid SHA-512 crypt hash"
+    fi
+
+    tmp_file=$(mktemp /etc/shadow.XXXXXX) || {
+        rm -f "$hash_file"
+        die "set-root-password-hash: failed to create temporary shadow file"
+    }
+
+    if awk -F: '
+        NR == FNR { if (FNR == 1) hash = $0; next }
+        BEGIN { OFS = FS; found = 0 }
+        $1 == "root" { $2 = hash; found = 1 }
+        { print }
+        END { if (!found) exit 42 }
+    ' "$hash_file" /etc/shadow > "$tmp_file"; then
+        rm -f "$hash_file"
+        chown root:root "$tmp_file"
+        chmod 600 "$tmp_file"
+        mv "$tmp_file" /etc/shadow
+        log_action "set-root-password-hash: root password hash updated"
+        echo "OK"
+    else
+        rm -f "$hash_file" "$tmp_file"
+        die "set-root-password-hash: failed to update root shadow entry"
+    fi
 }
 
 # Command: set-hostname <hostname>
@@ -343,6 +389,9 @@ main() {
             ;;
         write-symlink)
             cmd_write_symlink "$@"
+            ;;
+        set-root-password-hash)
+            cmd_set_root_password_hash "$@"
             ;;
         set-hostname)
             cmd_set_hostname "$@"

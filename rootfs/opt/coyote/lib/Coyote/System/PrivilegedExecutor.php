@@ -114,6 +114,40 @@ class PrivilegedExecutor
     }
 
     /**
+     * Set the Linux root password hash in /etc/shadow.
+     *
+     * @param string $hash SHA-512 crypt password hash
+     * @return array{success: bool, output: string}
+     */
+    public function setRootPasswordHash(string $hash): array
+    {
+        if (!is_dir(self::TEMP_DIR)) {
+            mkdir(self::TEMP_DIR, 0755, true);
+        }
+
+        $tempFile = self::TEMP_DIR . '/root-password-' . uniqid('', true) . '.hash';
+        if (file_put_contents($tempFile, $hash . "\n") === false) {
+            return [
+                'success' => false,
+                'output' => 'Failed to write root password hash temp file',
+            ];
+        }
+
+        chmod($tempFile, 0600);
+
+        $result = $this->execute('set-root-password-hash', [$tempFile]);
+
+        if (file_exists($tempFile)) {
+            unlink($tempFile);
+        }
+
+        return [
+            'success' => $result['success'],
+            'output' => $result['output'],
+        ];
+    }
+
+    /**
      * Set the system hostname.
      *
      * @param string $hostname The hostname to set
