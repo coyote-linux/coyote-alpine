@@ -24,6 +24,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+#### Admin and Root Password Management
+- Fixed issue #3 where the TUI password change flow failed because the WebAdmin authentication class was not loaded in the TUI runtime
+- TUI and WebAdmin password changes now update both the WebAdmin `admin` login and the local Linux `root` account
+- Persisted the root account password hash in system configuration and reapplied it during config application so the root password does not revert to the default after reboot
+
 #### Installer Kernel Selection
 - Fixed rebuilt installer ISO/USB media packaging stale 6.x kernels by removing broad `kernel/linux-*` discovery and host `/boot/vmlinuz*` fallbacks
 - Rebuilt installer media now packages the configured `output/vmlinuz` from Linux 7.0.3 and fails closed when the kernel, installer initramfs, or system initramfs is missing
