@@ -4,7 +4,7 @@ set -eu
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-KERNEL_VERSION="${1:-${KERNEL_VERSION:-6.19.9}}"
+KERNEL_VERSION="${1:-${KERNEL_VERSION:-7.0.3}}"
 ARCH="${ARCH:-x86_64}"
 JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
 
@@ -34,6 +34,7 @@ if [ ! -d "$KERNEL_SRC_DIR" ]; then
     if [ ! -f "$KERNEL_TARBALL" ]; then
         major="${KERNEL_VERSION%%.*}"
         case "$major" in
+            7) series="v7.x" ;;
             6) series="v6.x" ;;
             5) series="v5.x" ;;
             4) series="v4.x" ;;
