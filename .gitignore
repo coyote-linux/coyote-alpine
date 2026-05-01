@@ -438,3 +438,6 @@ composer.lock
 build/.local-config
 build/.config
 build/.config.old
+
+# Internal project planning/work state
+.sisyphus/
